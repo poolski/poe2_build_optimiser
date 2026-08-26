@@ -1,0 +1,3 @@
+[submodule "pob-runtime/PathOfBuilding-PoE2"]
+	path = pob-runtime/PathOfBuilding-PoE2
+	url = https://github.com/PathOfBuildingCommunity/PathOfBuilding-PoE2.git
