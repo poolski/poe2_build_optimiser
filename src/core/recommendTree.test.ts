@@ -35,8 +35,14 @@ const STATUS: TreeStatus = {
 	secondaryAscendancyPointsMax: 8,
 };
 
-function node(id: number, name: string, type = "Notable"): AllocatableNode {
-	return { id, name, type, statLines: [`stat line for ${name}`] };
+function node(id: number, name: string, type = "Notable", statLines?: string[]): AllocatableNode {
+	return { id, name, type, statLines: statLines ?? [`stat line for ${name}`] };
+}
+
+// Default-response evaluate: pointsSpent=1, TotalDPS unchanged from baseline unless overridden --
+// good enough for tests that only care about which candidates got sent, not their ranking.
+function passthroughEvaluate(nodeIds: number[]) {
+	return { results: nodeIds.map((id) => ({ nodeId: id, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 0 } })) };
 }
 
 describe("recommendTree", () => {
@@ -124,5 +130,77 @@ describe("recommendTree", () => {
 		const result = await recommendTree(bridge, { targetMetric: "Life" });
 
 		expect(result[0].delta).toBeCloseTo(100);
+	});
+
+	it("defaults to Notable/Keystone candidates only, excluding other node types", async () => {
+		const nodes = [node(1, "Notable Node", "Notable"), node(2, "Keystone Node", "Keystone"), node(3, "Small Node", "Normal")];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		await recommendTree(bridge, {});
+
+		const evalCalls = bridge.calls.filter((c) => c.method === "evaluate_candidate_nodes");
+		const evaluatedIds = evalCalls.flatMap((c) => c.params!.nodeIds as number[]);
+		expect(evaluatedIds.sort()).toEqual([1, 2]);
+	});
+
+	it("evaluates every node type when includeAllNodeTypes is set", async () => {
+		const nodes = [node(1, "Notable Node", "Notable"), node(2, "Small Node", "Normal")];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		await recommendTree(bridge, { includeAllNodeTypes: true });
+
+		const evalCalls = bridge.calls.filter((c) => c.method === "evaluate_candidate_nodes");
+		const evaluatedIds = evalCalls.flatMap((c) => c.params!.nodeIds as number[]);
+		expect(evaluatedIds.sort()).toEqual([1, 2]);
+	});
+
+	it("respects an explicit nodeTypes list", async () => {
+		const nodes = [node(1, "Notable Node", "Notable"), node(2, "Keystone Node", "Keystone")];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		await recommendTree(bridge, { nodeTypes: ["Keystone"] });
+
+		const evalCalls = bridge.calls.filter((c) => c.method === "evaluate_candidate_nodes");
+		const evaluatedIds = evalCalls.flatMap((c) => c.params!.nodeIds as number[]);
+		expect(evaluatedIds).toEqual([2]);
+	});
+
+	it("prioritizes damageType matches (including the Elemental synonym) ahead of maxCandidates truncation", async () => {
+		const nodes = [
+			node(1, "Physical Notable", "Notable", ["12% increased Physical Damage"]),
+			node(2, "Lightning Notable", "Notable", ["12% increased Lightning Damage"]),
+			node(3, "Elemental Notable", "Notable", ["12% increased Elemental Damage"]),
+			node(4, "Another Physical Notable", "Notable", ["8% increased Physical Damage"]),
+		];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		await recommendTree(bridge, { damageType: "Lightning", maxCandidates: 2 });
+
+		const evalCalls = bridge.calls.filter((c) => c.method === "evaluate_candidate_nodes");
+		const evaluatedIds = evalCalls.flatMap((c) => c.params!.nodeIds as number[]).sort();
+		expect(evaluatedIds).toEqual([2, 3]);
+	});
+
+	it("tags damageTypeMatch on results, without changing the delta-per-point ranking", async () => {
+		const nodes = [
+			node(1, "Lightning Notable", "Notable", ["increased Lightning Damage"]),
+			node(2, "Life Notable", "Notable", ["increased maximum Life"]),
+		];
+		const bridge = new FakeBridge({ TotalDPS: 1000 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) => ({
+				nodeId: id,
+				pointsSpent: 1,
+				ascendancyPointsSpent: 0,
+				// The non-matching "Life" node still measures a bigger real delta -- ranking must
+				// reflect that, not the text match.
+				stats: { TotalDPS: id === 1 ? 1050 : 1200 },
+			})),
+		}));
+
+		const result = await recommendTree(bridge, { damageType: "Lightning" });
+
+		expect(result.map((r) => r.id)).toEqual([2, 1]);
+		expect(result.find((r) => r.id === 1)!.damageTypeMatch).toBe(true);
+		expect(result.find((r) => r.id === 2)!.damageTypeMatch).toBe(false);
 	});
 });
