@@ -17,10 +17,30 @@ Metric columns are the loaded-baseline values (rounded). `spare` = `pointsMax �
 
 | build | class | lvl | points | asc | TotalDPS | TotalEHP | Life | ES | Armour | Evasion | Fire | Cold | Light | Chaos | defence layer | tuned/naive | held-out |
 |---|---|--:|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|---|---|
+| Ranger (L37) | Huntress | 37 | 34/123 (89 spare*) | 2 | 662 | 556 | 651 | 67 | 261 | 427 | -60 | -36 | -36 | 18 | evasion/armour | **naive** (nodes deliberately pulled) | no |
 | RampantlyBisexual | Ranger | 80 | 100/123 (23 spare) | 6 | 39525 | 4951 | 1168 | 57 | 81 | 7747 | 63 | 51 | 75 | 24 | evasion | ? | no |
 | Blood Mage | Witch | 88 | 113/123 (10 spare) | 8 | 0 | 10971 | 2386 | 3263 | 0 | 9 | 75 | 58 | 75 | 13 | life/ES | ? | no |
 | Flicker Strike Invoker | Monk | 92 | 113/123 (10 spare) | 8 | 20428 | 25664 | 1462 | 3555 | 814 | 10309 | 79 | 60 | 75 | 39 | evasion/ES hybrid | ? | no |
 | Martial Artist (Shattering Palm + Flicker) | Monk | 92 | 113/123 (10 spare) | 8 | 0 | 24958 | 1462 | 3557 | 814 | 11371 | 77 | 60 | 75 | 25 | evasion/ES hybrid | ? | no |
+
+\* `pointsMax` 123 is always the L100 endgame cap (`99 + questPoints + extra`), not the character's
+real current budget — for a L37 the in-game budget is ~40-55. Always pass an explicit
+`pointBudget` for this build; the 89 "spare" is not real.
+
+## Extend-mode observation (Ranger L37, `optimise-tree-spike`)
+
+The gutted L37 Ranger is a clean extend-mode demo — a deliberately sub-optimal tree with big-value
+notables sitting just outside the current frontier. Greedy walk on `TotalDPS`:
+
+| proximity K | plan | DPS | recomputes | wall |
+|--:|---|--:|--:|--:|
+| 2 (budget +8) | Catalysis, Eagle Eye, Stalk and Leap (6 pts) | 662 → 860 (+30%) | 57 | 11s |
+| 4 (budget +12) | Stand and Deliver, Catalysis, Cooked, Eagle Eye (11 pts) | 662 → 1385 (+109%) | 255 | 52s |
+
+Quality is very K-sensitive here: the top pick at K=4 ("Stand and Deliver", +89.7/pt) is 3
+path-points out and invisible at K=2. Cost scales ~K². Note K=4 step 3 ("Cooked": +60% crit
+bonus, −25% armour/evasion/ES) — a defence-blind `TotalDPS` objective takes the downside happily;
+a `dps-ehp` blend or a `--preserve Evasion` floor would reject it. Good constraint/blend demo build.
 
 ## Known gaps / notes
 
