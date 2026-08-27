@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PobBridgeClient } from "./bridge";
-import { AllocatableNode, recommendTree, TreeStatus } from "./recommendTree";
+import { AllocatableNode, filterByProximity, recommendTree, TreeStatus } from "./recommendTree";
 
 // A minimal fake bridge: no real LuaJIT process, just canned responses per RPC method,
 // good enough to exercise recommendTree's batching/filtering/ranking logic in isolation.
@@ -409,5 +409,81 @@ describe("recommendTree", () => {
 		expect(result.map((r) => r.id)).toEqual([2, 1]);
 		expect(result.find((r) => r.id === 1)!.damageTypeMatch).toBe(true);
 		expect(result.find((r) => r.id === 2)!.damageTypeMatch).toBe(false);
+	});
+
+	it("maxPathLength drops candidates whose pathLength exceeds the gate (keeping unknown ones)", async () => {
+		const nodes: AllocatableNode[] = [
+			{ id: 1, name: "Adjacent", type: "Notable", statLines: ["x"], pathLength: 1 },
+			{ id: 2, name: "Distant", type: "Notable", statLines: ["x"], pathLength: 9 },
+			{ id: 3, name: "Unknown", type: "Notable", statLines: ["x"] },
+		];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		await recommendTree(bridge, { maxPathLength: 3 });
+
+		const evaluatedIds = bridge.calls
+			.filter((c) => c.method === "evaluate_candidate_nodes")
+			.flatMap((c) => c.params!.nodeIds as number[])
+			.sort();
+		expect(evaluatedIds).toEqual([1, 3]);
+	});
+
+	it("objectiveFn is ranked on instead of targetMetric", async () => {
+		const nodes = [node(1, "Balanced"), node(2, "Glass Cannon")];
+		const bridge = new FakeBridge({ TotalDPS: 1000, TotalEHP: 1000 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) =>
+				id === 1
+					? { nodeId: 1, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 1200, TotalEHP: 1200 } }
+					: { nodeId: 2, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 5000, TotalEHP: 200 } },
+			),
+		}));
+
+		// Equal-weight log blend: node 1 (1200,1200) beats node 2 (5000,200) because ln(200) tanks it.
+		const blend = (s: Record<string, unknown>) => {
+			const a = s.TotalDPS as number;
+			const b = s.TotalEHP as number;
+			return 0.5 * Math.log(a) + 0.5 * Math.log(b);
+		};
+		const result = await recommendTree(bridge, { objectiveFn: blend });
+
+		expect(result.map((r) => r.id)).toEqual([1, 2]);
+	});
+
+	it("objectiveFn drops a candidate it cannot score", async () => {
+		const nodes = [node(1, "Scorable"), node(2, "Unscorable")];
+		const bridge = new FakeBridge({ TotalDPS: 1000, TotalEHP: 1000 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) =>
+				id === 1
+					? { nodeId: 1, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 1100, TotalEHP: 1100 } }
+					: { nodeId: 2, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 9000 } }, // no TotalEHP
+			),
+		}));
+
+		const blend = (s: Record<string, unknown>) => {
+			const a = s.TotalDPS;
+			const b = s.TotalEHP;
+			if (typeof a !== "number" || typeof b !== "number") return undefined;
+			return 0.5 * Math.log(a) + 0.5 * Math.log(b);
+		};
+		const result = await recommendTree(bridge, { objectiveFn: blend });
+
+		expect(result.map((r) => r.id)).toEqual([1]);
+	});
+
+	it("throws when objectiveFn cannot score the baseline", async () => {
+		const bridge = new FakeBridge({ TotalDPS: 1000 }, STATUS, [node(1, "A")], passthroughEvaluate);
+		await expect(recommendTree(bridge, { objectiveFn: () => undefined })).rejects.toThrow(/baseline/);
+	});
+});
+
+describe("filterByProximity", () => {
+	it("keeps nodes within k, drops those beyond, and keeps nodes with no pathLength", () => {
+		const nodes = [
+			{ id: 1, pathLength: 1 },
+			{ id: 2, pathLength: 3 },
+			{ id: 3, pathLength: 4 },
+			{ id: 4 },
+		];
+		expect(filterByProximity(nodes, 3).map((n) => n.id)).toEqual([1, 2, 4]);
 	});
 });

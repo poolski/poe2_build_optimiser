@@ -98,6 +98,30 @@ async function main() {
 			console.log("  [a,b]:", pick(c1.stats), "p=", c1.pointsSpent);
 			console.log("  [b,a]:", pick(c2.stats), "p=", c2.pointsSpent);
 		}
+
+		// --- Step 7 bridge additions: get_stats_from + BuildOutput counter ---
+		await bridge.call("reset_metrics");
+		const sf = await bridge.call<{ stats: Record<string, unknown>; pointsSpent: number }>("get_stats_from", {
+			allocSet,
+		});
+		const afterSf = await bridge.call<Record<string, unknown>>("get_stats");
+		const sfRoundTrip = JSON.stringify(baseline) === JSON.stringify(afterSf);
+		console.log(`\n[step 7a] get_stats_from(allocSet=[${allocSet}]): pointsSpent=${sf.pointsSpent} ${pick(sf.stats)}`);
+		console.log(`[step 7b] baseline restored after get_stats_from: ${sfRoundTrip ? "MATCH" : "MISMATCH"}`);
+		// get_stats_from does 2 recomputes (measured state + restore); reset zeroed the counter.
+		const m = await bridge.call<{ buildOutputCount: number }>("get_metrics");
+		console.log(`[step 7c] BuildOutput counter after one get_stats_from: ${m.buildOutputCount} (expect 2)`);
+
+		// get_stats_from(allocSet) stats should match evaluate_candidate_nodes_from(allocSet\{last}, [last])
+		// for the same final node set -- i.e. adding candIds[1] on top of [candIds[0]].
+		const viaCand = await bridge.call<{ results: CandResult[] }>("evaluate_candidate_nodes_from", {
+			allocSet: [allocSet[0]],
+			nodeIds: [allocSet[1]],
+		});
+		const sameSet = JSON.stringify(sf.stats) === JSON.stringify(viaCand.results[0].stats);
+		console.log(
+			`[step 7d] get_stats_from([a,b]).stats === from([a],[b]).stats: ${sameSet ? "MATCH" : "MISMATCH"}`,
+		);
 	} finally {
 		bridge.dispose();
 	}

@@ -5,8 +5,10 @@
 // full re-optimization search would reuse, not that search itself.
 
 import { PobBridgeClient } from "./bridge";
+import { Objective } from "./objective";
+import { asNumber, finiteNumber, StatSet } from "./stats";
 
-export type StatSet = Record<string, unknown>;
+export { asNumber, StatSet };
 
 export interface TreeStatus {
 	pointsUsed: number;
@@ -69,27 +71,28 @@ export interface RecommendedNode {
 	constraintViolation?: ConstraintViolation;
 }
 
-/** null when both endpoints of a metric aren't finite numbers -- can't judge, so don't. */
-function finiteNumber(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-/** Resolves options.constraints + options.preserveMetrics into one { metric: floor } map. */
-function resolveFloors(baseline: StatSet, options: RecommendTreeOptions): Record<string, number> {
+/** Resolves an explicit `constraints` map + a `preserveMetrics` list into one { metric: floor }
+ * map (a preserveMetrics floor = that metric's baseline value; an explicit `constraints` entry
+ * wins on collision). Exported so the beam driver builds its feasibility gate the same way. */
+export function resolveFloors(
+	baseline: StatSet,
+	opts: { constraints?: Record<string, number>; preserveMetrics?: string[] },
+): Record<string, number> {
 	const floors: Record<string, number> = {};
-	for (const metric of options.preserveMetrics ?? []) {
+	for (const metric of opts.preserveMetrics ?? []) {
 		const base = finiteNumber(baseline[metric]);
 		if (base !== null) floors[metric] = base;
 	}
 	// Explicit floors win over the preserveMetrics-derived ones.
-	Object.assign(floors, options.constraints ?? {});
+	Object.assign(floors, opts.constraints ?? {});
 	return floors;
 }
 
 /** The first floor this candidate violates, or undefined. A candidate violates a floor when it
  * either breaks a cap that currently holds (baseline >= floor, candidate < floor) or worsens a
- * deficit that already exists (baseline < floor, candidate < baseline). */
-function firstConstraintViolation(
+ * deficit that already exists (baseline < floor, candidate < baseline). Exported for the beam
+ * driver, which gates each repair candidate against its beam node's own measured stats. */
+export function firstConstraintViolation(
 	floors: Record<string, number>,
 	baseline: StatSet,
 	candidateStats: StatSet,
@@ -162,8 +165,13 @@ function resolveObjective(objective: string | ObjectiveSpec | undefined): Object
 }
 
 export interface RecommendTreeOptions {
-	/** mainOutput key to rank on, e.g. "TotalDPS" or "TotalEHP". */
+	/** mainOutput key to rank on, e.g. "TotalDPS" or "TotalEHP". Ignored when `objectiveFn` is set. */
 	targetMetric?: string;
+	/** A scoring function over the measured stats (see `./objective`), used instead of
+	 * `targetMetric` when present -- e.g. a DPS/EHP log blend. A candidate whose stats the
+	 * objective can't score (returns undefined) is dropped from the results; if the *baseline*
+	 * can't be scored, recommendTree throws (nothing to rank against). */
+	objectiveFn?: Objective;
 	/** How many top-ranked nodes to return. */
 	top?: number;
 	/** How many candidates to send per evaluate_candidate_nodes round trip. */
@@ -209,6 +217,18 @@ export interface RecommendTreeOptions {
 	 * before `damageType`; in `filter` mode it shrinks the pool, in `prioritize` mode it only
 	 * reorders it ahead of a `maxCandidates` cut. */
 	objective?: string | ObjectiveSpec;
+	/** Proximity gate: drop candidates whose `pathLength` (points AllocNode would spend to connect
+	 * them from the current tree) exceeds this. Caps path-node drag-in and keeps the pool local --
+	 * the beam repair loop expands locally anyway. Nodes with no `pathLength` are kept (the gate
+	 * can't judge them). Unset = no proximity gate. */
+	maxPathLength?: number;
+}
+
+/** Keep only nodes within `k` path-points of the current tree. A node with no `pathLength` is
+ * kept -- the gate has nothing to test it against. Exported for the beam driver, which gates
+ * every expansion step this way. */
+export function filterByProximity<T extends { pathLength?: number }>(nodes: T[], k: number): T[] {
+	return nodes.filter((node) => node.pathLength === undefined || node.pathLength <= k);
 }
 
 const DEFAULT_TARGET_METRIC = "TotalDPS";
@@ -216,10 +236,6 @@ const DEFAULT_TOP = 10;
 const DEFAULT_BATCH_SIZE = 50;
 const DEFAULT_NODE_TYPES = ["Notable", "Keystone"];
 const ELEMENTAL_DAMAGE_TYPES = new Set(["fire", "cold", "lightning"]);
-
-export function asNumber(value: unknown): number {
-	return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
 
 function chunk<T>(items: T[], size: number): T[][] {
 	const out: T[][] = [];
@@ -251,8 +267,17 @@ export async function recommendTree(
 	const top = options.top ?? DEFAULT_TOP;
 	const batchSize = options.batchSize ?? DEFAULT_BATCH_SIZE;
 
+	const score = options.objectiveFn ?? ((stats: StatSet) => finiteNumber(stats[targetMetric]) ?? undefined);
+
 	const baseline = await bridge.call<StatSet>("get_stats");
-	const baselineValue = asNumber(baseline[targetMetric]);
+	const baselineValue = score(baseline);
+	if (baselineValue === undefined) {
+		throw new Error(
+			options.objectiveFn
+				? "objectiveFn could not score the build's baseline stats (a required metric is absent or out of range)"
+				: `baseline stats have no finite "${targetMetric}" to rank against`,
+		);
+	}
 
 	const floors = resolveFloors(baseline, options);
 	const hasConstraints = Object.keys(floors).length > 0;
@@ -275,6 +300,10 @@ export async function recommendTree(
 	if (!options.includeAllNodeTypes) {
 		const nodeTypes = options.nodeTypes ?? DEFAULT_NODE_TYPES;
 		candidates = candidates.filter((node) => nodeTypes.includes(node.type));
+	}
+
+	if (options.maxPathLength !== undefined) {
+		candidates = filterByProximity(candidates, options.maxPathLength);
 	}
 
 	const objective = resolveObjective(options.objective);
@@ -322,7 +351,10 @@ export async function recommendTree(
 				: undefined;
 			if (violation && !keepViolating) continue;
 
-			const delta = asNumber(result.stats[targetMetric]) - baselineValue;
+			const candidateScore = score(result.stats);
+			if (candidateScore === undefined) continue; // objective can't score this candidate -- drop it
+
+			const delta = candidateScore - baselineValue;
 			const totalPointsSpent = result.pointsSpent + result.ascendancyPointsSpent;
 			recommendations.push({
 				id: node.id,

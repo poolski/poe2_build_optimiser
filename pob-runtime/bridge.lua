@@ -72,10 +72,37 @@ local function parseItemText(itemText)
 	return ok, item
 end
 
+-- Count of explicit build.calcsTab:BuildOutput() recomputes this bridge has driven (via
+-- recomputeBuild below). A tree search's real cost is one recompute per candidate evaluation, so
+-- the approach benchmark reports this as its machine-independent cost currency. reset_metrics
+-- zeroes it at the start of a measured run; get_metrics reads it back.
+local buildOutputCount = 0
+
+-- The full "apply pending changes and recompute mainOutput" dance, in one place so every call
+-- site is counted. buildFlag/modFlag + the OnFrame bracketing match what PoB's own GUI does
+-- around a rebuild.
+local function recomputeBuild()
+	buildOutputCount = buildOutputCount + 1
+	build.buildFlag = true
+	build.modFlag = true
+	runCallback("OnFrame")
+	build.calcsTab:BuildOutput()
+	runCallback("OnFrame")
+end
+
 local methods = {}
 
 methods.ping = function(params)
 	return "pong"
+end
+
+methods.get_metrics = function(params)
+	return { buildOutputCount = buildOutputCount }
+end
+
+methods.reset_metrics = function(params)
+	buildOutputCount = 0
+	return { ok = true }
 end
 
 -- Starts a fresh default build (mainly useful for smoke-testing the bridge itself).
@@ -180,11 +207,7 @@ methods.set_item = function(params)
 	end
 	build.itemsTab.slots[slotName]:SetSelItemId(item.id)
 	build.itemsTab:PopulateSlots()
-	build.buildFlag = true
-	build.modFlag = true
-	runCallback("OnFrame")
-	build.calcsTab:BuildOutput()
-	runCallback("OnFrame")
+	recomputeBuild()
 	return {
 		slot = slotName,
 		itemName = item.name,
@@ -645,13 +668,24 @@ end
 -- alloc, so no rebuild discipline is needed -- it reflects the tree exactly as loaded. A
 -- frontier-adjacent node reads 1; a distant notable reads > 5. Beam search uses it for
 -- proximity gating (only expand candidates within K path-points of the current frontier).
-methods.list_allocatable_nodes = function(params)
-	if not build or not build.spec then
-		error("no build loaded")
+--
+-- opts.types (array of type strings) and opts.maxPathLength (number) filter server-side, purely
+-- to shrink the payload -- a real tree has ~3800 reachable nodes and list_allocatable_nodes_from
+-- is called once per search step. nil opts = no filtering.
+local function enumerateAllocatable(opts)
+	local typeSet
+	if opts and opts.types then
+		typeSet = {}
+		for _, t in ipairs(opts.types) do
+			typeSet[t] = true
+		end
 	end
+	local maxPathLength = opts and opts.maxPathLength
 	local out = {}
 	for id, node in pairs(build.spec.nodes) do
-		if not node.alloc and node.path and node.type ~= "ClassStart" and node.type ~= "AscendClassStart" then
+		if not node.alloc and node.path and node.type ~= "ClassStart" and node.type ~= "AscendClassStart"
+			and (not typeSet or typeSet[node.type])
+			and (not maxPathLength or #node.path <= maxPathLength) then
 			table.insert(out, {
 				id = id,
 				name = node.dn,
@@ -662,7 +696,48 @@ methods.list_allocatable_nodes = function(params)
 			})
 		end
 	end
-	return { nodes = out }
+	return out
+end
+
+methods.list_allocatable_nodes = function(params)
+	if not build or not build.spec then
+		error("no build loaded")
+	end
+	return { nodes = enumerateAllocatable(params) }
+end
+
+-- Same enumeration, but for the tree with params.allocSet allocated on top of the loaded
+-- baseline -- so pathLength is measured from that partial-allocation frontier, not the loaded
+-- one (a node the seed just made adjacent now reads 1). Allocates the set, rebuilds the path
+-- cache once, enumerates, rolls back. No BuildOutput -- this only touches spec/paths, so it's
+-- cheap enough to call once per beam step. params.types / params.maxPathLength filter as above.
+methods.list_allocatable_nodes_from = function(params)
+	if not params or not params.allocSet then
+		error("list_allocatable_nodes_from requires params.allocSet")
+	end
+	if not build or not build.spec then
+		error("no build loaded")
+	end
+	local spec = build.spec
+	-- This method never reads mainOutput and does no BuildOutput; snapshot build.buildFlag so the
+	-- AllocNode calls below don't leave a spurious rebuild pending (nor suppress a real one).
+	local buildFlagBefore = build.buildFlag
+	local undo = spec:CreateUndoState()
+	for _, allocId in ipairs(params.allocSet) do
+		local allocNode = spec.nodes[allocId]
+		if not allocNode then
+			error("unknown allocSet nodeId: " .. tostring(allocId))
+		end
+		spec:AllocNode(allocNode)
+	end
+	spec:BuildAllDependsAndPaths()
+
+	local nodes = enumerateAllocatable(params)
+
+	spec:RestoreUndoState(undo)
+	spec:BuildAllDependsAndPaths()
+	build.buildFlag = buildFlagBefore
+	return { nodes = nodes }
 end
 
 -- For each candidate node id: allocate it (spec:AllocNode auto-paths from the nearest
@@ -723,11 +798,7 @@ local function evaluateCandidatesAgainst(nodeIds, allocSet)
 		local undo = spec:CreateUndoState()
 
 		spec:AllocNode(node)
-		build.buildFlag = true
-		build.modFlag = true
-		runCallback("OnFrame")
-		build.calcsTab:BuildOutput()
-		runCallback("OnFrame")
+		recomputeBuild()
 
 		local usedAfter, ascUsedAfter = spec:CountAllocNodes()
 		table.insert(results, {
@@ -750,11 +821,7 @@ local function evaluateCandidatesAgainst(nodeIds, allocSet)
 		-- its only caller reads get_stats *before* evaluating; evaluate_candidate_nodes_from is
 		-- called repeatedly by the beam driver, and the next call's CreateUndoState must capture a
 		-- clean baseline, so recompute once here to resync mainOutput with the reverted tree.
-		build.buildFlag = true
-		build.modFlag = true
-		runCallback("OnFrame")
-		build.calcsTab:BuildOutput()
-		runCallback("OnFrame")
+		recomputeBuild()
 	end
 	return results
 end
@@ -784,6 +851,46 @@ methods.evaluate_candidate_nodes_from = function(params)
 		error("no build loaded")
 	end
 	return { results = evaluateCandidatesAgainst(params.nodeIds, params.allocSet) }
+end
+
+-- Stats of the build with `params.allocSet` (a list of node ids) allocated on top of the loaded
+-- baseline, plus the real point cost of that whole set (candidate ids + every path node AllocNode
+-- drags in to connect them). Rolls back to the loaded baseline and resyncs mainOutput, same
+-- discipline as evaluate_candidate_nodes_from. This is how the beam driver reads a beam node's
+-- own stats -- to score it, and to judge its candidates' constraints against it -- and how repair
+-- prices a seed node by measuring the set with that node left out. An empty allocSet returns the
+-- loaded baseline (pointsSpent 0).
+methods.get_stats_from = function(params)
+	if not params or not params.allocSet then
+		error("get_stats_from requires params.allocSet")
+	end
+	if not build or not build.spec or not build.calcsTab then
+		error("no build loaded")
+	end
+	local spec = build.spec
+	local usedBefore, ascUsedBefore = spec:CountAllocNodes()
+	local undo = spec:CreateUndoState()
+	for _, allocId in ipairs(params.allocSet) do
+		local allocNode = spec.nodes[allocId]
+		if not allocNode then
+			error("unknown allocSet nodeId: " .. tostring(allocId))
+		end
+		spec:AllocNode(allocNode)
+	end
+	spec:BuildAllDependsAndPaths()
+	recomputeBuild()
+
+	local usedAfter, ascUsedAfter = spec:CountAllocNodes()
+	local out = {
+		pointsSpent = usedAfter - usedBefore,
+		ascendancyPointsSpent = ascUsedAfter - ascUsedBefore,
+		stats = sanitizeForJson(build.calcsTab.mainOutput),
+	}
+
+	spec:RestoreUndoState(undo)
+	spec:BuildAllDependsAndPaths()
+	recomputeBuild()
+	return out
 end
 
 -- Main dispatch loop: newline-delimited JSON-RPC over stdin/stdout.

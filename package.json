@@ -7,6 +7,9 @@
   "scripts": {
     "recommend-tree": "ts-node src/cli.ts",
     "recommend-tree-spike": "ts-node spike/recommendTreeSpike.ts",
+    "optimise-tree-spike": "ts-node spike/optimiseTreeSpike.ts",
+    "characterise-build": "ts-node spike/characteriseBuild.ts",
+    "bench-tree-approaches": "ts-node spike/benchTreeApproaches.ts",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
