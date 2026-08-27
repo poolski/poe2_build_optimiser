@@ -218,14 +218,27 @@ already works, and only one new bridge RPC is needed.
    class/ascendancy/free-allocate exclusions as `CountAllocNodes`), returns `{ id, name, type,
    statLines, ascendancyName? }`. Live: 106 nodes (100 regular + 6 ascendancy), matches
    `get_tree_status.pointsUsed`.
+2.5. ~~**Bridge + evaluator: `removeIds` prologue**~~ DONE — optional `params.removeIds` on
+   `evaluate_candidate_nodes_from` and `get_stats_from`: `DeallocNode` each id off the loaded tree
+   *before* laying down `allocSet`, inside the same outer undo, so the add-back phase measures
+   against "loaded minus the dropped leaves". `evaluateCandidatesAgainst` gained the third arg;
+   the outer undo now fires for a non-empty `removeIds` *or* `allocSet`. `get_stats_from`'s
+   `pointsSpent` becomes the NET delta (remove 1 / add 1 → 0; remove 1 / add 0 → −1).
+   `MemoEvaluator.evaluateFrom` / `statsFrom` take an optional `removeIds`, keyed as `r<sorted>|…`
+   (empty → bare allocSet key, byte-identical to extend mode). Live on `RampantlyBisexual` +
+   `MA-FlickerStrike` (`spike/verifyBeamBridge.ts` repair 2a–2d): `get_stats_from([], removeIds:[leaf])`
+   == `evaluate_dealloc_candidates(leaf)` stats; remove-then-re-add a leaf round-trips to baseline
+   at net 0 points; `from` and `get_stats_from` agree with `removeIds` set; baseline restored after.
+   +3 unit tests (54 total).
 3. **Driver: repair path in `optimiseTree`** (`respecBudget > 0`) —
    - Regret set: run `evaluate_dealloc_candidates` over the allocated leaves (those with
      `pointsFreed == 1` — call it once on all allocated nodes, keep the leaves), rank by
      `score(baseline) − score(deallocStats)` ascending (least value lost first), take up to
      `respecBudget`.
    - Freed points `N` = size of that set. Base allocation for the add-back = loaded minus those
-     leaves, which is connected, so it's expressible as an `allocSet` diff and reuses
-     `evaluate_candidate_nodes_from` / the extend add-loop unchanged.
+     leaves, which is connected. Pass that leaf set as `removeIds` (step 2.5) to
+     `evaluate_candidate_nodes_from` / `get_stats_from` (via `MemoEvaluator`); the extend add-loop
+     is otherwise reused unchanged.
    - Re-spend `N` points with the extend-mode greedy/beam loop, scored and constraint-gated
      against the *post-removal* stats (not the loaded baseline).
    - Return `{ removed[], added[], better-of(loaded, repaired) }` — always able to fall back to

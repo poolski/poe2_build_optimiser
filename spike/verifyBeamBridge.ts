@@ -155,6 +155,68 @@ async function main() {
 		const deallocRoundTrip = JSON.stringify(baseline) === JSON.stringify(afterDealloc);
 		console.log(`[repair 1c] baseline restored after evaluate_dealloc_candidates: ${deallocRoundTrip ? "MATCH" : "MISMATCH"}`);
 		if (!deallocRoundTrip) console.log("   after:", pick(afterDealloc));
+
+		// --- Repair step 2.5: removeIds prologue on get_stats_from + evaluate_candidate_nodes_from ---
+		if (leaves.length === 0) {
+			console.log("\n[repair 2] no leaves probed on this build -- skipping removeIds checks");
+		} else {
+			const leafId = leaves[0].nodeId;
+			const leafDeallocStats = leaves[0].stats; // post-removal stats from evaluate_dealloc_candidates
+
+			// 2a: get_stats_from({allocSet:[], removeIds:[leaf]}) == evaluate_dealloc_candidates(leaf).stats
+			const sfRemove = await bridge.call<{ stats: Record<string, unknown>; pointsSpent: number }>("get_stats_from", {
+				allocSet: [],
+				removeIds: [leafId],
+			});
+			const removeMatch = JSON.stringify(sfRemove.stats) === JSON.stringify(leafDeallocStats);
+			console.log(
+				`\n[repair 2a] get_stats_from([], removeIds:[leaf#${leafId}]).stats === evaluate_dealloc_candidates(leaf).stats: ${removeMatch ? "MATCH" : "MISMATCH"}`,
+			);
+			console.log(`   pointsSpent=${sfRemove.pointsSpent} (expect -1: removed 1, added 0)`);
+			if (!removeMatch) {
+				console.log("   from :", pick(sfRemove.stats));
+				console.log("   deall:", pick(leafDeallocStats));
+			}
+
+			// 2b: remove a leaf then re-add it -> net 0 points, stats round-trip to baseline
+			const sfReadd = await bridge.call<{ stats: Record<string, unknown>; pointsSpent: number }>("get_stats_from", {
+				allocSet: [leafId],
+				removeIds: [leafId],
+			});
+			const readdMatch = JSON.stringify(sfReadd.stats) === JSON.stringify(baseline);
+			console.log(
+				`[repair 2b] get_stats_from([leaf], removeIds:[leaf]).stats === baseline: ${readdMatch ? "MATCH" : "MISMATCH"} (pointsSpent=${sfReadd.pointsSpent}, expect 0)`,
+			);
+			if (!readdMatch) console.log("   after:", pick(sfReadd.stats));
+
+			// 2c: evaluate_candidate_nodes_from with removeIds -- measure a candidate against loaded-minus-leaf.
+			// Its stats must equal get_stats_from({allocSet:[cand], removeIds:[leaf]}).
+			const cand = notables.find((n) => n.id !== leafId)?.id ?? candIds[0];
+			const { results: fromRemove } = await bridge.call<{ results: CandResult[] }>("evaluate_candidate_nodes_from", {
+				allocSet: [],
+				removeIds: [leafId],
+				nodeIds: [cand],
+			});
+			const sfCand = await bridge.call<{ stats: Record<string, unknown> }>("get_stats_from", {
+				allocSet: [cand],
+				removeIds: [leafId],
+			});
+			const candMatch =
+				fromRemove.length > 0 && JSON.stringify(fromRemove[0].stats) === JSON.stringify(sfCand.stats);
+			console.log(
+				`[repair 2c] from([], removeIds:[leaf], [cand#${cand}]).stats === get_stats_from([cand], removeIds:[leaf]).stats: ${candMatch ? "MATCH" : "MISMATCH"}`,
+			);
+			if (fromRemove.length > 0 && !candMatch) {
+				console.log("   from     :", pick(fromRemove[0].stats));
+				console.log("   stats_from:", pick(sfCand.stats));
+			}
+
+			// 2d: baseline restored after the removeIds calls
+			const afterRemove = await bridge.call<Record<string, unknown>>("get_stats");
+			const removeRoundTrip = JSON.stringify(baseline) === JSON.stringify(afterRemove);
+			console.log(`[repair 2d] baseline restored after removeIds calls: ${removeRoundTrip ? "MATCH" : "MISMATCH"}`);
+			if (!removeRoundTrip) console.log("   after:", pick(afterRemove));
+		}
 	} finally {
 		bridge.dispose();
 	}

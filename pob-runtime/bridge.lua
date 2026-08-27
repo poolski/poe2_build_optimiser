@@ -766,24 +766,44 @@ end
 -- keeps a tree search from costing one round trip per candidate.
 --
 -- Shared core of evaluate_candidate_nodes (allocSet = nil/{}) and evaluate_candidate_nodes_from
--- (allocSet = a partial allocation to lay down first). When allocSet is non-empty the whole
--- batch is wrapped in one extra CreateUndoState/RestoreUndoState: allocate every allocSet node,
--- rebuild paths once so the per-candidate loop's node.path cache reflects the augmented tree,
--- run the loop (each candidate now rolls back to the allocSet state, not the loaded baseline --
--- so a beam node's candidates are measured against that beam node's stats), then restore the
--- loaded baseline and rebuild paths a final time. With an empty allocSet this is byte-for-byte
--- the original per-candidate-only path (no outer undo, no extra rebuild).
-local function evaluateCandidatesAgainst(nodeIds, allocSet)
+-- (allocSet = a partial allocation to lay down first). When allocSet or removeIds is non-empty the
+-- whole batch is wrapped in one extra CreateUndoState/RestoreUndoState: deallocate every removeIds
+-- node, then allocate every allocSet node, rebuild paths once so the per-candidate loop's node.path
+-- cache reflects that augmented tree, run the loop (each candidate now rolls back to the
+-- post-removal + allocSet state, not the loaded baseline -- so a beam node's candidates are measured
+-- against that beam node's stats), then restore the loaded baseline and rebuild paths a final time.
+-- With empty allocSet and removeIds this is byte-for-byte the original per-candidate-only path (no
+-- outer undo, no extra rebuild).
+--
+-- removeIds is the repair driver's dropped-leaf set: candidates are then priced and scored against
+-- "loaded tree minus those leaves". DeallocNode cascades to anything only connected through a
+-- removed node; the driver passes leaves (pointsFreed == 1) so nothing cascades, but the outer
+-- RestoreUndoState reverts whatever it does regardless. Removal happens before allocation so
+-- AllocNode's auto-pathing sees the post-removal frontier.
+local function evaluateCandidatesAgainst(nodeIds, allocSet, removeIds)
 	local spec = build.spec
+	local hasRemove = removeIds and #removeIds > 0
+	local hasAlloc = allocSet and #allocSet > 0
 	local outerUndo
-	if allocSet and #allocSet > 0 then
+	if hasRemove or hasAlloc then
 		outerUndo = spec:CreateUndoState()
-		for _, allocId in ipairs(allocSet) do
-			local allocNode = spec.nodes[allocId]
-			if not allocNode then
-				error("unknown allocSet nodeId: " .. tostring(allocId))
+		if hasRemove then
+			for _, removeId in ipairs(removeIds) do
+				local removeNode = spec.nodes[removeId]
+				if not removeNode then
+					error("unknown removeIds nodeId: " .. tostring(removeId))
+				end
+				spec:DeallocNode(removeNode)
 			end
-			spec:AllocNode(allocNode)
+		end
+		if hasAlloc then
+			for _, allocId in ipairs(allocSet) do
+				local allocNode = spec.nodes[allocId]
+				if not allocNode then
+					error("unknown allocSet nodeId: " .. tostring(allocId))
+				end
+				spec:AllocNode(allocNode)
+			end
 		end
 		spec:BuildAllDependsAndPaths()
 	end
@@ -843,6 +863,10 @@ end
 -- fresh get_stats matches the original baseline (round-trip determinism, per docs/gotchas.md).
 -- evaluate_candidate_nodes_from({ allocSet = {}, nodeIds = ids }) is identical to
 -- evaluate_candidate_nodes({ nodeIds = ids }).
+--
+-- Optional `params.removeIds` (repair mode): node ids to DeallocNode off the loaded tree before
+-- laying down allocSet, so candidates are measured against "loaded minus removeIds (+ allocSet)".
+-- pointsSpent is still the candidate's marginal cost over that frontier.
 methods.evaluate_candidate_nodes_from = function(params)
 	if not params or not params.nodeIds or not params.allocSet then
 		error("evaluate_candidate_nodes_from requires params.allocSet and params.nodeIds")
@@ -850,7 +874,7 @@ methods.evaluate_candidate_nodes_from = function(params)
 	if not build or not build.spec or not build.calcsTab then
 		error("no build loaded")
 	end
-	return { results = evaluateCandidatesAgainst(params.nodeIds, params.allocSet) }
+	return { results = evaluateCandidatesAgainst(params.nodeIds, params.allocSet, params.removeIds) }
 end
 
 -- Stats of the build with `params.allocSet` (a list of node ids) allocated on top of the loaded
@@ -860,6 +884,12 @@ end
 -- own stats -- to score it, and to judge its candidates' constraints against it -- and how repair
 -- prices a seed node by measuring the set with that node left out. An empty allocSet returns the
 -- loaded baseline (pointsSpent 0).
+--
+-- Optional `params.removeIds` (repair mode): node ids to DeallocNode off the loaded tree before
+-- laying down allocSet. Use it to read the post-removal baseline (allocSet = {}), or to score a
+-- full repair plan (loaded minus dropped leaves, plus the re-spend set). pointsSpent is then the
+-- NET point delta -- usedAfter - usedBefore -- so a plan that spends exactly what it freed reads 0,
+-- and a plan still under the original point count reads negative.
 methods.get_stats_from = function(params)
 	if not params or not params.allocSet then
 		error("get_stats_from requires params.allocSet")
@@ -870,6 +900,15 @@ methods.get_stats_from = function(params)
 	local spec = build.spec
 	local usedBefore, ascUsedBefore = spec:CountAllocNodes()
 	local undo = spec:CreateUndoState()
+	if params.removeIds then
+		for _, removeId in ipairs(params.removeIds) do
+			local removeNode = spec.nodes[removeId]
+			if not removeNode then
+				error("unknown removeIds nodeId: " .. tostring(removeId))
+			end
+			spec:DeallocNode(removeNode)
+		end
+	end
 	for _, allocId in ipairs(params.allocSet) do
 		local allocNode = spec.nodes[allocId]
 		if not allocNode then

@@ -21,7 +21,8 @@ Metric columns are the loaded-baseline values (rounded). `spare` = `pointsMax �
 | RampantlyBisexual | Ranger | 80 | 100/123 (23 spare) | 6 | 39525 | 4951 | 1168 | 57 | 81 | 7747 | 63 | 51 | 75 | 24 | evasion | ? | no |
 | Blood Mage | Witch | 88 | 113/123 (10 spare) | 8 | 0 | 10971 | 2386 | 3263 | 0 | 9 | 75 | 58 | 75 | 13 | life/ES | ? | no |
 | Flicker Strike Invoker | Monk | 92 | 113/123 (10 spare) | 8 | 20428 | 25664 | 1462 | 3555 | 814 | 10309 | 79 | 60 | 75 | 39 | evasion/ES hybrid | ? | no |
-| Martial Artist (Shattering Palm + Flicker) | Monk | 92 | 113/123 (10 spare) | 8 | 0 | 24958 | 1462 | 3557 | 814 | 11371 | 77 | 60 | 75 | 25 | evasion/ES hybrid | ? | no |
+| MA-FlickerStrike | Monk | 92 | 113/123 (10 spare) | 8 | 185998 | 24958 | 1462 | 3557 | 814 | 11371 | 77 | 60 | 75 | 25 | evasion/ES hybrid | **hand-tuned** (strong player's build) | no |
+| ~~Martial Artist (Shattering Palm + Flicker)~~ | Monk | 92 | 113/123 | 8 | 0 | 24958 | — | — | — | — | — | — | — | — | — | superseded by MA-FlickerStrike | — |
 
 \* `pointsMax` 123 is always the L100 endgame cap (`99 + questPoints + extra`), not the character's
 real current budget — for a L37 the in-game budget is ~40-55. Always pass an explicit
@@ -44,16 +45,19 @@ a `dps-ehp` blend or a `--preserve Evasion` floor would reject it. Good constrai
 
 ## Known gaps / notes
 
-- **`TotalDPS = 0` on Blood Mage and Martial Artist.** Headless produces no DPS for these (main
-  skill needs config PoB's GUI supplies, or `mainActiveSkill` isn't what's expected). They're
-  usable only with an EHP-only objective right now; a DPS or `dps-ehp` blend objective will
-  *throw* on them (the step-6 baseline guard — `positiveFinite(0)` is null). Fixing = pinning a
-  working skill/config in the XML before adding to a DPS run.
+- **`TotalDPS = 0` was a stale `mainSocketGroup` pointer, not a headless limitation.** The
+  original "Shattering Palm + Flicker Strike" XML saved `mainSocketGroup="3"` / `mainActiveSkill="1"`,
+  and group 3 is a persistent-buff group (Spirit Vessel + minion supports) with *no damaging
+  active skill* — so headless correctly computes 0. PoB's GUI lets you click a live main group;
+  the saved pointer goes stale. Fix: repoint `mainSocketGroup` at the real attack group and move
+  `mainActiveSkill="1"` onto that group's `<Skill>` header. `MA-FlickerStrike.xml` (group 6) does
+  this → `TotalDPS ≈ 186k`. Group 10 (Shattering Palm, a debuff-applier) only gives ≈ 7.1k.
+  **Blood Mage still needs checking** — likely the same stale-pointer issue.
 - **Spare-point spread is narrow:** one build at 23 spare, three at 10. The constraint-rejection
   work found the interesting repair behaviour only shows up at ~20+ spare, so most of the current
   corpus can't exercise repair meaningfully. Need mid-level builds (30–60 spare) and a couple of
   near-complete ones.
-- **No hand-tuned vs naive pair yet.** The regression test ("repair returns ≈no change on a tuned
-  build") needs at least one build a strong player has optimised and one deliberately sub-optimal
-  (e.g. a real tree with 10 points spent on a dead-end cluster).
+- **Hand-tuned vs naive pair now exists** — `MA-FlickerStrike` (hand-tuned, ~186k DPS) pairs with
+  the deliberately-gutted `Ranger (L37)`. Both are low-spare (10 / needs explicit budget), so the
+  pair proves direction of change, not big-headroom repair behaviour.
 - **No held-out subset.** Once the corpus is ≥8, reserve ~⅓ and never look at them while tuning K/W/D.
