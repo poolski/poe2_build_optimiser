@@ -206,14 +206,18 @@ changes nothing already built. Leaf-only avoids both: what's left after removing
 connected, so the "spend the freed points back" phase is exactly the extend-mode add-loop that
 already works, and only one new bridge RPC is needed.
 
-1. **Bridge: `evaluate_dealloc_candidates(nodeIds)`** — for each id: `DeallocNode` → `recomputeBuild`
-   → record `{ nodeId, pointsFreed, ascFreed, stats }` → `RestoreUndoState`. Mirrors
-   `evaluate_candidate_nodes` in reverse. Verify live: on a real build, a tip node reports
-   `pointsFreed == 1`; a mid-tree node reports `> 1` (the cascade), which is exactly the signal
-   the driver filters on.
-2. **Bridge: `list_allocated_nodes`** — the currently-allocated non-class, non-ascendancy node
-   ids (+ name/type/`isAscendancy`), so the driver knows the removal candidate set. Trivial
-   filter over `spec.allocNodes`.
+1. ~~**Bridge: `evaluate_dealloc_candidates(nodeIds)`**~~ DONE — per id: `CountAllocNodes` →
+   `CreateUndoState` → `DeallocNode` → `recomputeBuild` → record `{ nodeId, pointsFreed,
+   ascendancyPointsFreed, stats }` → `RestoreUndoState` + `BuildAllDependsAndPaths`; one final
+   `recomputeBuild` so a caller reading `get_stats` between batches sees the restored baseline.
+   Live on `RampantlyBisexual` (via `spike/verifyBeamBridge.ts`): probed 12 allocated nodes → 4
+   leaves (`pointsFreed == 1`), 8 load-bearing (e.g. "Elemental Attack Damage" cascades 17 pts,
+   an attribute-cluster tail 19). "Disorientation" is a `pointsFreed == 1`, `ΔTotalDPS == 0`
+   leaf — a textbook regret pick. Round-trips: `get_stats` after the batch == loaded baseline.
+2. ~~**Bridge: `list_allocated_nodes`**~~ DONE — filter over `spec.allocNodes` (same
+   class/ascendancy/free-allocate exclusions as `CountAllocNodes`), returns `{ id, name, type,
+   statLines, ascendancyName? }`. Live: 106 nodes (100 regular + 6 ascendancy), matches
+   `get_tree_status.pointsUsed`.
 3. **Driver: repair path in `optimiseTree`** (`respecBudget > 0`) —
    - Regret set: run `evaluate_dealloc_candidates` over the allocated leaves (those with
      `pointsFreed == 1` — call it once on all allocated nodes, keep the leaves), rank by

@@ -10,6 +10,7 @@ interface AllocNode {
 	name: string;
 	type: string;
 	pathLength?: number;
+	ascendancyName?: string;
 	statLines: string[];
 }
 interface CandResult {
@@ -122,6 +123,38 @@ async function main() {
 		console.log(
 			`[step 7d] get_stats_from([a,b]).stats === from([a],[b]).stats: ${sameSet ? "MATCH" : "MISMATCH"}`,
 		);
+
+		// --- Repair step 1: list_allocated_nodes + evaluate_dealloc_candidates ---
+		const { nodes: allocated } = await bridge.call<{ nodes: AllocNode[] }>("list_allocated_nodes");
+		const regular = allocated.filter((n) => !n.ascendancyName);
+		console.log(
+			`\n[repair 1a] list_allocated_nodes: ${allocated.length} total (${regular.length} regular, ${allocated.length - regular.length} ascendancy)`,
+		);
+
+		// Probe a spread of allocated regular nodes for leaf vs load-bearing.
+		const probe = regular.filter((_, i) => i % Math.ceil(regular.length / 12) === 0).slice(0, 12);
+		await bridge.call("reset_metrics");
+		const { results: deallocs } = await bridge.call<{
+			results: Array<{ nodeId: number; pointsFreed: number; ascendancyPointsFreed: number; stats: Record<string, unknown> }>;
+		}>("evaluate_dealloc_candidates", { nodeIds: probe.map((n) => n.id) });
+
+		const byId = new Map(probe.map((n) => [n.id, n]));
+		const leaves = deallocs.filter((d) => d.pointsFreed === 1);
+		const loadBearing = deallocs.filter((d) => d.pointsFreed > 1);
+		console.log(`[repair 1b] probed ${deallocs.length}: ${leaves.length} leaves (pointsFreed==1), ${loadBearing.length} load-bearing (>1)`);
+		for (const d of deallocs.slice(0, 8)) {
+			const n = byId.get(d.nodeId)!;
+			const dpsNow = Number(d.stats.TotalDPS);
+			const dpsBase = Number(baseline.TotalDPS);
+			console.log(
+				`   ${n.name} (${n.type}) freed ${d.pointsFreed}pt  TotalDPS ${dpsBase.toFixed(0)} -> ${dpsNow.toFixed(0)} (${(dpsNow - dpsBase).toFixed(0)})`,
+			);
+		}
+
+		const afterDealloc = await bridge.call<Record<string, unknown>>("get_stats");
+		const deallocRoundTrip = JSON.stringify(baseline) === JSON.stringify(afterDealloc);
+		console.log(`[repair 1c] baseline restored after evaluate_dealloc_candidates: ${deallocRoundTrip ? "MATCH" : "MISMATCH"}`);
+		if (!deallocRoundTrip) console.log("   after:", pick(afterDealloc));
 	} finally {
 		bridge.dispose();
 	}

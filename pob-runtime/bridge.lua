@@ -893,6 +893,79 @@ methods.get_stats_from = function(params)
 	return out
 end
 
+-- Every node currently allocated in the loaded tree, excluding the class/ascendancy start
+-- anchors and free-allocate (item-granted) nodes -- the same exclusions CountAllocNodes uses for
+-- its point tally. `ascendancyName` is present iff the node is an ascendancy node. This is the
+-- set the repair driver draws removal candidates from (it then calls evaluate_dealloc_candidates
+-- to find which are leaves). Cheap: a filter over spec.allocNodes, no alloc/recompute.
+methods.list_allocated_nodes = function(params)
+	if not build or not build.spec then
+		error("no build loaded")
+	end
+	local out = {}
+	for id, node in pairs(build.spec.allocNodes) do
+		if node.type ~= "ClassStart" and node.type ~= "AscendClassStart" and node.isFreeAllocate == nil then
+			table.insert(out, {
+				id = id,
+				name = node.dn,
+				type = node.type,
+				statLines = node.sd or {},
+				ascendancyName = node.ascendancyName,
+			})
+		end
+	end
+	return { nodes = out }
+end
+
+-- For each requested allocated node id: deallocate it (spec:DeallocNode cascades to every node
+-- that is only connected to the tree through it -- node.depends, which always includes the node
+-- itself as element 1), recompute, capture stats + how many points that freed, then roll back
+-- before the next id. The mirror image of evaluate_candidate_nodes.
+--
+-- pointsFreed distinguishes a leaf from a load-bearing node: removing a tip frees exactly 1;
+-- removing a mid-tree node frees 1 + its whole downstream. The repair driver's v1 regret set is
+-- leaf-only (pointsFreed == 1), because ImportFromNodeList can't express a disconnected
+-- allocation (see docs/gotchas.md), so "loaded minus a mid-tree node" isn't a state the
+-- add-back phase could evaluate against anyway.
+--
+-- Same rollback discipline as evaluate_candidate_nodes (CreateUndoState / RestoreUndoState +
+-- BuildAllDependsAndPaths after each), plus a final recomputeBuild() so a caller that reads
+-- get_stats between batches sees the restored baseline, not the last dealloc'd state.
+methods.evaluate_dealloc_candidates = function(params)
+	if not params or not params.nodeIds then
+		error("evaluate_dealloc_candidates requires params.nodeIds")
+	end
+	if not build or not build.spec or not build.calcsTab then
+		error("no build loaded")
+	end
+	local spec = build.spec
+	local results = {}
+	for _, nodeId in ipairs(params.nodeIds) do
+		local node = spec.nodes[nodeId]
+		if not node then
+			error("unknown nodeId: " .. tostring(nodeId))
+		end
+		local usedBefore, ascUsedBefore = spec:CountAllocNodes()
+		local undo = spec:CreateUndoState()
+
+		spec:DeallocNode(node)
+		recomputeBuild()
+
+		local usedAfter, ascUsedAfter = spec:CountAllocNodes()
+		table.insert(results, {
+			nodeId = nodeId,
+			pointsFreed = usedBefore - usedAfter,
+			ascendancyPointsFreed = ascUsedBefore - ascUsedAfter,
+			stats = sanitizeForJson(build.calcsTab.mainOutput),
+		})
+
+		spec:RestoreUndoState(undo)
+		spec:BuildAllDependsAndPaths()
+	end
+	recomputeBuild()
+	return { results = results }
+end
+
 -- Main dispatch loop: newline-delimited JSON-RPC over stdin/stdout.
 while true do
 	local line = io.read("*l")
