@@ -6,10 +6,7 @@
 import { PobBridge } from "./core/bridge";
 import { loadBuildFromFile } from "./core/loadBuild";
 import { recommendTree } from "./core/recommendTree";
-
-// The three elemental resistances --min-resist expands to. Chaos res is deliberately not
-// included (set it explicitly with --constraint ChaosResist=<n> if a build wants it capped).
-const ELEMENTAL_RESIST_METRICS = ["FireResist", "ColdResist", "LightningResist"];
+import { ELEMENTAL_RESIST_METRICS, parseConstraint } from "./cliShared";
 
 interface CliArgs {
 	buildXmlPath: string;
@@ -23,19 +20,6 @@ interface CliArgs {
 	constraints?: Record<string, number>;
 	preserveMetrics?: string[];
 	keepViolating?: boolean;
-}
-
-function parseConstraint(spec: string): [string, number] {
-	const eq = spec.indexOf("=");
-	if (eq <= 0) {
-		throw new Error(`--constraint expects <Metric>=<number>, got "${spec}"`);
-	}
-	const metric = spec.slice(0, eq).trim();
-	const value = Number(spec.slice(eq + 1));
-	if (!Number.isFinite(value)) {
-		throw new Error(`--constraint "${spec}" has a non-numeric floor`);
-	}
-	return [metric, value];
 }
 
 function parseArgs(argv: string[]): CliArgs {

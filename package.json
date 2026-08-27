@@ -6,6 +6,7 @@
   "main": "dist/cli.js",
   "scripts": {
     "recommend-tree": "ts-node src/cli.ts",
+    "optimise-tree": "ts-node src/optimiseCli.ts",
     "recommend-tree-spike": "ts-node spike/recommendTreeSpike.ts",
     "optimise-tree-spike": "ts-node spike/optimiseTreeSpike.ts",
     "characterise-build": "ts-node spike/characteriseBuild.ts",

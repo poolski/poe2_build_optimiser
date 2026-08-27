@@ -192,9 +192,15 @@ Live-verified against `RampantlyBisexual.xml`. New bridge RPCs this round: `get_
 server-side filters), `get_metrics` / `reset_metrics` + a `recomputeBuild()` wrapper that counts
 every `BuildOutput()`. New modules: `src/core/stats.ts` (shared num helpers), `src/core/objective.ts`
 (`Objective`, `logBlend`, `metricObjective`, `parseObjective`), `src/core/evaluator.ts`
-(`MemoEvaluator`), `src/core/optimiseTree.ts` (extend mode). 51 unit tests. What's NOT done:
-repair mode (needs a dealloc-measurement RPC + arbitrary-allocation eval RPC + the
-`ImportFromNodeList`/`DeallocNode` verifications — see gotchas.md), and a real corpus.
+(`MemoEvaluator`), `src/core/optimiseTree.ts` (extend mode).
+
+**Leaf-only repair mode + CLI DONE (2026-08-27, session 3, commits `9e5b5e3` / `9efcbef` /
+`3f43d85` + the CLI commit).** `optimiseTree` `respecBudget > 0` frees the lowest-value allocated
+leaves and re-spends them via the shared `greedyAddLoop` + a `removeIds` prologue on the eval
+RPCs; `npm run optimise-tree` (`src/optimiseCli.ts`) drives both modes. 70 unit tests. Steps 1–8
++ 10 done; **remaining: step 9 (real benchmark run with a repair row), step 11 (validation
+write-up), and the corpus** (both need builds with a working DPS config — see `docs/beam-corpus.md`).
+Any-node (cascading) repair and a real `(W, D)` beam stay deferred — greedy has been enough so far.
 
 ### Where to start next (recommended order)
 
@@ -306,11 +312,20 @@ run the "repair ≈ no change on a tuned build" regression on `TotalDPS` (EHP ob
    summary. The `BuildOutput()` counter (was "first sub-task") is done and wraps every call site.
    Today it only sweeps extend mode across K (no repair row, no greedy-vs-repair headline — that
    needs step 7 repair). Commit a table fixture once repair + corpus land.
-10. **CLI + spike wiring.** `--beam-width`, `--beam-depth`, `--repair-nodes N`, `--proximity K`,
-    `--point-budget N` / `--target-level L`, `--respec-budget N` (`0` = extend mode; also accept
-    `--mode extend|repair`), `--freeze-ascendancy`, `--objective` (the preset flag already landed
-    in step 3; extend for the step-6 blend, e.g. `--objective 'dps-ehp:0.5'`). Dev cap in the
-    spike.
+10. ~~**CLI + spike wiring.**~~ DONE — `src/optimiseCli.ts` (`npm run optimise-tree`), arg parsing
+    + output only; core returns data. Flags: `--mode extend|repair`, `--respec-budget N`
+    (`--repair-nodes N` alias; `>0` implies repair), `--point-budget N` / `--extra-points N`
+    (mutually exclusive; extend mode with neither prints a hint since the budget defaults to
+    `pointsUsed`), `--proximity K`, `--target <metric>` / `--objective <spec>` (mutually exclusive;
+    `spec` = `dps-ehp:W` / `blend:A,B,W` / bare metric via `parseObjective`), `--node-types`,
+    `--all-node-types`, `--keywords` / `--exclude-keywords`, `--max-candidates N` (dev cap),
+    `--min-resist N` / `--constraint Metric=N` / `--preserve A,B`. Shared arg helpers factored to
+    `src/cliShared.ts` (recommend-tree CLI now imports from there). `parseArgs` exported + unit
+    tested (12 tests). `--beam-width` / `--beam-depth` / `--target-level` / `--freeze-ascendancy`
+    omitted — no backing feature yet (greedy only; ascendancy already always frozen). Live:
+    `optimise-tree <RampantlyBisexual> --extra-points 4 --proximity 2` → Concussive Attack + Vile
+    Wounds, DPS 39525 → 42672; `--respec-budget 2 --objective dps-ehp:0.5` → frees 2 zero-value
+    leaves, re-spends 1, blend 9.55 → 9.56. `optimise-tree-spike` also takes a 5th `respecBudget` arg.
 11. **Validation.** Find a build where greedy is demonstrably suboptimal (a local notable blocking
     a better cluster); show repair improves the target metric. Regression: on a tuned build,
     repair returns no changes (within ε). Write up as `docs/beam-search-repro.md`, mirroring
