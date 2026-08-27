@@ -23,6 +23,11 @@ export interface AllocatableNode {
 	type: string;
 	statLines: string[];
 	ascendancyName?: string;
+	/** #node.path: points AllocNode would spend to connect this node from the tree as currently
+	 * allocated (the node itself plus every intermediate path node it drags in). 1 for a
+	 * frontier-adjacent node, higher for a distant one. Used by beam search for proximity gating.
+	 * Optional so the fake bridge in tests can omit it. */
+	pathLength?: number;
 }
 
 interface CandidateResult {
@@ -102,6 +107,60 @@ function firstConstraintViolation(
 	return undefined;
 }
 
+/** A keyword screen applied to the candidate pool *before* it is evaluated (each evaluation is a
+ * real recompute, so cutting the pool cheaply up front is the main lever on cost). Matching is
+ * case-insensitive substring against a node's joined stat lines -- the same text `damageType`
+ * uses. `damageType`, if also set, still runs afterward and is the primary sort key. */
+export interface ObjectiveSpec {
+	/** A node must contain at least one of these to be considered on-objective. */
+	keywords: string[];
+	/** Nodes containing any of these are treated as off-objective even if they matched a keyword
+	 * (e.g. drop a "Mana Regeneration" node that also happens to say "Damage"). */
+	exclude?: string[];
+	/** `filter` drops off-objective candidates entirely; `prioritize` only stable-sorts them
+	 * behind the on-objective ones (so a `maxCandidates` cut keeps the relevant slice), leaving
+	 * the pool otherwise intact -- same treatment `damageType` gets today. */
+	mode: "prioritize" | "filter";
+}
+
+/** Named `objective` presets. `physical-defence`: physical/attack damage plus life & the
+ * mitigation layers, dropping the obviously-irrelevant clusters. The include list does the real
+ * work; `exclude` is a short guard against nodes that keyword-match incidentally. "Ailment-only"
+ * damage nodes are not perfectly excludable by keyword alone -- accepted approximation for v1. */
+const OBJECTIVE_PRESETS: Record<string, ObjectiveSpec> = {
+	"physical-defence": {
+		mode: "filter",
+		keywords: [
+			"Physical",
+			"Attack",
+			"Damage",
+			"Life",
+			"Armour",
+			"Evasion",
+			"Resistance",
+			"Resist",
+			"Block",
+			"Strength",
+			"Dexterity",
+		],
+		exclude: ["Mana Regeneration", "Cast Speed", "Minion", "Curse", "Totem", "Brand"],
+	},
+};
+
+function resolveObjective(objective: string | ObjectiveSpec | undefined): ObjectiveSpec | undefined {
+	if (objective === undefined) return undefined;
+	if (typeof objective === "string") {
+		const preset = OBJECTIVE_PRESETS[objective];
+		if (!preset) {
+			throw new Error(
+				`unknown objective preset "${objective}" (known: ${Object.keys(OBJECTIVE_PRESETS).join(", ")})`,
+			);
+		}
+		return preset;
+	}
+	return objective;
+}
+
 export interface RecommendTreeOptions {
 	/** mainOutput key to rank on, e.g. "TotalDPS" or "TotalEHP". */
 	targetMetric?: string;
@@ -144,6 +203,12 @@ export interface RecommendTreeOptions {
 	/** When true, a constraint-violating candidate is kept in the ranked results with its
 	 * `constraintViolation` field set, instead of being dropped. Default false (drop them). */
 	keepViolating?: boolean;
+	/** Keyword screen on the candidate pool before evaluation: an `ObjectiveSpec`, or the name of
+	 * a built-in preset (currently `"physical-defence"`). Unset = no screen (the escape hatch --
+	 * every node that survived the nodeTypes filter is evaluated). Applied after nodeTypes and
+	 * before `damageType`; in `filter` mode it shrinks the pool, in `prioritize` mode it only
+	 * reorders it ahead of a `maxCandidates` cut. */
+	objective?: string | ObjectiveSpec;
 }
 
 const DEFAULT_TARGET_METRIC = "TotalDPS";
@@ -197,12 +262,32 @@ export async function recommendTree(
 	const pointsAvailable = status.pointsMax - status.pointsUsed;
 	const ascendancyPointsAvailable = status.ascendancyPointsMax - status.ascendancyPointsUsed;
 
-	const { nodes: allNodes } = await bridge.call<{ nodes: AllocatableNode[] }>("list_allocatable_nodes");
+	const { nodes: unorderedNodes } = await bridge.call<{ nodes: AllocatableNode[] }>("list_allocatable_nodes");
+	// list_allocatable_nodes yields nodes in Lua pairs() order over spec.nodes -- a sparse
+	// integer-keyed table, whose iteration order the Lua spec does not fix. Sort by id up front
+	// so every order-sensitive step downstream (the stable damageType/objective prioritize sorts,
+	// a maxCandidates cut, and the tie-broken final ranking) is reproducible run-to-run. Combined
+	// with the id tiebreak on the ranking sort below, this makes the recommender's output one
+	// deterministic value per (build, options) -- which the beam-search benchmark relies on.
+	const allNodes = [...unorderedNodes].sort((a, b) => a.id - b.id);
 
 	let candidates = allNodes;
 	if (!options.includeAllNodeTypes) {
 		const nodeTypes = options.nodeTypes ?? DEFAULT_NODE_TYPES;
 		candidates = candidates.filter((node) => nodeTypes.includes(node.type));
+	}
+
+	const objective = resolveObjective(options.objective);
+	if (objective) {
+		const onObjective = (node: AllocatableNode) =>
+			matchesKeywords(node, objective.keywords) &&
+			!(objective.exclude && objective.exclude.length > 0 && matchesKeywords(node, objective.exclude));
+		if (objective.mode === "filter") {
+			candidates = candidates.filter(onObjective);
+		} else {
+			// Stable sort: on-objective first, order within each group otherwise untouched.
+			candidates = [...candidates].sort((a, b) => Number(onObjective(b)) - Number(onObjective(a)));
+		}
 	}
 
 	const damageKeywords = options.damageType ? keywordsForDamageType(options.damageType) : undefined;
@@ -255,6 +340,9 @@ export async function recommendTree(
 		}
 	}
 
-	recommendations.sort((a, b) => b.deltaPerPoint - a.deltaPerPoint);
+	// Tie-break by node id: deltaPerPoint ties are real and common (a keystone and its path
+	// corridor all report the same bundled delta -- see docs/gotchas.md), and V8's sort is only
+	// stable, not total, so without this the top-N slice could vary with input order.
+	recommendations.sort((a, b) => b.deltaPerPoint - a.deltaPerPoint || a.id - b.id);
 	return recommendations.slice(0, top);
 }

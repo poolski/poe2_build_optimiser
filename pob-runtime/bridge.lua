@@ -637,6 +637,14 @@ end
 -- reach of the tree as currently allocated) -- the candidate pool evaluate_candidate_nodes
 -- gets called against. Cheap: just a filter over spec.nodes, no alloc/recompute. Excludes
 -- ClassStart/AscendClassStart (never a real allocation target, just tree anchors).
+--
+-- pathLength = #node.path is the number of points AllocNode would actually spend to connect
+-- this node from the current tree (the candidate itself plus every intermediate path node it
+-- drags in). It's the same shared node.path cache evaluate_candidate_nodes documents as
+-- BuildAllDependsAndPaths()-dependent, but here we only *read* its current length and never
+-- alloc, so no rebuild discipline is needed -- it reflects the tree exactly as loaded. A
+-- frontier-adjacent node reads 1; a distant notable reads > 5. Beam search uses it for
+-- proximity gating (only expand candidates within K path-points of the current frontier).
 methods.list_allocatable_nodes = function(params)
 	if not build or not build.spec then
 		error("no build loaded")
@@ -650,6 +658,7 @@ methods.list_allocatable_nodes = function(params)
 				type = node.type,
 				statLines = node.sd or {},
 				ascendancyName = node.ascendancyName,
+				pathLength = #node.path,
 			})
 		end
 	end
@@ -680,16 +689,32 @@ end
 --
 -- One JSON-RPC round trip evaluates the whole batch -- this, not transport speed, is what
 -- keeps a tree search from costing one round trip per candidate.
-methods.evaluate_candidate_nodes = function(params)
-	if not params or not params.nodeIds then
-		error("evaluate_candidate_nodes requires params.nodeIds")
-	end
-	if not build or not build.spec or not build.calcsTab then
-		error("no build loaded")
-	end
+--
+-- Shared core of evaluate_candidate_nodes (allocSet = nil/{}) and evaluate_candidate_nodes_from
+-- (allocSet = a partial allocation to lay down first). When allocSet is non-empty the whole
+-- batch is wrapped in one extra CreateUndoState/RestoreUndoState: allocate every allocSet node,
+-- rebuild paths once so the per-candidate loop's node.path cache reflects the augmented tree,
+-- run the loop (each candidate now rolls back to the allocSet state, not the loaded baseline --
+-- so a beam node's candidates are measured against that beam node's stats), then restore the
+-- loaded baseline and rebuild paths a final time. With an empty allocSet this is byte-for-byte
+-- the original per-candidate-only path (no outer undo, no extra rebuild).
+local function evaluateCandidatesAgainst(nodeIds, allocSet)
 	local spec = build.spec
+	local outerUndo
+	if allocSet and #allocSet > 0 then
+		outerUndo = spec:CreateUndoState()
+		for _, allocId in ipairs(allocSet) do
+			local allocNode = spec.nodes[allocId]
+			if not allocNode then
+				error("unknown allocSet nodeId: " .. tostring(allocId))
+			end
+			spec:AllocNode(allocNode)
+		end
+		spec:BuildAllDependsAndPaths()
+	end
+
 	local results = {}
-	for _, nodeId in ipairs(params.nodeIds) do
+	for _, nodeId in ipairs(nodeIds) do
 		local node = spec.nodes[nodeId]
 		if not node then
 			error("unknown nodeId: " .. tostring(nodeId))
@@ -715,7 +740,50 @@ methods.evaluate_candidate_nodes = function(params)
 		spec:RestoreUndoState(undo)
 		spec:BuildAllDependsAndPaths()
 	end
-	return { results = results }
+
+	if outerUndo then
+		spec:RestoreUndoState(outerUndo)
+		spec:BuildAllDependsAndPaths()
+		-- The per-candidate loop leaves build.calcsTab.mainOutput reflecting the last candidate
+		-- (allocSet + that candidate), not the restored baseline -- RestoreUndoState only reverts
+		-- the passive spec, not the calc output. evaluate_candidate_nodes tolerates that because
+		-- its only caller reads get_stats *before* evaluating; evaluate_candidate_nodes_from is
+		-- called repeatedly by the beam driver, and the next call's CreateUndoState must capture a
+		-- clean baseline, so recompute once here to resync mainOutput with the reverted tree.
+		build.buildFlag = true
+		build.modFlag = true
+		runCallback("OnFrame")
+		build.calcsTab:BuildOutput()
+		runCallback("OnFrame")
+	end
+	return results
+end
+
+methods.evaluate_candidate_nodes = function(params)
+	if not params or not params.nodeIds then
+		error("evaluate_candidate_nodes requires params.nodeIds")
+	end
+	if not build or not build.spec or not build.calcsTab then
+		error("no build loaded")
+	end
+	return { results = evaluateCandidatesAgainst(params.nodeIds, nil) }
+end
+
+-- Like evaluate_candidate_nodes, but each candidate is measured on top of `params.allocSet` --
+-- a list of node ids representing a partial allocation the caller has built on the loaded
+-- baseline (a beam-search node). pointsSpent/ascendancyPointsSpent are the candidate's marginal
+-- cost *over* that partial allocation. The build is left exactly as loaded afterwards, so a
+-- fresh get_stats matches the original baseline (round-trip determinism, per docs/gotchas.md).
+-- evaluate_candidate_nodes_from({ allocSet = {}, nodeIds = ids }) is identical to
+-- evaluate_candidate_nodes({ nodeIds = ids }).
+methods.evaluate_candidate_nodes_from = function(params)
+	if not params or not params.nodeIds or not params.allocSet then
+		error("evaluate_candidate_nodes_from requires params.allocSet and params.nodeIds")
+	end
+	if not build or not build.spec or not build.calcsTab then
+		error("no build loaded")
+	end
+	return { results = evaluateCandidatesAgainst(params.nodeIds, params.allocSet) }
 end
 
 -- Main dispatch loop: newline-delimited JSON-RPC over stdin/stdout.

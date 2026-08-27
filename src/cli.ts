@@ -19,6 +19,7 @@ interface CliArgs {
 	nodeTypes?: string[];
 	includeAllNodeTypes?: boolean;
 	damageType?: string;
+	objective?: string;
 	constraints?: Record<string, number>;
 	preserveMetrics?: string[];
 	keepViolating?: boolean;
@@ -45,6 +46,7 @@ function parseArgs(argv: string[]): CliArgs {
 	let nodeTypes: string[] | undefined;
 	let includeAllNodeTypes = false;
 	let damageType: string | undefined;
+	let objective: string | undefined;
 	const constraints: Record<string, number> = {};
 	let preserveMetrics: string[] | undefined;
 	let keepViolating = false;
@@ -63,6 +65,8 @@ function parseArgs(argv: string[]): CliArgs {
 			includeAllNodeTypes = true;
 		} else if (arg === "--damage-type") {
 			damageType = argv[++i];
+		} else if (arg === "--objective") {
+			objective = argv[++i];
 		} else if (arg === "--min-resist") {
 			const floor = Number(argv[++i]);
 			if (!Number.isFinite(floor)) throw new Error("--min-resist expects a number");
@@ -82,7 +86,7 @@ function parseArgs(argv: string[]): CliArgs {
 	if (positional.length !== 1) {
 		throw new Error(
 			"usage: recommend-tree <path-to-build.xml> [--target <stat>] [--top <n>] [--max-candidates <n>] " +
-				"[--node-types <Type,Type,...>] [--all-node-types] [--damage-type <type>] " +
+				"[--node-types <Type,Type,...>] [--all-node-types] [--damage-type <type>] [--objective <preset>] " +
 				"[--min-resist <n>] [--constraint <Metric>=<n> ...] [--preserve <Metric,Metric,...>] [--keep-violating]",
 		);
 	}
@@ -94,6 +98,7 @@ function parseArgs(argv: string[]): CliArgs {
 		nodeTypes,
 		includeAllNodeTypes,
 		damageType,
+		objective,
 		constraints: Object.keys(constraints).length > 0 ? constraints : undefined,
 		preserveMetrics,
 		keepViolating,
@@ -101,7 +106,7 @@ function parseArgs(argv: string[]): CliArgs {
 }
 
 async function main(): Promise<void> {
-	const { buildXmlPath, targetMetric, top, maxCandidates, nodeTypes, includeAllNodeTypes, damageType, constraints, preserveMetrics, keepViolating } =
+	const { buildXmlPath, targetMetric, top, maxCandidates, nodeTypes, includeAllNodeTypes, damageType, objective, constraints, preserveMetrics, keepViolating } =
 		parseArgs(process.argv.slice(2));
 
 	const bridge = new PobBridge();
@@ -114,6 +119,7 @@ async function main(): Promise<void> {
 			nodeTypes,
 			includeAllNodeTypes,
 			damageType,
+			objective,
 			constraints,
 			preserveMetrics,
 			keepViolating,

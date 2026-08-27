@@ -63,6 +63,18 @@ describe("recommendTree", () => {
 		expect(result[0].deltaPerPoint).toBeCloseTo(100);
 	});
 
+	it("breaks deltaPerPoint ties by node id, regardless of the pool's arrival order", async () => {
+		// Same deltaPerPoint for all three; ids arrive shuffled (as Lua pairs() might hand them over).
+		const nodes = [node(30, "C"), node(10, "A"), node(20, "B")];
+		const bridge = new FakeBridge({ TotalDPS: 1000 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) => ({ nodeId: id, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 1100 } })),
+		}));
+
+		const result = await recommendTree(bridge, { top: 10 });
+
+		expect(result.map((r) => r.id)).toEqual([10, 20, 30]);
+	});
+
 	it("excludes candidates that cost more points than are available", async () => {
 		const nodes = [node(1, "Affordable"), node(2, "Too Expensive")];
 		const status: TreeStatus = { ...STATUS, pointsUsed: 97, pointsMax: 99 }; // 2 points left
@@ -284,6 +296,96 @@ describe("recommendTree", () => {
 			candidate: 50,
 		});
 		expect(result.find((r) => r.id === 1)!.constraintViolation).toBeUndefined();
+	});
+
+	it("objective filter mode drops off-objective candidates before evaluation", async () => {
+		const nodes = [
+			node(1, "Phys Notable", "Notable", ["10% increased Physical Damage"]),
+			node(2, "Minion Notable", "Notable", ["10% increased Minion Damage"]),
+			node(3, "Life Notable", "Notable", ["8% increased maximum Life"]),
+		];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		await recommendTree(bridge, {
+			objective: { mode: "filter", keywords: ["Physical", "Life"] },
+		});
+
+		const evalCalls = bridge.calls.filter((c) => c.method === "evaluate_candidate_nodes");
+		const evaluatedIds = evalCalls.flatMap((c) => c.params!.nodeIds as number[]).sort();
+		expect(evaluatedIds).toEqual([1, 3]);
+	});
+
+	it("objective exclude list drops a node that only matched a keyword incidentally", async () => {
+		const nodes = [
+			node(1, "Clean Phys", "Notable", ["10% increased Physical Damage"]),
+			node(2, "Regen Phys", "Notable", ["10% increased Physical Damage", "20% increased Mana Regeneration Rate"]),
+		];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		await recommendTree(bridge, {
+			objective: { mode: "filter", keywords: ["Physical"], exclude: ["Mana Regeneration"] },
+		});
+
+		const evalCalls = bridge.calls.filter((c) => c.method === "evaluate_candidate_nodes");
+		const evaluatedIds = evalCalls.flatMap((c) => c.params!.nodeIds as number[]);
+		expect(evaluatedIds).toEqual([1]);
+	});
+
+	it("objective prioritize mode reorders (not drops) ahead of a maxCandidates cut", async () => {
+		const nodes = [
+			node(1, "Off Objective", "Notable", ["10% increased Minion Damage"]),
+			node(2, "On Objective", "Notable", ["10% increased Physical Damage"]),
+		];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		await recommendTree(bridge, {
+			objective: { mode: "prioritize", keywords: ["Physical"] },
+			maxCandidates: 1,
+		});
+
+		const evalCalls = bridge.calls.filter((c) => c.method === "evaluate_candidate_nodes");
+		const evaluatedIds = evalCalls.flatMap((c) => c.params!.nodeIds as number[]);
+		expect(evaluatedIds).toEqual([2]);
+	});
+
+	it("resolves the physical-defence objective preset", async () => {
+		const nodes = [
+			node(1, "Armour Notable", "Notable", ["12% increased Armour"]),
+			node(2, "Curse Notable", "Notable", ["Curses on you expire 20% faster"]),
+			node(3, "Cast Speed Notable", "Notable", ["15% increased Cast Speed"]),
+			node(4, "Attack Notable", "Notable", ["12% increased Attack Damage"]),
+		];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		await recommendTree(bridge, { objective: "physical-defence" });
+
+		const evalCalls = bridge.calls.filter((c) => c.method === "evaluate_candidate_nodes");
+		const evaluatedIds = evalCalls.flatMap((c) => c.params!.nodeIds as number[]).sort();
+		expect(evaluatedIds).toEqual([1, 4]);
+	});
+
+	it("throws on an unknown objective preset name", async () => {
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, [node(1, "A")], passthroughEvaluate);
+		await expect(recommendTree(bridge, { objective: "no-such-preset" })).rejects.toThrow(/unknown objective preset/);
+	});
+
+	it("applies the objective filter before damageType prioritization", async () => {
+		const nodes = [
+			node(1, "Phys, off-type", "Notable", ["10% increased Physical Damage"]),
+			node(2, "Minion, on-type", "Notable", ["10% increased Lightning Minion Damage"]),
+			node(3, "Phys + Lightning", "Notable", ["10% increased Physical Damage", "10% increased Lightning Damage"]),
+		];
+		const bridge = new FakeBridge({ TotalDPS: 0 }, STATUS, nodes, passthroughEvaluate);
+
+		// Objective drops node 2 (Minion); damageType then sorts node 3 ahead of node 1.
+		await recommendTree(bridge, {
+			objective: { mode: "filter", keywords: ["Physical"], exclude: ["Minion"] },
+			damageType: "Lightning",
+		});
+
+		const evalCalls = bridge.calls.filter((c) => c.method === "evaluate_candidate_nodes");
+		const evaluatedIds = evalCalls.flatMap((c) => c.params!.nodeIds as number[]);
+		expect(evaluatedIds).toEqual([3, 1]);
 	});
 
 	it("tags damageTypeMatch on results, without changing the delta-per-point ranking", async () => {

@@ -37,6 +37,17 @@ primitive instead, and is what `evaluate_candidate_nodes` uses. Verified live: b
 `TotalDPS` and `get_tree_status` output matched byte-for-byte before and after a 10-candidate
 evaluate-and-rollback batch.
 
+**`RestoreUndoState` reverts the passive spec but NOT `build.calcsTab.mainOutput`.** After
+`spec:RestoreUndoState(undo)` the `allocNodes`/`node.alloc` state is back to the snapshot, but
+`mainOutput` still holds whatever the last `BuildOutput()` computed (i.e. the last candidate's
+stats). `evaluate_candidate_nodes` gets away with this because its only caller reads `get_stats`
+*before* evaluating -- but `evaluate_candidate_nodes_from`, which the beam driver calls
+repeatedly, must leave a clean baseline so the *next* call's `CreateUndoState` snapshots correct
+stats. Fix: an explicit `build.buildFlag/modFlag = true` + `runCallback("OnFrame")` +
+`build.calcsTab:BuildOutput()` after the outer `RestoreUndoState`. Caught live: a `get_stats`
+immediately after `evaluate_candidate_nodes_from(allocSet=[…])` returned the allocSet+candidate
+stats (TotalDPS 41715 vs baseline 39525) until the recompute was added.
+
 **Masteries are a PoE1-only mechanic -- no node in PoE2's vendored tree data ever has
 `type == "Mastery"`.** `PassiveSpec.lua` still carries a full `masterySelections`/mastery-effect
 code path (leftover from this codebase's PoE1 ancestry, like the "Labyrinth" progress-panel text
