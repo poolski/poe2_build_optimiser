@@ -1,4 +1,4 @@
-# Beam search / tree re-optimization — design + next-session plan
+# Beam search / tree re-optimization — design + implementation status
 
 Successor to the greedy `recommendTree` (`src/core/recommendTree.ts`): instead of one pass
 ranking the best *next* node, search a multi-step allocation. The dominant constraint is
@@ -22,6 +22,9 @@ over greedy far sooner than from-scratch, and reuses every existing primitive. W
 discover a tree region the greedy never entered — accepted for v1, from-scratch stays a stretch
 goal on the same infra.
 
+*Built so far:* the greedy seed + a plain greedy re-spend of freed points (leaf-only). The real
+`(W, D)` beam is deferred — greedy has been enough on every live run to date.
+
 ## Point budget and starting mode
 
 Two inputs the driver takes that greedy `recommendTree` does not model:
@@ -32,7 +35,7 @@ recommended). The seed loop stops here instead of running to the tree's absolute
 *level-100 endgame* cap, not the character's current budget — so without this gate the seed plans
 a 120-ish-point tree for a level-45 character and front-loads toward clusters that only pay off
 once fully connected. Defaults: with an existing allocation loaded, `pointBudget = pointsUsed`
-("re-optimise what I have, assume no more"); `--point-budget N` or `--target-level L` to plan
+("re-optimise what I have, assume no more"); `--point-budget N` or `--extra-points N` to plan
 ahead; from-scratch mode defaults to `pointsMax`. A smaller budget also directly shrinks seed
 length and repair depth `D` — a perf win, not just correctness.
 
@@ -46,8 +49,9 @@ single knob separating the two starting modes:
 | **From-scratch** | ∞ + bare tree | Deferred stretch goal. |
 
 `freeze: nodeId[]` (or `freezeAscendancy: true`) marks nodes the regret set may never pick —
-generalises the "freeze ascendancy in v1" open question below. Extend mode is `freeze = all
-currently-allocated`.
+generalises the "freeze ascendancy" open question below. Extend mode is `freeze = all
+currently-allocated`. (Today both modes skip ascendancy steps outright; the general `freeze` list
+is a future item, tied to any-node repair — see Implementation status §7.)
 
 ## Perf target
 
@@ -61,31 +65,25 @@ Observed: Notable+Keystone-only pool (hundreds of nodes) does not finish a singl
 
 ## Pruning layers (cheap → expensive)
 
-| Layer | What | Cost |
-|---|---|---|
-| **1. Objective keyword filter** | Generalize `keywordsForDamageType` to an objective spec `{ keywords, mode: 'prioritize' \| 'filter' }`. `filter` mode *drops* non-matching candidates (currently `damageType` only reorders). Preset for "physical + defence": Physical / Attack / Damage / Life / Armour / Evasion / Resist / Block + gating attributes; drop mana-regen / cast-speed / minion / curse / ailment-only. | free (text) |
-| **2. Proximity gating** | Only consider candidates within `K` path-points of the current frontier (`K`=1–3, progressive). Beam expands locally anyway; also caps path-node drag-in to 0–2 instead of 8. Needs `pathLength` on `list_allocatable_nodes`. | free |
-| **3. Corridor collapse** | The Iron Reflexes / Giant's Blood / Blood Magic gotcha (`docs/gotchas.md`) — many keystones behind one damage-notable corridor score identically. Detect shared path prefixes, evaluate the corridor entry once, branch into endpoints only if competitive. | cheap heuristic |
-| **4. Approx pre-scoring** | Linear / log-linear delta estimate from stat lines vs a cached multiplier snapshot; real-evaluate only the top ~20. Same approximation the skill-optimiser design needs — build once, share. | medium effort |
-| **5. Cross-beam memoization** | Cache `(hash(sorted allocSet), nodeId) → result`. Beam states that reconverge via different allocation order hit it. `BuildOutput` is not incremental, so this is the main way to reclaim repeated work. | cheap |
-| **6. Progressive widening** | Start tight (`P`, `W` small); widen only when the beam's top scores are within ε (genuine ambiguity) and budget remains. Reuses `maxCandidates`. | control knob |
+| Layer | What | Cost | Status |
+|---|---|---|---|
+| **1. Objective keyword filter** | Generalize `keywordsForDamageType` to an objective spec `{ keywords, mode: 'prioritize' \| 'filter' }`. `filter` mode *drops* non-matching candidates. Preset for "physical + defence": Physical / Attack / Damage / Life / Armour / Evasion / Resist / Block + gating attributes; drop mana-regen / cast-speed / minion / curse / ailment-only. | free (text) | DONE |
+| **2. Proximity gating** | Only consider candidates within `K` path-points of the current frontier (`K`=1–3, progressive). Beam expands locally anyway; also caps path-node drag-in to 0–2 instead of 8. Needs `pathLength` on `list_allocatable_nodes`. | free | DONE |
+| **3. Corridor collapse** | The Iron Reflexes / Giant's Blood / Blood Magic gotcha (`docs/gotchas.md`) — many keystones behind one damage-notable corridor score identically. Detect shared path prefixes, evaluate the corridor entry once, branch into endpoints only if competitive. | cheap heuristic | deferred |
+| **4. Approx pre-scoring** | Linear / log-linear delta estimate from stat lines vs a cached multiplier snapshot; real-evaluate only the top ~20. Same approximation the skill-optimiser design needs — build once, share. | medium effort | deferred |
+| **5. Cross-beam memoization** | Cache `(sorted allocSet, nodeId) → result`. Beam states that reconverge via different allocation order hit it. `BuildOutput` is not incremental, so this is the main way to reclaim repeated work. | cheap | DONE |
+| **6. Progressive widening** | Start tight (`P`, `W` small); widen only when the beam's top scores are within ε (genuine ambiguity) and budget remains. Reuses `maxCandidates`. | control knob | deferred |
 
-**MVP:** bridge changes + layers 1 + 2 + 5. Add 4 if still short; 3 and 6 are polish.
+**MVP:** bridge changes + layers 1 + 2 + 5 — all landed. Layers 3, 4, 6 stay deferred until a
+live run shows greedy re-spend is not good enough.
 
-## Bridge changes required
+## Bridge changes
 
-The status memory previously said "no new bridge RPC expected" for this task — that was wrong.
-`evaluate_candidate_nodes` always evaluates against the *loaded baseline* and rolls back to it
-(`bridge.lua:698-716`); a beam node is `baseline + partial allocation`, which it cannot express.
-
-- **`pathLength` on `list_allocatable_nodes`** — add `pathLength = #node.path` to each entry
-  (`bridge.lua:646-654`). Free, already computed, no recompute. Mirror in the `AllocatableNode`
-  TS interface.
-- **`evaluate_candidate_nodes_from(allocSet, nodeIds)`** — create undo state, `AllocNode` each id
-  in `allocSet`, `spec:BuildAllDependsAndPaths()`, run the existing per-candidate
-  alloc/eval/rollback loop, then `RestoreUndoState` to the pre-`allocSet` state and rebuild paths
-  once more. `evaluate_candidate_nodes` becomes the `allocSet = {}` case (refactor one onto the
-  other). Same `node.path`-staleness discipline as the existing method.
+All landed — see Implementation status §2 for the full RPC list. Kept here for the rationale:
+`evaluate_candidate_nodes` evaluates against the *loaded baseline* and rolls back to it
+(`bridge.lua:698-716`), but a beam node is `baseline + partial allocation` (and, for repair,
+`baseline − removed leaves + additions`), which it cannot express — hence the `_from` family of
+RPCs that take an `allocSet` (and optional `removeIds`).
 
 ## Measuring approach improvements
 
@@ -97,7 +95,7 @@ That determinism now also holds for the *search*, not just the calc: `recommendT
 `list_allocatable_nodes` pool by node id before doing anything with it (that RPC yields nodes in
 Lua `pairs()` order, which the spec leaves unfixed), and its final ranking breaks `deltaPerPoint`
 ties by node id (ties are common — a keystone and its whole path corridor report the same bundled
-delta). The beam driver must keep the same discipline: id-sorted candidate pools, id-tie-broken
+delta). The beam driver keeps the same discipline: id-sorted candidate pools, id-tie-broken
 frontier selection, never a random tiebreak.
 
 Two axes: solution quality and cost.
@@ -112,13 +110,10 @@ comparison is meaningless.
   absolute and % vs greedy.
 - **Single scalar objective.** Either `w·log(DPS) + (1−w)·log(EHP)` computed identically
   everywhere (sweep `w` ∈ {0.3, 0.5, 0.7}), or — fewer knobs — hold one metric as a
-  `preserveMetrics` floor and maximize the other. The log-blend form is a new capability:
-  `recommendTree` today ranks on a single `targetMetric` *key* (`stats[k] − baseline`), so an
-  `objectiveFn(stats) → number` has to be threaded through the driver and the harness, with a
-  guard for `TotalEHP` absent or ≤ 0 (it sits behind a conditional `CalcDefence.lua` block —
-  `docs/gotchas.md`, and `recommendTree`'s own `finiteNumber` check) → that build is scored
-  "objective undefined" and dropped from the comparison, not treated as `log(0)`. Tracked as
-  step 6.
+  `preserveMetrics` floor and maximize the other. Implemented in `src/core/objective.ts`
+  (`logBlend` / `metricObjective` / `parseObjective`), with the guard: a build whose `TotalEHP`
+  (or other input) is absent or ≤ 0 is scored "objective undefined" and dropped from the
+  comparison, not treated as `log(0)`.
 - **Feasibility is a gate, not a tiebreak.** An approach that beats another on DPS by dropping a
   resistance below cap is disqualified for that instance, not scored lower.
 - **Head-to-head win / tie / loss across the corpus.** Report the distribution, not just mean
@@ -129,10 +124,13 @@ comparison is meaningless.
 
 ### Cost
 
-- **`BuildOutput()` call count is the currency.** Add a counter to the bridge; report per run.
-  Exact, deterministic, machine-independent — unlike wall-clock.
+- **`BuildOutput()` call count is the currency.** `get_metrics` / `reset_metrics` on the bridge;
+  a `recomputeBuild()` wrapper counts every call site. Exact, deterministic, machine-independent
+  — unlike wall-clock.
 - **Wall-clock secondary**, median of 3–5 runs, machine noted.
-- **Layer-5 cache hit rate** — how much repeated work memoization actually reclaims.
+- **Layer-5 cache hit rate** — `MemoEvaluator` tracks `hits` / `misses` / `hitRate`. Extend
+  mode's linear walk never revisits a key (≈0); the cache earns its place once a repair beam
+  reconverges.
 
 ### Apples-to-apples checklist
 
@@ -146,16 +144,12 @@ spare-point counts (the constraint repro only fired at 23 spare points; 10 was t
 ≥1 hand-tuned build (repair must return ≈no change), ≥1 deliberately naive build (repair must
 improve it), and a held-out subset never used while tuning `K` / `W` / `D`.
 
-This does not exist yet: the repo has 3 sample builds (`Blood Mage.xml`, `RampantlyBisexual.xml`,
-a `Monk/` dir) and only `RampantlyBisexual` has the high-spare-point regime the repair loop is
-meant to exercise. Assembling and characterising the corpus (per-build: class, spare points,
-defence layer, damage type, baseline stats, hand-tuned vs naive, held-out flag) is its own task —
-the pole that gates the benchmark and the validation write-up. Tracked as step 8.
-
 Run each build in **both starting modes and at two `pointBudget` values** (current-level and
 endgame). The extend-mode / low-budget cell is the common real user situation — a partially
 levelled character asking "where next" — and must not regress even if repair-mode numbers look
 better in aggregate.
+
+State of the corpus is tracked in Implementation status §8 and `docs/beam-corpus.md`.
 
 ### Ablations
 
@@ -163,195 +157,128 @@ Run greedy-repair with pruning layers {1}, {1,2}, {1,2,5}, {1,2,4,5}. Quality de
 (pruning shouldn't cost quality); cost delta shows what each layer buys. A layer that meaningfully
 drops quality is too aggressive and gets retuned.
 
-## Next-session steps
+## Implementation status
 
-Ordered; steps 1–3 are independent and parallelizable, and are the natural first chunk (they
-unblock everything and are each testable alone).
+As of 2026-08-27 — all committed (HEAD `62693d0`), 70 unit tests green. Live-verification runs
+were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
 
-**Steps 1–3 DONE (2026-08-27, uncommitted).** Verified live against
-`RampantlyBisexual.xml` via `spike/verifyBeamBridge.ts`:
-- Step 1: all 3821 reachable nodes carry `pathLength`; range 1–32; frontier-adjacent nodes
-  read 1, distant weapon-cluster notables read 32.
-- Step 2: (a) `evaluate_candidate_nodes_from([], ids)` byte-matches `evaluate_candidate_nodes`;
-  (b) `get_stats` after a `from(allocSet=[…])` call byte-matches the pre-call baseline — but
-  **only after adding a final `BuildOutput()` to the outer-restore branch**: `RestoreUndoState`
-  reverts the spec, not `mainOutput`, and the beam driver calls this repeatedly so the next
-  `CreateUndoState` must see a clean baseline. Empty-`allocSet` path left byte-identical.
-  (c) a candidate measured over a partial alloc carries that alloc's stat contribution;
-  (d) `from(allocSet=[a,b])` == `from(allocSet=[b,a])`.
-- Step 3: `objective?: string | ObjectiveSpec` on `RecommendTreeOptions`; `ObjectiveSpec =
-  { keywords, exclude?, mode: 'prioritize'|'filter' }`; `physical-defence` preset;
-  `--objective <preset>` CLI flag; escape hatch = omit the option. Applied after `nodeTypes`,
-  before `damageType` (which stays the primary sort). 6 new unit tests (24 total pass).
-  Live: `--objective physical-defence` on the Keystone pool drops Chaos Inoculation / Resolute
-  Technique / Eldritch Battery, keeps Iron Reflexes / Giant's Blood / Blood Magic.
+- **Done:** steps 1–7 (extend mode + leaf-only repair) and step 10 (CLI).
+- **Remaining:** step 8 (corpus), step 9 (benchmark run), step 11 (validation write-up).
+- **Deferred past v1:** pruning layers 3 / 4 / 6; any-node (cascading) repair; the real `(W, D)`
+  beam (plain greedy re-spend has been enough so far).
 
-**Steps 4–6 + 7 (extend mode) + 8/9 scaffolds DONE (2026-08-27, session 2, uncommitted).**
-Live-verified against `RampantlyBisexual.xml`. New bridge RPCs this round: `get_stats_from`,
-`list_allocatable_nodes_from` (both take an `allocSet`; the latter also `types`/`maxPathLength`
-server-side filters), `get_metrics` / `reset_metrics` + a `recomputeBuild()` wrapper that counts
-every `BuildOutput()`. New modules: `src/core/stats.ts` (shared num helpers), `src/core/objective.ts`
-(`Objective`, `logBlend`, `metricObjective`, `parseObjective`), `src/core/evaluator.ts`
-(`MemoEvaluator`), `src/core/optimiseTree.ts` (extend mode).
-
-**Leaf-only repair mode + CLI DONE (2026-08-27, session 3, commits `9e5b5e3` / `9efcbef` /
-`3f43d85` + the CLI commit).** `optimiseTree` `respecBudget > 0` frees the lowest-value allocated
-leaves and re-spends them via the shared `greedyAddLoop` + a `removeIds` prologue on the eval
-RPCs; `npm run optimise-tree` (`src/optimiseCli.ts`) drives both modes. 70 unit tests. Steps 1–8
-+ 10 done; **remaining: step 9 (real benchmark run with a repair row), step 11 (validation
-write-up), and the corpus** (both need builds with a working DPS config — see `docs/beam-corpus.md`).
-Any-node (cascading) repair and a real `(W, D)` beam stay deferred — greedy has been enough so far.
-
-### Where to start next (recommended order)
-
-**Ship leaf-only repair first.** It's the smaller half of step 7's repair bullet but it makes
-repair mode real and unblocks the benchmark headline and the validation write-up. "Any allocated
-node" repair (removing a mid-tree node cascades its downstream off too) is a later opt-in — it
-needs the arbitrary-exact-allocation eval RPC and the `DeallocNode`-cascade verification, and it
-changes nothing already built. Leaf-only avoids both: what's left after removing leaves is still
-connected, so the "spend the freed points back" phase is exactly the extend-mode add-loop that
-already works, and only one new bridge RPC is needed.
-
-1. ~~**Bridge: `evaluate_dealloc_candidates(nodeIds)`**~~ DONE — per id: `CountAllocNodes` →
-   `CreateUndoState` → `DeallocNode` → `recomputeBuild` → record `{ nodeId, pointsFreed,
-   ascendancyPointsFreed, stats }` → `RestoreUndoState` + `BuildAllDependsAndPaths`; one final
-   `recomputeBuild` so a caller reading `get_stats` between batches sees the restored baseline.
-   Live on `RampantlyBisexual` (via `spike/verifyBeamBridge.ts`): probed 12 allocated nodes → 4
-   leaves (`pointsFreed == 1`), 8 load-bearing (e.g. "Elemental Attack Damage" cascades 17 pts,
-   an attribute-cluster tail 19). "Disorientation" is a `pointsFreed == 1`, `ΔTotalDPS == 0`
-   leaf — a textbook regret pick. Round-trips: `get_stats` after the batch == loaded baseline.
-2. ~~**Bridge: `list_allocated_nodes`**~~ DONE — filter over `spec.allocNodes` (same
-   class/ascendancy/free-allocate exclusions as `CountAllocNodes`), returns `{ id, name, type,
-   statLines, ascendancyName? }`. Live: 106 nodes (100 regular + 6 ascendancy), matches
-   `get_tree_status.pointsUsed`.
-2.5. ~~**Bridge + evaluator: `removeIds` prologue**~~ DONE — optional `params.removeIds` on
-   `evaluate_candidate_nodes_from` and `get_stats_from`: `DeallocNode` each id off the loaded tree
-   *before* laying down `allocSet`, inside the same outer undo, so the add-back phase measures
-   against "loaded minus the dropped leaves". `evaluateCandidatesAgainst` gained the third arg;
-   the outer undo now fires for a non-empty `removeIds` *or* `allocSet`. `get_stats_from`'s
-   `pointsSpent` becomes the NET delta (remove 1 / add 1 → 0; remove 1 / add 0 → −1).
-   `MemoEvaluator.evaluateFrom` / `statsFrom` take an optional `removeIds`, keyed as `r<sorted>|…`
-   (empty → bare allocSet key, byte-identical to extend mode). Live on `RampantlyBisexual` +
-   `MA-FlickerStrike` (`spike/verifyBeamBridge.ts` repair 2a–2d): `get_stats_from([], removeIds:[leaf])`
-   == `evaluate_dealloc_candidates(leaf)` stats; remove-then-re-add a leaf round-trips to baseline
-   at net 0 points; `from` and `get_stats_from` agree with `removeIds` set; baseline restored after.
-   +3 unit tests (54 total).
-3. ~~**Driver: repair path in `optimiseTree`** (`respecBudget > 0`)~~ DONE — the greedy walk is
-   factored into `greedyAddLoop`; extend and repair both call it.
-   - Regret set: `list_allocated_nodes` → regular ids → one `evaluate_dealloc_candidates` call →
-     keep `pointsFreed == 1 && ascendancyPointsFreed == 0` leaves. Value lost =
-     `baselineObjective − score(deallocStats)` (a leaf whose removal makes the build unscorable is
-     `+Infinity` → never dropped). Sort ascending (least value lost, negative = removal *helps*),
-     id tie-break, take up to `respecBudget`.
-   - Post-removal baseline via `memo.statsFrom([], droppedIds)`. Re-spend with `greedyAddLoop`,
-     `removeIds = droppedIds` threaded through every bridge call, `headroom = dropped.length` (+ any
-     explicit `pointBudget` slack), `startObjective = postRemovalObjective`. Constraints during the
-     walk are gated against the *running* stats (`constraintReference: "walk-state"`), then the
-     whole repaired plan is re-checked against the loaded baseline.
-   - Returns `{ mode: "repair", removed[], steps[], addedNodeIds[], pointsFreed, pointsRespent,
-     final: { objective, pointsSpent (net), stats }, stoppedBecause }`. Only recommends the repair
-     if `finalObjective > baselineObjective` and ≥1 step landed; else `stoppedBecause:
-     "repair-not-worthwhile"` (or `"no-leaves"`) with `removed` still surfaced informationally.
-   - Live (`optimise-tree-spike`, `respecBudget`): `RampantlyBisexual` / `TotalDPS` / respec 3 →
-     freed 3 zero-value leaves (Escape Velocity, The Wild Cat, Disorientation), re-spent on Stand
-     and Deliver (3pt), DPS 39525 → 44220 (+11.9%) at **net 0 points**, 175 recomputes, 41s.
-     `MA-FlickerStrike` / `TotalEHP` / respec 5 → freed 5, re-spent 4, EHP 16629 → 18787 (+13%),
-     net −1 pt.
-4. ~~**Test**~~ DONE — 5 fake-bridge repair tests (happy-path gain, fallback-to-no-change,
-   negative-value-lost ordering, unscorable-leaf guard, no-leaves), 58 total. Live runs above.
-5. **Next:** step 10 (CLI flags), then step 9 (real benchmark run), then step 11 (write-up).
-
-**Corpus (parallel, needs no code):** the validation pair is now both Monk —
-`Martial Artist - Shattering Palm + Flicker Strike` (hand-tuned) vs `MA-FlickerStrike` (naive,
-user-gutted, 31 spare). Both currently compute 0 headless DPS (stale `mainSocketGroup`, see
-`docs/beam-corpus.md`); they need the main skill re-selected + re-saved in PoB before step 11 can
-run the "repair ≈ no change on a tuned build" regression on `TotalDPS` (EHP objective works today).
-
-1. ~~**Bridge: `pathLength` on `list_allocatable_nodes`.**~~ DONE.
-2. ~~**Bridge: `evaluate_candidate_nodes_from`.**~~ DONE (see note above re: the extra
-   `BuildOutput()` on outer restore).
-3. ~~**Objective keyword filter (layer 1).**~~ DONE.
-4. ~~**Proximity gating helper (layer 2).**~~ DONE — `filterByProximity(nodes, k)` exported from
-   `recommendTree.ts`; `RecommendTreeOptions.maxPathLength` + `OptimiseTreeOptions.proximity`;
+1. **Bridge: `pathLength` on `list_allocatable_nodes`** — DONE. `#node.path` per entry; mirrored
+   on `AllocatableNode`. Live: 3821 reachable nodes, range 1–32, frontier-adjacent read 1.
+2. **Bridge: `evaluate_candidate_nodes_from(allocSet, nodeIds)`** — DONE. `evaluate_candidate_nodes`
+   is the `allocSet = []` case, byte-identical. The outer restore needs a final `BuildOutput()`
+   — `RestoreUndoState` reverts the spec but not `mainOutput`, and a repeated caller must see a
+   clean baseline (`docs/gotchas.md`). Sibling RPCs added the same round: `get_stats_from`,
+   `list_allocatable_nodes_from` (server-side `types` / `maxPathLength` filters),
+   `evaluate_dealloc_candidates`, `list_allocated_nodes`, `get_metrics` / `reset_metrics` +
+   `recomputeBuild()`. An optional `removeIds` prologue on `evaluate_candidate_nodes_from` /
+   `get_stats_from` deallocs given ids off the loaded tree *before* laying down `allocSet`, inside
+   one outer undo — this is what makes leaf-only repair measurable.
+3. **Objective keyword filter (layer 1)** — DONE. `objective?: string | ObjectiveSpec` on
+   `RecommendTreeOptions`; `physical-defence` preset; `--objective` flag. Applied after
+   `nodeTypes`, before `damageType` (still the primary sort).
+4. **Proximity gating (layer 2)** — DONE. `filterByProximity(nodes, k)` in `recommendTree.ts`;
+   `RecommendTreeOptions.maxPathLength` / `OptimiseTreeOptions.proximity`;
    `list_allocatable_nodes_from` also gates server-side to shrink the payload.
-5. ~~**Cross-beam memoization (layer 5).**~~ DONE — `MemoEvaluator` (`src/core/evaluator.ts`)
-   wraps `evaluate_candidate_nodes_from` *and* `get_stats_from`, keyed on the sorted allocSet
-   joined (lossless, no hash) + `:` + nodeId. Tracks `hits`/`misses`/`hitRate`/`cacheSize`.
-   (Extend mode's linear walk never revisits a key, so its hit rate is ~0 — the cache earns its
-   place only once repair's beam reconverges.)
-6. ~~**Composite objective support.**~~ DONE — `src/core/objective.ts`: `logBlend`,
-   `metricObjective`, `parseObjective` (`"dps-ehp:W"` / `"blend:A,B,W"` / bare metric).
-   `RecommendTreeOptions.objectiveFn` + `OptimiseTreeOptions.objectiveFn`; baseline that can't be
-   scored → throw; a candidate that can't be scored → dropped.
-7. **Greedy-seed + local repair driver** — `src/core/optimiseTree.ts`.
-   - ~~**Extend mode**~~ DONE (`respecBudget` 0 / unset): greedy walk outward from the loaded
-     frontier, bounded by `pointBudget` (default `pointsUsed` → returns nothing) and `proximity`
-     K, objective-scored, constraint-gated vs the loaded baseline, id-sorted pool + id-tie-broken
-     pick. Returns ordered `steps[]`, `addedNodeIds`, `final`, `stoppedBecause`, `buildOutputCount`,
-     `cacheHitRate`. Ascendancy steps are skipped (`ascendancyPointsSpent > 0`). Spike:
-     `npm run optimise-tree-spike`. Live: `RampantlyBisexual +6 pts, K=2` → Concussive Attack /
-     Vile Wounds / Essence of the Mountain, TotalDPS 39525 → 43509, 98 recomputes, 24s.
-   - **Repair mode** (`respecBudget > 0`) —
-     - ~~**Leaf-only**~~ DONE — `evaluate_dealloc_candidates` + `list_allocated_nodes` +
-       `removeIds` prologue; regret set = allocated leaves (`pointsFreed == 1`) ranked by value
-       lost; re-spend the freed points with `greedyAddLoop` (`removeIds` = dropped leaves) against
-       post-removal stats; return `better-of(loaded, repaired)` + diff. Sequenced step-by-step
-       (steps 1–4, all DONE) under **Where to start next** above; live numbers there.
-     - **Any-node (later opt-in):** allow non-leaf removal (cascades downstream off). Needs an
-       arbitrary-exact-allocation eval RPC and the `DeallocNode`-cascade verification. Also folds
-       in `freeze` / `freezeAscendancy` (general freeze list, not a special case) and, if the
-       beam is still short on quality, the real `(W, D)` beam with per-beam-node constraint
-       baselines instead of the plain greedy re-spend.
-8. **Corpus assembly** — SCAFFOLD DONE, corpus not. `spike/characteriseBuild.ts` (`npm run
-   characterise-build`) emits a manifest row; `docs/beam-corpus.md` holds the manifest + the
-   gap list. Only 4 local builds today (one at 23 spare, three at 10; **two report `TotalDPS = 0`
-   headless** so are DPS-objective-unusable). Still need mid-level (30–60 spare) builds, a
-   hand-tuned/naive pair, and a held-out third.
-9. **Benchmark harness** — SCAFFOLD DONE. `spike/benchTreeApproaches.ts` (`npm run
-   bench-tree-approaches`) runs the corpus × approaches, emits the markdown table + a cost
-   summary. The `BuildOutput()` counter (was "first sub-task") is done and wraps every call site.
-   Today it only sweeps extend mode across K (no repair row, no greedy-vs-repair headline — that
-   needs step 7 repair). Commit a table fixture once repair + corpus land.
-10. ~~**CLI + spike wiring.**~~ DONE — `src/optimiseCli.ts` (`npm run optimise-tree`), arg parsing
-    + output only; core returns data. Flags: `--mode extend|repair`, `--respec-budget N`
+5. **Cross-beam memoization (layer 5)** — DONE. `MemoEvaluator` (`src/core/evaluator.ts`) wraps
+   `evaluate_candidate_nodes_from` and `get_stats_from`, keyed on the sorted allocSet joined
+   (lossless, no hash) + `:` + nodeId; optional `removeIds` prefixes the key as `r<sorted>|…`
+   (empty → byte-identical to the extend-mode key).
+6. **Composite objective (`src/core/objective.ts`)** — DONE. `logBlend`, `metricObjective`,
+   `parseObjective` (`"dps-ehp:W"` / `"blend:A,B,W"` / bare metric). `objectiveFn` on both option
+   types. Unscorable baseline → throw; unscorable candidate → dropped.
+7. **Greedy-seed + local repair driver (`src/core/optimiseTree.ts`)**
+   - **Extend mode** (`respecBudget` 0 / unset) — DONE. Greedy walk outward from the loaded
+     frontier, bounded by `pointBudget` (default `pointsUsed` → returns nothing without
+     `--point-budget` / `--extra-points`) and proximity `K`, objective-scored, constraint-gated
+     vs the loaded baseline, id-sorted pool + id-tie-broken pick. Ascendancy steps skipped.
+     Returns ordered `steps[]`, `addedNodeIds`, `final`, `stoppedBecause`, `buildOutputCount`,
+     `cacheHitRate`. Live: `RampantlyBisexual +6 pts, K=2` → Concussive Attack / Vile Wounds /
+     Essence of the Mountain, TotalDPS 39525 → 43509, 98 recomputes, 24s.
+   - **Repair mode, leaf-only** (`respecBudget > 0`) — DONE (`9e5b5e3` / `9efcbef` / `3f43d85`;
+     `respecBudget`-as-ceiling sweep added after the first bench run).
+     Regret set via `evaluate_dealloc_candidates` + `list_allocated_nodes`, kept to true leaves
+     (`pointsFreed == 1 && ascendancyPointsFreed == 0`), ranked by objective value lost (a leaf
+     whose removal makes the build unscorable is `+Infinity`, never dropped; negative = removal
+     *helps*), id tie-break. **`respecBudget` is a ceiling, not a target:** the driver sweeps
+     `k = 1..respecBudget` freed leaves, re-spends each prefix with the shared `greedyAddLoop`
+     (`removeIds` threaded through every bridge call, against post-removal stats), and keeps the
+     highest-scoring plan (ties → smaller `k`). This is because one-shot removal of the full budget
+     is non-monotonic — the first bench run showed `repair-r6` scoring *below baseline* (→
+     no-change) on builds where `repair-r3` gained 20%+. Constraints gated against running
+     walk-state (`constraintReference: "walk-state"`), then the whole plan re-checked vs the loaded
+     baseline. Recommends the repair only if a swept plan has `finalObjective > baselineObjective`
+     and ≥1 step, else `stoppedBecause: "repair-not-worthwhile"` / `"no-leaves"` with `removed`
+     still surfaced. Pre-sweep live numbers (one-shot): `RampantlyBisexual` / TotalDPS / respec 3
+     → +11.9% at net 0 pts; `MA-FlickerStrike` / TotalEHP / respec 5 → +13%. Post-sweep bench
+     numbers in `docs/beam-bench-<objective>.md`.
+   - **Any-node repair (later opt-in)** — allow non-leaf removal (cascades downstream off). Needs
+     an arbitrary-exact-allocation eval RPC and `DeallocNode`-cascade verification. Folds in
+     `freeze` / `freezeAscendancy` as a general list, and — if quality is still short — the real
+     `(W, D)` beam with per-beam-node constraint baselines instead of the plain greedy re-spend.
+8. **Corpus assembly** — SCAFFOLD DONE, corpus not. `spike/characteriseBuild.ts`
+   (`npm run characterise-build`) emits a manifest row; `docs/beam-corpus.md` holds the manifest
+   + gap list. Only 4 local builds today (one at 23 spare, three at 10; **two report
+   `TotalDPS = 0` headless** → DPS-objective-unusable). Still need mid-level (30–60 spare) builds,
+   a hand-tuned/naive pair, a held-out third. The validation pair is both Monk —
+   `Martial Artist - Shattering Palm + Flicker Strike` (hand-tuned) vs `MA-FlickerStrike` (naive,
+   user-gutted, 31 spare); both need the main skill re-selected + re-saved in PoB before the
+   `TotalDPS` regression can run (EHP objective works today).
+9. **Benchmark harness** — HARNESS DONE, corpus-limited. `spike/benchTreeApproaches.ts`
+   (`npm run bench-tree-approaches -- [objective] [extraPoints] [--no-constraints]`) runs the
+   corpus × {`extend+N` fresh points, `repair-r3`, `repair-r6`} → per-build table (lift %, net
+   pts, respec, `res ok` feasibility recheck, BuildOutputs, cache-hit %, wall s, stop reason) +
+   a per-build summary with a repair-monotonicity flag + a cost-by-approach median. Writes a
+   committed fixture per objective at `docs/beam-bench-<objective>.md`. Runs under a
+   preserve-the-3-elemental-resists floor by default. First run (`TotalDPS`) surfaced the
+   non-monotonic-repair bug (fixed, step 7) and that a pure-DPS objective lets repair cannibalise
+   a tuned build's defensive leaves (→ step 11 must use a blend). **Still corpus-limited** — 5–6
+   usable builds, no held-out subset; treat the fixture as a harness regression check, not a
+   result.
+10. **CLI + spike wiring** — DONE. `src/optimiseCli.ts` (`npm run optimise-tree`), parsing +
+    output only; core returns data. Flags: `--mode extend|repair`, `--respec-budget N`
     (`--repair-nodes N` alias; `>0` implies repair), `--point-budget N` / `--extra-points N`
-    (mutually exclusive; extend mode with neither prints a hint since the budget defaults to
-    `pointsUsed`), `--proximity K`, `--target <metric>` / `--objective <spec>` (mutually exclusive;
-    `spec` = `dps-ehp:W` / `blend:A,B,W` / bare metric via `parseObjective`), `--node-types`,
-    `--all-node-types`, `--keywords` / `--exclude-keywords`, `--max-candidates N` (dev cap),
-    `--min-resist N` / `--constraint Metric=N` / `--preserve A,B`. Shared arg helpers factored to
-    `src/cliShared.ts` (recommend-tree CLI now imports from there). `parseArgs` exported + unit
-    tested (12 tests). `--beam-width` / `--beam-depth` / `--target-level` / `--freeze-ascendancy`
-    omitted — no backing feature yet (greedy only; ascendancy already always frozen). Live:
-    `optimise-tree <RampantlyBisexual> --extra-points 4 --proximity 2` → Concussive Attack + Vile
-    Wounds, DPS 39525 → 42672; `--respec-budget 2 --objective dps-ehp:0.5` → frees 2 zero-value
-    leaves, re-spends 1, blend 9.55 → 9.56. `optimise-tree-spike` also takes a 5th `respecBudget` arg.
-11. **Validation.** Find a build where greedy is demonstrably suboptimal (a local notable blocking
-    a better cluster); show repair improves the target metric. Regression: on a tuned build,
-    repair returns no changes (within ε). Write up as `docs/beam-search-repro.md`, mirroring
-    `docs/constraint-rejection-repro.md` — the harness table is its quantitative backing.
+    (mutually exclusive), `--proximity K`, `--target <metric>` / `--objective <spec>` (mutually
+    exclusive; `spec` via `parseObjective`), `--node-types`, `--all-node-types`, `--keywords` /
+    `--exclude-keywords`, `--max-candidates N` (dev cap), `--min-resist N` /
+    `--constraint Metric=N` / `--preserve A,B`. Shared helpers in `src/cliShared.ts`; `parseArgs`
+    unit-tested (12 tests). `--beam-width` / `--beam-depth` / `--target-level` /
+    `--freeze-ascendancy` omitted — no backing feature yet.
+11. **Validation** — TODO. Show repair improves the naive build of the validation pair
+    (`MA-FlickerStrike`) and returns ≈no change on the hand-tuned one
+    (`Martial Artist - Shattering Palm + Flicker Strike`). **Must use a blended objective**
+    (`dps-ehp:0.5`) or a `preserveMetrics` set covering the defences the player hand-picked —
+    under raw `TotalDPS` + resist-only floors the first bench run had repair finding +23% on the
+    *tuned* build by respeccing its evasion/ES leaves, so "≈ no change" can't hold there. Write up
+    as `docs/beam-search-repro.md`, mirroring `docs/constraint-rejection-repro.md` — the
+    `docs/beam-bench-dps-ehp-0-5.md` fixture is its quantitative backing.
 
 ## Open questions to resolve early
 
-- **Seed application cost.** Each seed step re-allocs the whole growing set from scratch inside
-  `evaluate_candidate_nodes_from` (O(D²) alloc ops). Alloc is cheap vs `BuildOutput`, so probably
-  fine — confirm on a real build before optimizing. If it bites, add a stateful "apply
-  allocation to the working tree" RPC.
-- **Ascendancy nodes.** Greedy tracks `ascendancyPointsSpent` separately. v1 repair should
-  **freeze** ascendancy allocations and only re-search regular points — via the general `freeze`
-  mechanism (Point budget and starting mode), not a special case.
+- **Seed application cost.** Each greedy step re-allocs the growing set from scratch inside the
+  `_from` RPCs. Alloc is cheap vs `BuildOutput`, so probably fine at greedy depths — revisit only
+  if a real `(W, D)` beam lands and the O(D²) alloc cost starts to show.
 - **`targetLevel` → `pointBudget` derivation.** Needs the quest passive-point total for the acts
   a character of that level has plausibly cleared. `bridge.lua` already sums `maxWeaponSets` from
   `QuestRewards.lua` but only the whole-game total; a partial total is guesswork. v1 takes an
-  explicit `--point-budget`; `--target-level` is a later nicety, and only if the act→quest-point
-  mapping reads cleanly from vendored data (verify per
+  explicit `--point-budget` / `--extra-points`; `--target-level` is a later nicety, and only if
+  the act→quest-point mapping reads cleanly from vendored data (verify per
   [[feedback-verify-poe2-vs-poe1-assumptions]]). Also confirm `get_tree_status.pointsMax` is the
   endgame cap, not current-level — the `99 +` term in `bridge.lua:628` says it is, but check
   against a mid-level sample build before relying on the `pointBudget = pointsUsed` default.
-- **Constraint baseline in repair.** A repair candidate is judged against the current beam node's
-  measured stats, not the seed's — a repair step must not be scored against a stale baseline.
-  `firstConstraintViolation` already takes `baseline` as a param, so this is a wiring choice, not
-  new code.
-- **ε for the "no change" regression test.** The constraint-rejection repro showed exact `0.0`
-  landings with no float dust, so start with exact equality and add a relative ε only if a real
-  run shows neutral-node noise (same call the status memory already made for constraints).
+- **ε for the "no change" regression test (step 11).** The constraint-rejection repro showed
+  exact `0.0` landings with no float dust, so start with exact equality and add a relative ε only
+  if a real run shows neutral-node noise (same call the status memory already made for
+  constraints).
+
+### Resolved
+
+- **Ascendancy nodes** — both modes skip ascendancy steps outright (`ascendancyPointsSpent > 0` /
+  `ascendancyPointsFreed > 0`). A general `freeze` list for regular nodes stays a future item,
+  tied to any-node repair (§7).
+- **Constraint baseline in repair** — repair gates each step against the running walk-state, then
+  re-checks the whole plan against the loaded baseline (`constraintReference: "walk-state"`).

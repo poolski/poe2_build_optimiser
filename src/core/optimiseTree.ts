@@ -7,13 +7,15 @@
 // allocate next, in order" -- a pure greedy walk outward from the current frontier, bounded by a
 // point budget and a proximity radius.
 //
-// Repair mode (respecBudget > 0) = free up to `respecBudget` of the lowest-value *allocated leaves*
-// (a leaf frees exactly one point; nothing downstream cascades off, so what remains is still a
-// connected tree), then re-spend the freed points with the same greedy add-loop, measuring against
-// the post-removal tree via the `removeIds` prologue on the eval RPCs. Returns whichever is better,
-// the loaded tree or the repaired one -- so it can always fall back to "change nothing". Non-leaf
-// (cascading) removal is a later opt-in and needs an arbitrary-allocation eval RPC; see the design
-// doc's step 7.
+// Repair mode (respecBudget > 0) = free some of the lowest-value *allocated leaves* (a leaf frees
+// exactly one point; nothing downstream cascades off, so what remains is still a connected tree),
+// then re-spend the freed points with the same greedy add-loop, measuring against the post-removal
+// tree via the `removeIds` prologue on the eval RPCs. `respecBudget` is a *ceiling*: the driver
+// sweeps k = 1..respecBudget freed leaves and keeps the best repaired plan, because removing the
+// full budget in one shot is non-monotonic (a bigger budget can yield a worse plan). Returns
+// whichever is better, the loaded tree or the best repaired one -- so it can always fall back to
+// "change nothing". Non-leaf (cascading) removal is a later opt-in and needs an arbitrary-allocation
+// eval RPC; see the design doc's step 7.
 
 import { PobBridgeClient } from "./bridge";
 import { MemoEvaluator } from "./evaluator";
@@ -55,8 +57,9 @@ export interface OptimiseTreeOptions {
 	 * to plan ahead. In repair mode this caps the re-spend at `min(respecBudget-freed, headroom)`;
 	 * the default (no headroom) still lets repair re-spend exactly what it freed. */
 	pointBudget?: number;
-	/** > 0 selects repair mode: free up to this many of the lowest-value allocated leaves and
-	 * re-spend the freed points. 0 / unset = extend mode. */
+	/** > 0 selects repair mode. A *ceiling* on freed leaves: the driver sweeps k = 1..respecBudget
+	 * of the lowest-value allocated leaves, re-spends each prefix, and keeps the best plan (ties to
+	 * the smaller k). 0 / unset = extend mode. */
 	respecBudget?: number;
 	/** Max `pathLength` for a node to be considered at each step -- keeps the walk local and caps
 	 * path-node drag-in. Default 3. */
@@ -310,50 +313,65 @@ export async function optimiseTree(
 		return noChange("no-leaves");
 	}
 
-	const droppedIds = dropped.map((l) => l.id);
-	const postRemoval = await memo.statsFrom([], droppedIds);
-	const postRemovalObjective = score(postRemoval.stats);
-	if (postRemovalObjective === undefined) {
+	// Sweep k = 1..dropped.length and keep the best repaired plan. Removing exactly `respecBudget`
+	// leaves in one shot is non-monotonic: the deepest few in the value-lost ranking may not really
+	// be expendable (the ranking scores each leaf's removal in isolation, and the proximity-bounded
+	// re-spend can't always path back to a good replacement), so a bigger budget can yield a worse
+	// -- or sub-baseline, hence no-change -- plan than a smaller one. `respecBudget` is a ceiling,
+	// not a target. Cost: up to `dropped.length` re-spend walks; the one-time dealloc probe above is
+	// shared. Ties go to the smaller k (less respec currency spent) via the strict `>` + ascending k.
+	const extendHeadroomPos = Math.max(0, extendHeadroom);
+	let bestK = 0;
+	let bestLoop: AddLoopOutcome | undefined;
+	for (let k = 1; k <= dropped.length; k++) {
+		const kDroppedIds = dropped.slice(0, k).map((l) => l.id);
+		const kPostRemoval = await memo.statsFrom([], kDroppedIds);
+		const kPostRemovalObjective = score(kPostRemoval.stats);
+		if (kPostRemovalObjective === undefined) continue; // removing these k makes the build unscorable
+
+		const kLoop = await greedyAddLoop({
+			...commonLoopParams,
+			constraintReference: "walk-state",
+			headroom: k + extendHeadroomPos,
+			removeIds: kDroppedIds,
+			startObjective: kPostRemovalObjective,
+			startStats: kPostRemoval.stats,
+		});
+
+		// Whole-plan gate vs the loaded baseline: a preserved metric must not end up regressed, even
+		// though the walk was allowed to dip below it mid-way.
+		if (Object.keys(floors).length > 0 && firstConstraintViolation(floors, baseline, kLoop.finalStats)) {
+			continue;
+		}
+		// Only a plan that beats the loaded tree outright and actually allocated something counts.
+		if (kLoop.finalObjective <= baselineObjective || kLoop.steps.length === 0) continue;
+
+		if (!bestLoop || kLoop.finalObjective > bestLoop.finalObjective) {
+			bestK = k;
+			bestLoop = kLoop;
+		}
+	}
+
+	if (!bestLoop) {
 		return noChange("repair-not-worthwhile", dropped);
 	}
 
-	// Re-spend: at most what we freed, further capped by any explicit pointBudget headroom.
-	const respendHeadroom = dropped.length + Math.max(0, extendHeadroom);
-	const loop = await greedyAddLoop({
-		...commonLoopParams,
-		constraintReference: "walk-state",
-		headroom: respendHeadroom,
-		removeIds: droppedIds,
-		startObjective: postRemovalObjective,
-		startStats: postRemoval.stats,
-	});
-
-	// Whole-plan gate against the loaded baseline: a preserved metric must not end up regressed,
-	// even though the walk was allowed to dip below it mid-way.
-	if (Object.keys(floors).length > 0 && firstConstraintViolation(floors, baseline, loop.finalStats)) {
-		return noChange("repair-not-worthwhile", dropped);
-	}
-
-	// Better-of: only recommend the repair if it beats the loaded tree outright.
-	if (loop.finalObjective <= baselineObjective || loop.steps.length === 0) {
-		return noChange("repair-not-worthwhile", dropped);
-	}
-
+	const usedLeaves = dropped.slice(0, bestK);
 	return withMetrics(bridge, memo, {
 		...skeleton,
 		mode: "repair",
 		respecBudget,
-		removed: dropped,
-		steps: loop.steps,
-		addedNodeIds: loop.added,
-		pointsFreed: dropped.length,
-		pointsRespent: loop.spent,
+		removed: usedLeaves,
+		steps: bestLoop.steps,
+		addedNodeIds: bestLoop.added,
+		pointsFreed: usedLeaves.length,
+		pointsRespent: bestLoop.spent,
 		final: {
-			objective: loop.finalObjective,
-			pointsSpent: loop.spent - dropped.length,
-			stats: loop.finalStats,
+			objective: bestLoop.finalObjective,
+			pointsSpent: bestLoop.spent - usedLeaves.length,
+			stats: bestLoop.finalStats,
 		},
-		stoppedBecause: loop.stoppedBecause,
+		stoppedBecause: bestLoop.stoppedBecause,
 	});
 }
 

@@ -287,6 +287,45 @@ describe("optimiseTree (repair mode)", () => {
 		expect(result.final.pointsSpent).toBe(0);
 	});
 
+	it("treats respecBudget as a ceiling: sweeps k=1..N and keeps the best prefix (non-monotonic guard)", async () => {
+		// Leaves by value lost: 100 (cheap, 10), 101 (30), 102 (expensive, 120).
+		// Re-spend candidates add +55 / +45 / +15 for 1 pt each, additive:
+		//   k=1: -10  +55  = 1045
+		//   k=2: -40  +100 = 1060   <- best
+		//   k=3: -160 +115 =  955   <- below baseline; committing to the full budget => "change nothing"
+		const vlost: Record<number, number> = { 100: 10, 101: 30, 102: 120 };
+		const gain: Record<number, number> = { 1: 55, 2: 45, 3: 15 };
+		const bridge = new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 1 }, { id: 2 }, { id: 3 }],
+			(allocSet, id, removeIds) => {
+				const lost = (removeIds ?? []).reduce((s, r) => s + (vlost[r] ?? 0), 0);
+				const g = [...allocSet, id].reduce((s, n) => s + (gain[n] ?? 0), 0);
+				return { pointsSpent: 1, stats: { TotalDPS: 1000 - lost + g } };
+			},
+			{
+				allocated: [
+					{ id: 100, removedStats: { TotalDPS: 990 } },
+					{ id: 101, removedStats: { TotalDPS: 970 } },
+					{ id: 102, removedStats: { TotalDPS: 880 } },
+				],
+				statsFromFn: (_a, removeIds) => ({
+					TotalDPS: 1000 - removeIds.reduce((s, r) => s + (vlost[r] ?? 0), 0),
+				}),
+			},
+		);
+
+		const result = await optimiseTree(bridge, { respecBudget: 3 });
+
+		expect(result.respecBudget).toBe(3); // the ceiling is unchanged
+		expect(result.removed.map((r) => r.id)).toEqual([100, 101]); // k=2 won, not the full budget
+		expect(result.pointsFreed).toBe(2);
+		expect(result.steps.map((s) => s.id)).toEqual([1, 2]);
+		expect(result.final.objective).toBeCloseTo(1060);
+		expect(result.final.pointsSpent).toBe(0);
+	});
+
 	it("prefers a leaf whose removal improves the objective (negative valueLost)", async () => {
 		const bridge = new FakeBridge(
 			{ TotalDPS: 1000 },
