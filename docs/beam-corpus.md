@@ -6,9 +6,9 @@ builds spanning defence layers, damage types, and spare-point counts, including 
 (repair must return ≈no change), ≥1 deliberately naive (repair must improve it), and a held-out
 subset never used while tuning `K` / `W` / `D`.
 
-**This is not there yet — 6 local builds, and 3 of them (Blood Mage + both Monks) report
-`TotalDPS = 0` headless (stale `mainSocketGroup`, see below).** Adding builds is a standing task:
-drop an XML in `D:/My Documents/Path of Building (PoE2)/Builds`, run
+**This is not there yet — 6 local builds. Blood Mage still reports `TotalDPS = 0` headless (likely
+a stale `mainSocketGroup`, see below); both Monk builds were fixed 2026-08-27.** Adding builds is
+a standing task: drop an XML in `D:/My Documents/Path of Building (PoE2)/Builds`, run
 `npm run characterise-build -- "<path>"`, paste the row below, and fill in the last three columns
 by hand.
 
@@ -22,24 +22,18 @@ Metric columns are the loaded-baseline values (rounded). `spare` = `pointsMax �
 | RampantlyBisexual | Ranger | 80 | 100/123 (23 spare) | 6 | 39525 | 4951 | 1168 | 57 | 81 | 7747 | 63 | 51 | 75 | 24 | evasion | ? | no |
 | Blood Mage | Witch | 88 | 113/123 (10 spare) | 8 | 0 | 10971 | 2386 | 3263 | 0 | 9 | 75 | 58 | 75 | 13 | life/ES | ? | no |
 | Flicker Strike Invoker | Monk | 92 | 113/123 (10 spare) | 8 | 20428 | 25664 | 1462 | 3555 | 814 | 10309 | 79 | 60 | 75 | 39 | evasion/ES hybrid | ? | no |
-| MA-FlickerStrike | Monk | 92 | 92/123 (31 spare) | 8 | 0† | 16629 | 1661 | 2373 | 814 | 9050 | 77 | 55 | 75 | 25 | evasion/ES hybrid | **naive** (user deliberately gutted the tree) | no |
-| Martial Artist - Shattering Palm + Flicker Strike | Monk | 92 | 113/123 (10 spare) | 8 | 0‡ | 24958 | 1462 | 3557 | 814 | 11371 | 77 | 60 | 75 | 25 | evasion/ES hybrid | **hand-tuned** (the strong player's build) | no |
+| MA-FlickerStrike | Monk | 92 | 98/123 (25 spare) | 8 | 89769 | 17584 | 1703 | 2373 | 814 | 9050 | 77 | 55 | 75 | 25 | evasion/ES hybrid | **naive** (user deliberately gutted the tree) | no |
+| Martial Artist - Shattering Palm + Flicker Strike | Monk | 92 | 113/123 (10 spare) | 8 | 185998 | 24958 | 1462 | 3557 | 814 | 11371 | 77 | 60 | 75 | 25 | evasion/ES hybrid | **hand-tuned** (the strong player's build) | no |
 
 \* `pointsMax` 123 is always the L100 endgame cap (`99 + questPoints + extra`), not the character's
 real current budget — for a L37 the in-game budget is ~40-55. Always pass an explicit
 `pointBudget` for this build; the 89 "spare" is not real.
 
-† `MA-FlickerStrike` reports `TotalDPS`/`Speed`/`AverageDamage` all undefined after the user
-gutted its tree (and re-saved from PoB) — the Flicker Strike skill stopped calculating as an
-attack. Repair-testable **only with an EHP objective** until it's given a working skill config.
-Live repair run (`respecBudget 5`, `TotalEHP`): freed 5 zero-value leaves, re-spent 4, EHP
-16629 → 18787 (+13%), net −1 point. A clean "improves a naive build" demo.
-
-‡ `Martial Artist - Shattering Palm + Flicker Strike` — the hand-tuned build — still carries the
-stale `mainSocketGroup="3"` pointer (group 3 is a Spirit-Vessel buff group with no active skill),
-so headless computes 0 DPS. It needs the main skill re-selected in PoB and re-saved before it can
-be the *DPS* "repair returns ≈no change" regression test; usable now only with an EHP objective.
-See the note below.
+Both Monk builds compute real headless DPS now (2026-08-27 s3). Two fixes were needed and are
+described in the note below: (a) a stale `mainSocketGroup` on the hand-tuned build — cleared by a
+fresh PoE2 re-import, now points at the Flicker Strike group; (b) no weapon in the active
+`Weapon 1` slot on `MA-FlickerStrike` (the Sinister Quarterstaff sat on `Weapon 1 Swap`) — the
+XML was hand-patched to move it into `Weapon 1`.
 
 ## Extend-mode observation (Ranger L37, `optimise-tree-spike`)
 
@@ -58,19 +52,24 @@ a `dps-ehp` blend or a `--preserve Evasion` floor would reject it. Good constrai
 
 ## Known gaps / notes
 
-- **Headless `TotalDPS = 0` is usually a stale `mainSocketGroup` pointer, not a headless
-  limitation.** PoB's GUI lets you click a live main socket group; the *saved* `mainSocketGroup`
-  attribute can point at a group with no damaging active skill (e.g. a Spirit-Vessel / minion-buff
-  group), and headless honours it literally → 0 DPS. Fix: re-select the real attack skill in PoB
-  and re-save, or hand-edit `mainSocketGroup` to the attack group's index and put
-  `mainActiveSkill="1"` on that group's `<Skill>` header. A one-off patch of the hand-tuned build
-  to group 6 gave `TotalDPS ≈ 186k` (group 10 / Shattering Palm, a debuff-applier, only ≈ 7.1k) —
-  but that patched copy was then replaced, so both Monk builds are back to 0 DPS pending a proper
-  re-save. **Blood Mage still needs checking** — likely the same.
-- **Both directions of the validation pair are Monk now.** `MA-FlickerStrike` (naive, gutted tree)
-  vs `Martial Artist - Shattering Palm + Flicker Strike` (hand-tuned) — same class, so step 11 can
-  frame it as "same character, tuned vs gutted". Blocked on giving both a working DPS config; until
-  then the pair only works under an EHP objective.
+- **Two independent causes of headless `TotalDPS = 0` on these builds, both now fixed:**
+  1. **Stale `mainSocketGroup`.** PoB's GUI lets you click a live main socket group; the *saved*
+     attribute can point at a group with no damaging active skill (here group 3 — a Spirit-Vessel
+     buff group). Headless honours it literally → 0 DPS. On the hand-tuned build a fresh PoE2
+     re-import cleared this (`mainSocketGroup` now 6 = Flicker Strike), giving `TotalDPS ≈ 186k`.
+  2. **No weapon in the active `Weapon 1` slot.** `MA-FlickerStrike` had its Sinister Quarterstaff
+     ("Onslaught Song", item id 4) parked on `Weapon 1 Swap` with `useSecondWeaponSet="false"`, so
+     the active weapon set was empty and Flicker Strike (an attack) produced no hits →
+     `TotalDPS`/`Speed`/`AverageDamage` all *undefined*. Fix (either works, identical result
+     ≈ 89.8k DPS): set `useSecondWeaponSet="true"`, or move item 4 into the `Weapon 1` slot. The
+     XML was hand-patched with the latter. (The hand-tuned build has the same weapon-on-swap
+     layout but still computes fine — the empty-primary fallback behaves differently there;
+     didn't chase down why since both now produce DPS.)
+  **Blood Mage still needs checking** — likely cause 1.
+- **Validation pair ready.** `MA-FlickerStrike` (naive, gutted tree, ~90k DPS, 25 spare) vs
+  `Martial Artist - Shattering Palm + Flicker Strike` (hand-tuned, ~186k DPS, 10 spare) — same
+  class, so step 11 can frame it as "same character, tuned vs gutted". Both now work under a DPS
+  or EHP objective.
 - **Spare-point spread is narrow:** one build at 23 spare, three at 10. The constraint-rejection
   work found the interesting repair behaviour only shows up at ~20+ spare, so most of the current
   corpus can't exercise repair meaningfully. Need mid-level builds (30–60 spare) and a couple of
