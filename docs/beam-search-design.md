@@ -196,6 +196,44 @@ every `BuildOutput()`. New modules: `src/core/stats.ts` (shared num helpers), `s
 repair mode (needs a dealloc-measurement RPC + arbitrary-allocation eval RPC + the
 `ImportFromNodeList`/`DeallocNode` verifications — see gotchas.md), and a real corpus.
 
+### Where to start next (recommended order)
+
+**Ship leaf-only repair first.** It's the smaller half of step 7's repair bullet but it makes
+repair mode real and unblocks the benchmark headline and the validation write-up. "Any allocated
+node" repair (removing a mid-tree node cascades its downstream off too) is a later opt-in — it
+needs the arbitrary-exact-allocation eval RPC and the `DeallocNode`-cascade verification, and it
+changes nothing already built. Leaf-only avoids both: what's left after removing leaves is still
+connected, so the "spend the freed points back" phase is exactly the extend-mode add-loop that
+already works, and only one new bridge RPC is needed.
+
+1. **Bridge: `evaluate_dealloc_candidates(nodeIds)`** — for each id: `DeallocNode` → `recomputeBuild`
+   → record `{ nodeId, pointsFreed, ascFreed, stats }` → `RestoreUndoState`. Mirrors
+   `evaluate_candidate_nodes` in reverse. Verify live: on a real build, a tip node reports
+   `pointsFreed == 1`; a mid-tree node reports `> 1` (the cascade), which is exactly the signal
+   the driver filters on.
+2. **Bridge: `list_allocated_nodes`** — the currently-allocated non-class, non-ascendancy node
+   ids (+ name/type/`isAscendancy`), so the driver knows the removal candidate set. Trivial
+   filter over `spec.allocNodes`.
+3. **Driver: repair path in `optimiseTree`** (`respecBudget > 0`) —
+   - Regret set: run `evaluate_dealloc_candidates` over the allocated leaves (those with
+     `pointsFreed == 1` — call it once on all allocated nodes, keep the leaves), rank by
+     `score(baseline) − score(deallocStats)` ascending (least value lost first), take up to
+     `respecBudget`.
+   - Freed points `N` = size of that set. Base allocation for the add-back = loaded minus those
+     leaves, which is connected, so it's expressible as an `allocSet` diff and reuses
+     `evaluate_candidate_nodes_from` / the extend add-loop unchanged.
+   - Re-spend `N` points with the extend-mode greedy/beam loop, scored and constraint-gated
+     against the *post-removal* stats (not the loaded baseline).
+   - Return `{ removed[], added[], better-of(loaded, repaired) }` — always able to fall back to
+     "change nothing".
+4. **Test** — fake-bridge unit tests for the regret ranking + fallback; then live on `Ranger.xml`
+   (gutted L37 — repair should beat leave-alone) and `RampantlyBisexual.xml`.
+5. Then step 10 (CLI flags), then step 9 (real benchmark run), then step 11 (write-up).
+
+**In parallel, whenever a build is handy:** one *hand-tuned* build to pair with the naive
+`Ranger.xml`, so step 11 can check both directions (improves a bad tree / leaves a good tree
+alone). This is the only thing blocking a complete validation and it needs no code.
+
 1. ~~**Bridge: `pathLength` on `list_allocatable_nodes`.**~~ DONE.
 2. ~~**Bridge: `evaluate_candidate_nodes_from`.**~~ DONE (see note above re: the extra
    `BuildOutput()` on outer restore).
@@ -220,17 +258,17 @@ repair mode (needs a dealloc-measurement RPC + arbitrary-allocation eval RPC + t
      `cacheHitRate`. Ascendancy steps are skipped (`ascendancyPointsSpent > 0`). Spike:
      `npm run optimise-tree-spike`. Live: `RampantlyBisexual +6 pts, K=2` → Concussive Attack /
      Vile Wounds / Essence of the Mountain, TotalDPS 39525 → 43509, 98 recomputes, 24s.
-   - **Repair mode** (`respecBudget > 0`) — NOT DONE; `optimiseTree` throws. Remaining:
-     (a) `evaluate_dealloc_candidates(nodeIds)` bridge RPC (DeallocNode each → recompute →
-     `{pointsFreed, stats}` → restore); v1 regret set = only nodes returning `pointsFreed == 1`
-     (true leaves — `ImportFromNodeList` can't express a disconnected set, see gotchas.md).
-     (b) an arbitrary-exact-allocation eval RPC for the repair beam base (`loaded − chosen
-     leaves`, which *is* connected by construction), or reuse `evaluate_candidate_nodes_from`
-     with the base expressed as a full id list once a "set exact" primitive exists.
-     (c) `freeze` / `freezeAscendancy` param (open question: do it via the general freeze list,
-     not a special case).
-     (d) beam `(W, D)` loop over the freed points, per-beam-node constraint baseline, better-of
-     (seed, repaired) + diff.
+   - **Repair mode** (`respecBudget > 0`) — NOT DONE; `optimiseTree` throws. Do it in two
+     passes; the leaf-only pass is sequenced step-by-step under **Where to start next** above.
+     - **Leaf-only (do first):** `evaluate_dealloc_candidates` + `list_allocated_nodes` bridge
+       RPCs; regret set = allocated leaves (`pointsFreed == 1`) ranked by value lost; re-spend
+       the freed points with the extend add-loop against post-removal stats; return
+       `better-of(loaded, repaired)` + diff. No new eval RPC — the post-removal tree is connected.
+     - **Any-node (later opt-in):** allow non-leaf removal (cascades downstream off). Needs an
+       arbitrary-exact-allocation eval RPC and the `DeallocNode`-cascade verification. Also folds
+       in `freeze` / `freezeAscendancy` (general freeze list, not a special case) and, if the
+       beam is still short on quality, the real `(W, D)` beam with per-beam-node constraint
+       baselines instead of the plain greedy re-spend.
 8. **Corpus assembly** — SCAFFOLD DONE, corpus not. `spike/characteriseBuild.ts` (`npm run
    characterise-build`) emits a manifest row; `docs/beam-corpus.md` holds the manifest + the
    gap list. Only 4 local builds today (one at 23 spare, three at 10; **two report `TotalDPS = 0`
