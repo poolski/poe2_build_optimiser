@@ -37,14 +37,20 @@ primitive instead, and is what `evaluate_candidate_nodes` uses. Verified live: b
 `TotalDPS` and `get_tree_status` output matched byte-for-byte before and after a 10-candidate
 evaluate-and-rollback batch.
 
+**Masteries are a PoE1-only mechanic -- no node in PoE2's vendored tree data ever has
+`type == "Mastery"`.** `PassiveSpec.lua` still carries a full `masterySelections`/mastery-effect
+code path (leftover from this codebase's PoE1 ancestry, like the "Labyrinth" progress-panel text
+and the `maxWeaponSets` misnomer above), but it's dead code against real PoE2 data -- confirmed
+by grepping the entire vendored `TreeData/` for any `"Mastery"` type entry (zero matches). Don't
+design around masteries ever showing up in `list_allocatable_nodes`'s output.
+
 ## Performance reality, not just theory
 
-A real endgame tree can have 3,000+ currently-reachable, unallocated candidate nodes,
-each costing one real `AllocNode` + `BuildOutput()` recompute to evaluate -- batching many
-candidates into one `evaluate_candidate_nodes` JSON-RPC round trip (see architecture.md) cuts
-round-trip *count*, not the underlying recompute cost. Evaluating the full reachable set on a
-real build has been observed to take well over ten minutes; `recommendTree`'s `maxCandidates`
-option (and the spike script's default cap of 20) exists specifically so development/testing
-doesn't have to pay that cost on every run. A pre-filter to Notables/Keystones/Masteries only
-(skipping small stat nodes, which rarely rank highly anyway) is the likely next step before this
-is fast enough for routine use against a full tree.
+A real endgame tree can have 3,000+ currently-reachable, unallocated candidate nodes, each
+costing one real `AllocNode` + `BuildOutput()` recompute to evaluate -- batching many candidates
+into one `evaluate_candidate_nodes` JSON-RPC round trip cuts round-trip *count*, not the
+underlying recompute cost. Evaluating the full reachable set on a real build has been observed
+to take well over ten minutes. Two things now keep a normal run fast: `recommendTree` defaults to
+Notable+Keystone candidates only (skipping the thousands of small stat nodes, which rarely rank
+highly anyway -- override via `nodeTypes`/`includeAllNodeTypes`), and its `maxCandidates` option
+(plus the spike script's dev-time cap of 20) bounds cost further while iterating.
