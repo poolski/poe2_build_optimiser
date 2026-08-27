@@ -711,6 +711,11 @@ end
 -- one (a node the seed just made adjacent now reads 1). Allocates the set, rebuilds the path
 -- cache once, enumerates, rolls back. No BuildOutput -- this only touches spec/paths, so it's
 -- cheap enough to call once per beam step. params.types / params.maxPathLength filter as above.
+--
+-- Optional params.removeIds (repair mode): DeallocNode each id first, so the enumeration frontier
+-- -- and the re-added leaves themselves -- reflect "loaded minus the dropped leaves". Without this
+-- a dropped leaf still reads node.alloc and would be missing from the candidate pool the re-spend
+-- phase draws from.
 methods.list_allocatable_nodes_from = function(params)
 	if not params or not params.allocSet then
 		error("list_allocatable_nodes_from requires params.allocSet")
@@ -723,6 +728,15 @@ methods.list_allocatable_nodes_from = function(params)
 	-- AllocNode calls below don't leave a spurious rebuild pending (nor suppress a real one).
 	local buildFlagBefore = build.buildFlag
 	local undo = spec:CreateUndoState()
+	if params.removeIds then
+		for _, removeId in ipairs(params.removeIds) do
+			local removeNode = spec.nodes[removeId]
+			if not removeNode then
+				error("unknown removeIds nodeId: " .. tostring(removeId))
+			end
+			spec:DeallocNode(removeNode)
+		end
+	end
 	for _, allocId in ipairs(params.allocSet) do
 		local allocNode = spec.nodes[allocId]
 		if not allocNode then

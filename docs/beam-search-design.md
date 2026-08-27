@@ -230,26 +230,36 @@ already works, and only one new bridge RPC is needed.
    == `evaluate_dealloc_candidates(leaf)` stats; remove-then-re-add a leaf round-trips to baseline
    at net 0 points; `from` and `get_stats_from` agree with `removeIds` set; baseline restored after.
    +3 unit tests (54 total).
-3. **Driver: repair path in `optimiseTree`** (`respecBudget > 0`) —
-   - Regret set: run `evaluate_dealloc_candidates` over the allocated leaves (those with
-     `pointsFreed == 1` — call it once on all allocated nodes, keep the leaves), rank by
-     `score(baseline) − score(deallocStats)` ascending (least value lost first), take up to
-     `respecBudget`.
-   - Freed points `N` = size of that set. Base allocation for the add-back = loaded minus those
-     leaves, which is connected. Pass that leaf set as `removeIds` (step 2.5) to
-     `evaluate_candidate_nodes_from` / `get_stats_from` (via `MemoEvaluator`); the extend add-loop
-     is otherwise reused unchanged.
-   - Re-spend `N` points with the extend-mode greedy/beam loop, scored and constraint-gated
-     against the *post-removal* stats (not the loaded baseline).
-   - Return `{ removed[], added[], better-of(loaded, repaired) }` — always able to fall back to
-     "change nothing".
-4. **Test** — fake-bridge unit tests for the regret ranking + fallback; then live on `Ranger.xml`
-   (gutted L37 — repair should beat leave-alone) and `RampantlyBisexual.xml`.
-5. Then step 10 (CLI flags), then step 9 (real benchmark run), then step 11 (write-up).
+3. ~~**Driver: repair path in `optimiseTree`** (`respecBudget > 0`)~~ DONE — the greedy walk is
+   factored into `greedyAddLoop`; extend and repair both call it.
+   - Regret set: `list_allocated_nodes` → regular ids → one `evaluate_dealloc_candidates` call →
+     keep `pointsFreed == 1 && ascendancyPointsFreed == 0` leaves. Value lost =
+     `baselineObjective − score(deallocStats)` (a leaf whose removal makes the build unscorable is
+     `+Infinity` → never dropped). Sort ascending (least value lost, negative = removal *helps*),
+     id tie-break, take up to `respecBudget`.
+   - Post-removal baseline via `memo.statsFrom([], droppedIds)`. Re-spend with `greedyAddLoop`,
+     `removeIds = droppedIds` threaded through every bridge call, `headroom = dropped.length` (+ any
+     explicit `pointBudget` slack), `startObjective = postRemovalObjective`. Constraints during the
+     walk are gated against the *running* stats (`constraintReference: "walk-state"`), then the
+     whole repaired plan is re-checked against the loaded baseline.
+   - Returns `{ mode: "repair", removed[], steps[], addedNodeIds[], pointsFreed, pointsRespent,
+     final: { objective, pointsSpent (net), stats }, stoppedBecause }`. Only recommends the repair
+     if `finalObjective > baselineObjective` and ≥1 step landed; else `stoppedBecause:
+     "repair-not-worthwhile"` (or `"no-leaves"`) with `removed` still surfaced informationally.
+   - Live (`optimise-tree-spike`, `respecBudget`): `RampantlyBisexual` / `TotalDPS` / respec 3 →
+     freed 3 zero-value leaves (Escape Velocity, The Wild Cat, Disorientation), re-spent on Stand
+     and Deliver (3pt), DPS 39525 → 44220 (+11.9%) at **net 0 points**, 175 recomputes, 41s.
+     `MA-FlickerStrike` / `TotalEHP` / respec 5 → freed 5, re-spent 4, EHP 16629 → 18787 (+13%),
+     net −1 pt.
+4. ~~**Test**~~ DONE — 5 fake-bridge repair tests (happy-path gain, fallback-to-no-change,
+   negative-value-lost ordering, unscorable-leaf guard, no-leaves), 58 total. Live runs above.
+5. **Next:** step 10 (CLI flags), then step 9 (real benchmark run), then step 11 (write-up).
 
-**In parallel, whenever a build is handy:** one *hand-tuned* build to pair with the naive
-`Ranger.xml`, so step 11 can check both directions (improves a bad tree / leaves a good tree
-alone). This is the only thing blocking a complete validation and it needs no code.
+**Corpus (parallel, needs no code):** the validation pair is now both Monk —
+`Martial Artist - Shattering Palm + Flicker Strike` (hand-tuned) vs `MA-FlickerStrike` (naive,
+user-gutted, 31 spare). Both currently compute 0 headless DPS (stale `mainSocketGroup`, see
+`docs/beam-corpus.md`); they need the main skill re-selected + re-saved in PoB before step 11 can
+run the "repair ≈ no change on a tuned build" regression on `TotalDPS` (EHP objective works today).
 
 1. ~~**Bridge: `pathLength` on `list_allocatable_nodes`.**~~ DONE.
 2. ~~**Bridge: `evaluate_candidate_nodes_from`.**~~ DONE (see note above re: the extra
@@ -275,12 +285,12 @@ alone). This is the only thing blocking a complete validation and it needs no co
      `cacheHitRate`. Ascendancy steps are skipped (`ascendancyPointsSpent > 0`). Spike:
      `npm run optimise-tree-spike`. Live: `RampantlyBisexual +6 pts, K=2` → Concussive Attack /
      Vile Wounds / Essence of the Mountain, TotalDPS 39525 → 43509, 98 recomputes, 24s.
-   - **Repair mode** (`respecBudget > 0`) — NOT DONE; `optimiseTree` throws. Do it in two
-     passes; the leaf-only pass is sequenced step-by-step under **Where to start next** above.
-     - **Leaf-only (do first):** `evaluate_dealloc_candidates` + `list_allocated_nodes` bridge
-       RPCs; regret set = allocated leaves (`pointsFreed == 1`) ranked by value lost; re-spend
-       the freed points with the extend add-loop against post-removal stats; return
-       `better-of(loaded, repaired)` + diff. No new eval RPC — the post-removal tree is connected.
+   - **Repair mode** (`respecBudget > 0`) —
+     - ~~**Leaf-only**~~ DONE — `evaluate_dealloc_candidates` + `list_allocated_nodes` +
+       `removeIds` prologue; regret set = allocated leaves (`pointsFreed == 1`) ranked by value
+       lost; re-spend the freed points with `greedyAddLoop` (`removeIds` = dropped leaves) against
+       post-removal stats; return `better-of(loaded, repaired)` + diff. Sequenced step-by-step
+       (steps 1–4, all DONE) under **Where to start next** above; live numbers there.
      - **Any-node (later opt-in):** allow non-leaf removal (cascades downstream off). Needs an
        arbitrary-exact-allocation eval RPC and the `DeallocNode`-cascade verification. Also folds
        in `freeze` / `freezeAscendancy` (general freeze list, not a special case) and, if the
