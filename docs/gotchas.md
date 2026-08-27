@@ -44,6 +44,17 @@ and the `maxWeaponSets` misnomer above), but it's dead code against real PoE2 da
 by grepping the entire vendored `TreeData/` for any `"Mastery"` type entry (zero matches). Don't
 design around masteries ever showing up in `list_allocatable_nodes`'s output.
 
+**A keystone can top the delta-per-point ranking purely on the damage notables `AllocNode`
+pathed through to reach it -- its own effect never enters the score.** Observed live on
+`RampantlyBisexual.xml`: Iron Reflexes, Giant's Blood, and Blood Magic all reported the exact
+same `delta: 1260.51`, because `AllocNode` auto-paths to that whole keystone cluster through one
+shared corridor of damage notables and the bundle's full DPS delta is attributed to each keystone
+at the end of it. This is delta-per-point + path-node cost accounting behaving as designed (both
+already documented), but the practical upshot is worth stating outright: the ranking cannot see
+that Iron Reflexes zeroes your evasion, so the `constraints`/`preserveMetrics` filter is not
+optional polish -- it is the only thing standing between the recommender and a confident "allocate
+Iron Reflexes" on an evasion-stacking build. Full repro in `constraint-rejection-repro.md`.
+
 ## Performance reality, not just theory
 
 A real endgame tree can have 3,000+ currently-reachable, unallocated candidate nodes, each
