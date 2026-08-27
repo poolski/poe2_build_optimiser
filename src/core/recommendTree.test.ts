@@ -181,6 +181,111 @@ describe("recommendTree", () => {
 		expect(evaluatedIds).toEqual([2, 3]);
 	});
 
+	it("drops a candidate that pushes a constrained metric below its floor", async () => {
+		const nodes = [node(1, "Safe DPS"), node(2, "Res-Wrecking DPS")];
+		const bridge = new FakeBridge({ TotalDPS: 1000, FireResist: 76 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) =>
+				id === 1
+					? { nodeId: 1, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 1100, FireResist: 76 } }
+					: { nodeId: 2, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 5000, FireResist: 60 } },
+			),
+		}));
+
+		const result = await recommendTree(bridge, { constraints: { FireResist: 75 } });
+
+		expect(result.map((r) => r.id)).toEqual([1]);
+	});
+
+	it("keeps a candidate that holds a constrained metric at or above its floor", async () => {
+		const nodes = [node(1, "Overcapped DPS")];
+		const bridge = new FakeBridge({ TotalDPS: 1000, FireResist: 90 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) => ({ nodeId: id, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 2000, FireResist: 78 } })),
+		}));
+
+		const result = await recommendTree(bridge, { constraints: { FireResist: 75 } });
+
+		expect(result.map((r) => r.id)).toEqual([1]);
+		expect(result[0].constraintViolation).toBeUndefined();
+	});
+
+	it("with an already-sub-floor metric, drops only candidates that worsen it", async () => {
+		const nodes = [node(1, "Nudges Res Up"), node(2, "Neutral"), node(3, "Drops Res Further")];
+		const bridge = new FakeBridge({ TotalDPS: 1000, FireResist: 40 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) => {
+				if (id === 1) return { nodeId: 1, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 1100, FireResist: 45 } };
+				if (id === 2) return { nodeId: 2, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 1100, FireResist: 40 } };
+				return { nodeId: 3, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 9000, FireResist: 30 } };
+			}),
+		}));
+
+		const result = await recommendTree(bridge, { constraints: { FireResist: 75 } });
+
+		expect(result.map((r) => r.id).sort()).toEqual([1, 2]);
+	});
+
+	it("preserveMetrics derives a floor from the baseline value (no regression allowed)", async () => {
+		const nodes = [node(1, "EHP-Neutral"), node(2, "EHP-Negative")];
+		const bridge = new FakeBridge({ TotalDPS: 1000, TotalEHP: 500000 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) =>
+				id === 1
+					? { nodeId: 1, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 1100, TotalEHP: 500000 } }
+					: { nodeId: 2, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 9000, TotalEHP: 480000 } },
+			),
+		}));
+
+		const result = await recommendTree(bridge, { preserveMetrics: ["TotalEHP"] });
+
+		expect(result.map((r) => r.id)).toEqual([1]);
+	});
+
+	it("lets an explicit constraints floor override the preserveMetrics-derived one", async () => {
+		const nodes = [node(1, "Small EHP Dip")];
+		const bridge = new FakeBridge({ TotalDPS: 1000, TotalEHP: 500000 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) => ({ nodeId: id, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 5000, TotalEHP: 490000 } })),
+		}));
+
+		// preserveMetrics alone would drop this (490k < 500k baseline); the explicit lower floor rescues it.
+		const result = await recommendTree(bridge, {
+			preserveMetrics: ["TotalEHP"],
+			constraints: { TotalEHP: 450000 },
+		});
+
+		expect(result.map((r) => r.id)).toEqual([1]);
+	});
+
+	it("skips a constraint when the metric is absent from the measured stats (can't judge, don't drop)", async () => {
+		const nodes = [node(1, "No Res In Output")];
+		const bridge = new FakeBridge({ TotalDPS: 1000 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) => ({ nodeId: id, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 2000 } })),
+		}));
+
+		const result = await recommendTree(bridge, { constraints: { FireResist: 75 } });
+
+		expect(result.map((r) => r.id)).toEqual([1]);
+	});
+
+	it("keeps violating candidates, tagged, when keepViolating is set -- ranking still by delta/pt", async () => {
+		const nodes = [node(1, "Safe"), node(2, "Violating But Huge")];
+		const bridge = new FakeBridge({ TotalDPS: 1000, FireResist: 80 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) =>
+				id === 1
+					? { nodeId: 1, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 1100, FireResist: 80 } }
+					: { nodeId: 2, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 5000, FireResist: 50 } },
+			),
+		}));
+
+		const result = await recommendTree(bridge, { constraints: { FireResist: 75 }, keepViolating: true });
+
+		expect(result.map((r) => r.id)).toEqual([2, 1]);
+		expect(result.find((r) => r.id === 2)!.constraintViolation).toEqual({
+			metric: "FireResist",
+			floor: 75,
+			baseline: 80,
+			candidate: 50,
+		});
+		expect(result.find((r) => r.id === 1)!.constraintViolation).toBeUndefined();
+	});
+
 	it("tags damageTypeMatch on results, without changing the delta-per-point ranking", async () => {
 		const nodes = [
 			node(1, "Lightning Notable", "Notable", ["increased Lightning Damage"]),

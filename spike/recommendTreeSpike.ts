@@ -1,11 +1,12 @@
 // Validates recommendTree.ts end-to-end against a real build XML.
-// Usage: npm run recommend-tree-spike -- "D:\My Documents\Path of Building (PoE2)\Builds\Blood Mage.xml" [maxCandidates] [damageType]
+// Usage: npm run recommend-tree-spike -- "D:\My Documents\Path of Building (PoE2)\Builds\Blood Mage.xml" [maxCandidates] [damageType] [minResist]
 //
 // maxCandidates defaults to 20 here (not in recommendTree.ts itself) -- even after the
 // Notable/Keystone-only default filter, a real tree can have several hundred reachable
 // candidates of those types alone, each costing a real recompute. Pass 0 to evaluate every
 // reachable Notable/Keystone once the plumbing itself is trusted. damageType (e.g. "Lightning")
-// is optional -- see recommendTree.ts's damageType option.
+// is optional -- see recommendTree.ts's damageType option. minResist (e.g. 75) applies a floor
+// on Fire/Cold/Lightning resist so candidates that would drop a capped res below it are dropped.
 
 import { PobBridge } from "../src/core/bridge";
 import { loadBuildFromFile } from "../src/core/loadBuild";
@@ -21,12 +22,18 @@ async function main() {
 	const maxCandidatesArg = process.argv[3] ? Number(process.argv[3]) : DEV_MAX_CANDIDATES;
 	const maxCandidates = maxCandidatesArg > 0 ? maxCandidatesArg : undefined;
 	const damageType = process.argv[4];
+	const minResist = process.argv[5] ? Number(process.argv[5]) : undefined;
+	const constraints =
+		minResist !== undefined ? { FireResist: minResist, ColdResist: minResist, LightningResist: minResist } : undefined;
 
 	const bridge = new PobBridge();
 	try {
 		await loadBuildFromFile(bridge, buildXmlPath);
-		console.log(`Evaluating ${maxCandidates ?? "all"} candidate node(s)${damageType ? ` (prioritizing ${damageType})` : ""}...`);
-		const recommendations = await recommendTree(bridge, { top: 10, maxCandidates, damageType });
+		console.log(
+			`Evaluating ${maxCandidates ?? "all"} candidate node(s)${damageType ? ` (prioritizing ${damageType})` : ""}` +
+				`${constraints ? ` (min ele resist ${minResist})` : ""}...`,
+		);
+		const recommendations = await recommendTree(bridge, { top: 10, maxCandidates, damageType, constraints });
 
 		console.log(`\n${recommendations.length} recommendations (ranked by TotalDPS per point):`);
 		for (const rec of recommendations) {

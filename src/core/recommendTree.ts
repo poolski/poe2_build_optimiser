@@ -32,6 +32,16 @@ interface CandidateResult {
 	stats: StatSet;
 }
 
+/** A constrained metric this node would push the wrong way -- see RecommendTreeOptions.constraints.
+ * `baseline`/`candidate` are the real measured mainOutput values before and after allocating the
+ * node (plus any path nodes it drags in); `floor` is the threshold that was violated. */
+export interface ConstraintViolation {
+	metric: string;
+	floor: number;
+	baseline: number;
+	candidate: number;
+}
+
 export interface RecommendedNode {
 	id: number;
 	name: string;
@@ -47,6 +57,49 @@ export interface RecommendedNode {
 	 * real measured deltaPerPoint, never by this match, since a generic "increased damage"
 	 * node can genuinely outscore an on-type one once measured. */
 	damageTypeMatch?: boolean;
+	/** Set only when the node violates a constraint AND options.dropViolating was false (a
+	 * violating node is dropped from the results entirely by default). Lets a caller surface
+	 * "this would be a great DPS node but it drops your fire res below cap" instead of a
+	 * silently shorter list. */
+	constraintViolation?: ConstraintViolation;
+}
+
+/** null when both endpoints of a metric aren't finite numbers -- can't judge, so don't. */
+function finiteNumber(value: unknown): number | null {
+	return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** Resolves options.constraints + options.preserveMetrics into one { metric: floor } map. */
+function resolveFloors(baseline: StatSet, options: RecommendTreeOptions): Record<string, number> {
+	const floors: Record<string, number> = {};
+	for (const metric of options.preserveMetrics ?? []) {
+		const base = finiteNumber(baseline[metric]);
+		if (base !== null) floors[metric] = base;
+	}
+	// Explicit floors win over the preserveMetrics-derived ones.
+	Object.assign(floors, options.constraints ?? {});
+	return floors;
+}
+
+/** The first floor this candidate violates, or undefined. A candidate violates a floor when it
+ * either breaks a cap that currently holds (baseline >= floor, candidate < floor) or worsens a
+ * deficit that already exists (baseline < floor, candidate < baseline). */
+function firstConstraintViolation(
+	floors: Record<string, number>,
+	baseline: StatSet,
+	candidateStats: StatSet,
+): ConstraintViolation | undefined {
+	for (const [metric, floor] of Object.entries(floors)) {
+		const base = finiteNumber(baseline[metric]);
+		const cand = finiteNumber(candidateStats[metric]);
+		if (base === null || cand === null) continue;
+		const brokeCap = base >= floor && cand < floor;
+		const worsenedDeficit = base < floor && cand < base;
+		if (brokeCap || worsenedDeficit) {
+			return { metric, floor, baseline: base, candidate: cand };
+		}
+	}
+	return undefined;
 }
 
 export interface RecommendTreeOptions {
@@ -74,6 +127,23 @@ export interface RecommendTreeOptions {
 	 * change the final ranking itself -- that's still real measured deltaPerPoint, never a
 	 * text-match guess (see damageTypeMatch on the result). */
 	damageType?: string;
+	/** Absolute floors on mainOutput metrics, e.g. { FireResist: 75, ColdResist: 75,
+	 * LightningResist: 75, TotalEHP: 500000 }. A candidate is rejected when, for any listed
+	 * metric, it either takes that metric from at-or-above its floor (at baseline) to below it,
+	 * or drags a metric that is already below its floor even lower. A metric absent (or
+	 * non-finite) from either the baseline or a candidate's measured stats is skipped for that
+	 * comparison rather than treated as zero -- constraints only bite on numbers actually
+	 * reported by both. Ranking of the surviving candidates is otherwise untouched (still real
+	 * measured deltaPerPoint). */
+	constraints?: Record<string, number>;
+	/** Shorthand: each listed metric gets an implicit constraints floor equal to the current
+	 * build's own baseline value for it, i.e. "recommend nothing that regresses this stat at
+	 * all". An explicit `constraints` entry for the same metric wins. Metrics missing from the
+	 * baseline stats are ignored. */
+	preserveMetrics?: string[];
+	/** When true, a constraint-violating candidate is kept in the ranked results with its
+	 * `constraintViolation` field set, instead of being dropped. Default false (drop them). */
+	keepViolating?: boolean;
 }
 
 const DEFAULT_TARGET_METRIC = "TotalDPS";
@@ -119,6 +189,10 @@ export async function recommendTree(
 	const baseline = await bridge.call<StatSet>("get_stats");
 	const baselineValue = asNumber(baseline[targetMetric]);
 
+	const floors = resolveFloors(baseline, options);
+	const hasConstraints = Object.keys(floors).length > 0;
+	const keepViolating = options.keepViolating ?? false;
+
 	const status = await bridge.call<TreeStatus>("get_tree_status");
 	const pointsAvailable = status.pointsMax - status.pointsUsed;
 	const ascendancyPointsAvailable = status.ascendancyPointsMax - status.ascendancyPointsUsed;
@@ -158,6 +232,11 @@ export async function recommendTree(
 			const node = byId.get(result.nodeId);
 			if (!node) continue;
 
+			const violation = hasConstraints
+				? firstConstraintViolation(floors, baseline, result.stats)
+				: undefined;
+			if (violation && !keepViolating) continue;
+
 			const delta = asNumber(result.stats[targetMetric]) - baselineValue;
 			const totalPointsSpent = result.pointsSpent + result.ascendancyPointsSpent;
 			recommendations.push({
@@ -171,6 +250,7 @@ export async function recommendTree(
 				delta,
 				deltaPerPoint: delta / totalPointsSpent,
 				damageTypeMatch: damageKeywords ? matchesKeywords(node, damageKeywords) : undefined,
+				constraintViolation: violation,
 			});
 		}
 	}
