@@ -127,10 +127,16 @@ comparison is meaningless.
 - **`BuildOutput()` call count is the currency.** `get_metrics` / `reset_metrics` on the bridge;
   a `recomputeBuild()` wrapper counts every call site. Exact, deterministic, machine-independent
   — unlike wall-clock.
-- **Wall-clock secondary**, median of 3–5 runs, machine noted.
-- **Layer-5 cache hit rate** — `MemoEvaluator` tracks `hits` / `misses` / `hitRate`. Extend
-  mode's linear walk never revisits a key (≈0); the cache earns its place once a repair beam
-  reconverges.
+- **Per-recompute latency.** `get_metrics.buildOutputSeconds` (`os.clock()` around each
+  `recomputeBuild`) → `sim s` / `ms/BO` columns in the bench. The definitive run measured
+  **~250–310 ms per recompute** (median), so `BuildOutput` count × ~0.28 s is a good wall estimate
+  once search/transport overhead is stripped. Strong L100 builds' `repair-r6` cell hits
+  1900–2700 recomputes → ~15–37 min *each*.
+- **Wall-clock secondary** — now overlapped across builds by `--concurrency=N` (see §9). The
+  8.3 core-hours of the definitive run finished in 1h20m at N=8.
+- **Layer-5 cache hit rate** — `MemoEvaluator` tracks `hits` / `misses` / `hitRate`. Confirmed
+  **0.00 on every run** in the definitive benchmark: the greedy walk never revisits an allocSet
+  key. The cache only earns its place once a real `(W, D)` beam reconverges (deferred).
 
 ### Apples-to-apples checklist
 
@@ -149,6 +155,15 @@ endgame). The extend-mode / low-budget cell is the common real user situation �
 levelled character asking "where next" — and must not regress even if repair-mode numbers look
 better in aggregate.
 
+**CORE vs `--full` (2026-08-28).** The full 25-build corpus × 3 approaches takes ~1h20m at
+`--concurrency=8` — too slow for a routine regression check, and a single build's 3 approaches run
+serially on its one bridge so the wall floor is the most expensive build (`HuntressTank` alone is
+~60 min). `benchTreeApproaches.ts` therefore defaults to `CORE_CORPUS` — 9 builds: the validation
+pair, 3 of the 4 held-out, an armour build (`R_Thor`), and 3 gutted (both recovery-fraction
+bases). Inferred CORE wall ≈ 38 min at N=8. `--full` appends `EXTENDED_CORPUS` (16, incl.
+`HuntressTank` and the 2 0-DPS-headless builds) and is what a re-run of the definitive step-9 /
+step-11 numbers should use. Per-build costs and the trim rationale live in `docs/beam-corpus.md`.
+
 State of the corpus is tracked in Implementation status §8 and `docs/beam-corpus.md`.
 
 ### Ablations
@@ -159,20 +174,25 @@ drops quality is too aggressive and gets retuned.
 
 ## Implementation status
 
-As of 2026-08-28 — all committed (HEAD `d48b8bd`), 71 unit tests green. Live-verification runs
+As of 2026-08-28 — all committed (HEAD `ba0df4a`), 71 unit tests green. Live-verification runs
 were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
 
-- **Done:** steps 1–7 (extend mode + leaf-only repair), step 10 (CLI), and the step 9 benchmark
-  *harness* + committed regression fixtures (`docs/beam-bench-totaldps.md`,
-  `docs/beam-bench-dps-ehp-0-5.md`).
+- **Done:** steps 1–7 (extend mode + leaf-only repair), step 10 (CLI), the step 9 benchmark
+  harness (now parallel — `--concurrency=N`, one shared bridge per build; per-recompute timing via
+  `get_metrics.buildOutputSeconds`), and **the definitive step 9 run** — full 25-build corpus ×
+  {extend+8, repair-r3, repair-r6} under `dps-ehp:0.5` + a 3-elem-resist floor, 1h20m wall at
+  `--concurrency=8`, committed as `docs/beam-bench-dps-ehp-0-5.md` (`ba0df4a`).
 - **Step 8 (corpus) — closed 2026-08-28:** 6 local + 14 poe.ninja builds, held-out subset marked,
   synthetic-gutting tool (`npm run gut-build`) for spare-point builds with a ground-truth ceiling.
   Blocker (a) — poe.ninja over-allocation — resolved: `get_tree_status` now applies the
   weapon-set point correction PoB's own display uses (see §8 and the Open-questions note below).
   Blocker (b) — no 30–60-spare mid build — is not fully closable from the ladder (L80+ only); the
-  gutting tool covers it and the corpus proceeds with that.
-- **Remaining:** the *definitive* step 9 run on the full corpus (the committed fixtures are a
-  harness regression check, not a result), then step 11 (validation write-up).
+  gutting tool covers it and the corpus proceeds with that. **Corpus split into CORE (9, the
+  benchmark default) + EXTENDED (16, `--full`)** after the definitive run showed the full set is
+  too slow for a routine check (`ba0df4a`; see §8).
+- **Remaining:** step 11 (validation write-up). The `dps-ehp:0.5` fixture is the quantitative
+  backing; the open question is whether the blend at +8 headroom separates tuned from naive well
+  enough (it does not, quite — see §11).
 - **Deferred past v1:** pruning layers 3 / 4 / 6; any-node (cascading) repair; the real `(W, D)`
   beam (plain greedy re-spend has been enough so far).
 
@@ -260,21 +280,31 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
    - **Problem (b) — no 30–60-spare mid build.** The ninja ladder is L80+ only; gutting
      (`npm run gut-build`) fills the gap, though every gutted instance still traces to a L80+ tree.
      Accepted — the corpus proceeds on that basis.
-9. **Benchmark harness** — HARNESS DONE + first fixtures committed (`4fa6df6`, `889e2c2`),
-   corpus-limited. `spike/benchTreeApproaches.ts`
-   (`npm run bench-tree-approaches -- [objective] [extraPoints] [--no-constraints]`) runs the
-   corpus × {`extend+N` fresh points, `repair-r3`, `repair-r6`} → per-build table (lift %, net
-   pts, respec, `res ok` feasibility recheck, BuildOutputs, cache-hit %, wall s, stop reason) +
-   a per-build summary with a repair-monotonicity flag + a cost-by-approach median. Runs under a
-   preserve-the-3-elemental-resists floor by default. Committed fixtures:
-   `docs/beam-bench-totaldps.md` (raw `TotalDPS`, +8 pts) and `docs/beam-bench-dps-ehp-0-5.md`
-   (`dps-ehp:0.5`, +8 pts) — both over the 5–6 usable local builds. The `TotalDPS` run surfaced
-   the non-monotonic-repair bug (fixed, step 7) and that a pure-DPS objective lets repair
-   cannibalise a tuned build's defensive leaves (→ step 11 must use the blend). **Still
-   corpus-limited** — no held-out subset, no ninja/gutted builds in the run yet; treat the
-   fixtures as a harness regression check, not a result. The definitive run over the full step 8
-   corpus (with the "fraction of lost objective recovered" score on gutted builds) is what
-   remains.
+   - **CORE / EXTENDED split (`ba0df4a`).** `benchTreeApproaches.ts` defaults to `CORE_CORPUS`
+     (9 builds); `--full` adds `EXTENDED_CORPUS` (16). See §Corpus above and `docs/beam-corpus.md`
+     for the per-build cost table. HuntressTank moved to EXTENDED (its `repair-r6` alone is ~37 min);
+     CORE keeps 3 of the 4 held-out builds.
+9. **Benchmark harness** — DONE, incl. the definitive run.
+   `npm run bench-tree-approaches -- [objective] [extraPoints] [--no-constraints] [--concurrency=N]
+   [--full] [--fresh-bridge] [--only=substr]` runs corpus × {`extend+N` fresh points, `repair-r3`,
+   `repair-r6`} → per-build table (lift %, net pts, respec, `res ok` feasibility recheck,
+   BuildOutputs, `sim s`, `ms/BO`, cache-hit %, wall s, stop reason) + a per-build summary with a
+   repair-monotonicity flag + a cost-by-approach median. Preserve-the-3-elemental-resists floor by
+   default.
+   - **Parallel (`9d50dad`).** `--concurrency=N` (default 4 / `$BENCH_CONCURRENCY`): a fixed-size
+     worker pool over builds, one shared LuaJIT bridge per build (all 3 approaches, `load_build_xml`
+     once). Deterministic regardless of N — rows carry a hidden `(ci, ai)` key and are sorted before
+     every render. `--fresh-bridge` = the old spawn-per-approach path.
+   - **Definitive run (`ba0df4a`, `docs/beam-bench-dps-ehp-0-5.md`).** Full 25-build corpus,
+     `dps-ehp:0.5`, +8, resist floor, `--concurrency=8`, 1h20m, 69 rows (`Blood Mage` +
+     `BlandisThree` skip under the blend). Findings: **repair monotonic (r6 ≥ r3) on all 23 usable
+     builds** (the k-sweep fix holds); **`res ok` = y everywhere**; gutted recovery behaves as
+     designed (`extend` spends 25 pts back → 100–158%; net-0 `repair` → 19–73%); `R_Thor` is a
+     genuine repair win (r3 +3.65% / r6 +4.59% both beat `extend` +2.47%); layer-5 cache hit rate
+     0.00 throughout; ~250–310 ms/recompute. The earlier local-only fixtures
+     (`docs/beam-bench-totaldps.md`, and the pre-`ba0df4a` `dps-ehp-0-5.md`) stay as harness
+     regression checks. The committed `dps-ehp-0-5.md` is the 25-build run; running the default now
+     regenerates it as the 9-build CORE set.
 10. **CLI + spike wiring** — DONE. `src/optimiseCli.ts` (`npm run optimise-tree`), parsing +
     output only; core returns data. Flags: `--mode extend|repair`, `--respec-budget N`
     (`--repair-nodes N` alias; `>0` implies repair), `--point-budget N` / `--extra-points N`
@@ -284,19 +314,21 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
     `--constraint Metric=N` / `--preserve A,B`. Shared helpers in `src/cliShared.ts`; `parseArgs`
     unit-tested (12 tests). `--beam-width` / `--beam-depth` / `--target-level` /
     `--freeze-ascendancy` omitted — no backing feature yet.
-11. **Validation** — TODO. Show repair improves the naive build of the validation pair
-    (`MA-FlickerStrike`) and returns ≈no change on the hand-tuned one
+11. **Validation** — TODO (only remaining step). Show repair improves the naive build of the
+    validation pair (`MA-FlickerStrike`) and returns ≈no change on the hand-tuned one
     (`Martial Artist - Shattering Palm + Flicker Strike`). **Must use a blended objective**
     (`dps-ehp:0.5`) or a `preserveMetrics` set covering the defences the player hand-picked —
     under raw `TotalDPS` + resist-only floors the first bench run had repair finding +23% on the
     *tuned* build by respeccing its evasion/ES leaves, so "≈ no change" can't hold there. Write up
     as `docs/beam-search-repro.md`, mirroring `docs/constraint-rejection-repro.md` — the committed
-    `docs/beam-bench-dps-ehp-0-5.md` fixture is the quantitative backing. **Caveat from that
-    fixture:** under `dps-ehp:0.5` at +8 headroom the tuned `MA-Shattering` moves +0.57% / +1.33%
-    (repair-r3 / r6) and the naive `MA-FlickerStrike` +0.63% / +1.30% — the blend stops repair
-    cannibalising the tuned defences, but the naive-vs-tuned separation is now thin. Step 11 may
-    need wider headroom or a `preserveMetrics` set rather than the scalar blend to make the
-    contrast legible.
+    `docs/beam-bench-dps-ehp-0-5.md` fixture is the quantitative backing.
+    **Caveat, now confirmed on the full 25-build run (`ba0df4a`):** under `dps-ehp:0.5` at +8
+    headroom the tuned `MA-Shattering` moves `extend +1.82% / r3 +0.57% / r6 +1.33%` and the naive
+    `MA-FlickerStrike` `extend +1.75% / r3 +0.63% / r6 +1.30%` — the blend stops repair
+    cannibalising the tuned defences, but the tuned-vs-naive separation is essentially nil at this
+    headroom. Step 11 needs wider headroom, or a `preserveMetrics` set instead of the scalar blend,
+    to make the contrast legible — the harness supports both (`extraPoints` positional; `--preserve`
+    is on `optimiseTree` but not yet wired into `benchTreeApproaches.ts`).
 
 ## Open questions to resolve early
 

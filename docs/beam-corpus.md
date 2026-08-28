@@ -104,6 +104,43 @@ the `− min(ws1, ws2)` correction — i.e. what this column showed before 2026-
   `SnusInMyBlood` — one strong evasion, one strong tank, one mid ES, one weak. Never tune
   `K`/`W`/`D` against these.
 
+## Benchmark split: CORE (default) vs `--full` (2026-08-28, `ba0df4a`)
+
+The first definitive run — full 25-build corpus × {`extend+8`, `repair-r3`, `repair-r6`} under
+`dps-ehp:0.5` + a 3-elem-resist floor — took **1h20m at `--concurrency=8`** (~8.3 core-hours).
+A build's 3 approaches run serially on its one bridge, so the wall floor is the single most
+expensive build. Per-build cost is deterministic, so `benchTreeApproaches.ts` now splits:
+
+**`CORE_CORPUS` (9, the benchmark default).** Validation pair + 3 of the 4 held-out + one armour
+build + 3 gutted. Spans evasion / ES / armour / life and 8–25 spare points, keeps both
+recovery-fraction bases, and covers every build the step-11 write-up needs. Numbers below are the
+measured wall (sum of the 3 approaches) from the definitive run.
+
+| build | role | wall (3 approaches) |
+|---|---|--:|
+| MA-FlickerStrike | validation — naive | ~953 s |
+| MA-Shattering | validation — hand-tuned | ~696 s |
+| TechnoIceShot `*` | held-out, evasion (strong) | ~1689 s |
+| dosesondoses `*` | held-out, ES (mid) | ~698 s |
+| SnusInMyBlood `*` | held-out, evasion / bad res (weak) | ~777 s |
+| R_Thor | armour; the one build where repair beats extend | ~666 s |
+| TheTradie-gut8-low | gutted, `gap ≈ 0` "relocate wasted points" case | ~553 s |
+| TheTradie-gut25-high | gutted ceiling, evasion base | ~757 s |
+| Venereable-gut25-high | gutted ceiling, life base (L100) | ~2249 s ← wall pole |
+
+Inferred CORE wall **≈ 38 min at `--concurrency=8`** (total ≈ 2.5 core-hours, but `Venereable-gut25-high`
+at ~37 min sets the floor). Further levers if still too slow: drop `Venereable-gut25` → ~30 min;
+drop `repair-r6` → ~15 min.
+
+**`EXTENDED_CORPUS` (16), added by `--full`.** Everything else, including `HuntressTank` (its
+`repair-r6` alone is ~37 min, task total ~60 min — the reason the full run barely beats the
+untrimmed time) and the two 0-DPS-headless builds (`Blood Mage`, `BlandisThree`) that skip under
+any DPS/blend objective anyway. `--full` is what a re-run of the definitive step-9 / step-11
+numbers should use; the 4th held-out build (`HuntressTank`) only comes back with it.
+
+The committed `docs/beam-bench-dps-ehp-0-5.md` fixture is the 25-build `--full` run. Running the
+bench with defaults regenerates it as the 9-build CORE set (auto-generated, git keeps both).
+
 ## Synthetic gutting (`spike/gutBuild.ts`, `npm run gut-build`)
 
 Takes a strong source XML and deallocates N passive-tree leaves, producing a build with real
@@ -201,6 +238,7 @@ a `dps-ehp` blend or a `--preserve Evasion` floor would reject it. Good constrai
   (L37)`. `MA-FlickerStrike` has 31 spare so it can exercise a real re-spend; the hand-tuned Monk
   has 10. Both Monk builds need a working DPS config (see above) before the "repair returns ≈no
   change on a tuned build" regression can run on `TotalDPS`.
-- **Held-out subset** now marked in the poe.ninja table: `TechnoIceShot`, `HuntressTank`,
+- **Held-out subset** marked in the poe.ninja table: `TechnoIceShot`, `HuntressTank`,
   `dosesondoses`, `SnusInMyBlood`. Never look at them while tuning K/W/D. The local builds are all
-  in-play (they predate this split).
+  in-play (they predate this split). The benchmark's default `CORE_CORPUS` carries 3 of the 4
+  (`HuntressTank` is in `--full`-only `EXTENDED_CORPUS`) — see §Benchmark split.
