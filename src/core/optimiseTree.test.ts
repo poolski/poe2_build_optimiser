@@ -458,3 +458,57 @@ describe("optimiseTree (repair mode)", () => {
 		expect(result.final.objective).toBeCloseTo(1000 - 10 + 60); // 1050
 	});
 });
+
+describe("optimiseTree (beam width)", () => {
+	// Node 1 is +100 for 1 pt (delta-per-point 100). Node 2 is +190 for 2 pts (delta-per-point 95).
+	// Nodes 3/4 are +10 fillers, 1 pt each. Budget = 2 points. A width-1 greedy walk takes node 1
+	// (best dpp), then can only afford a +10 filler -> 1110. A width-2 beam keeps the 2-point node 2
+	// alive and returns it outright -> 1190.
+	const contrib: Record<number, number> = { 1: 100, 2: 190, 3: 10, 4: 10 };
+	const makeBeamBridge = () =>
+		new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }],
+			(allocSet, id) => ({
+				pointsSpent: id === 2 ? 2 : 1,
+				stats: { TotalDPS: 1000 + [...allocSet, id].reduce((s, n) => s + (contrib[n] ?? 0), 0) },
+			}),
+		);
+
+	it("width 1 reproduces the greedy walk (best delta-per-point, then a filler)", async () => {
+		const result = await optimiseTree(makeBeamBridge(), { pointBudget: STATUS.pointsUsed + 2 });
+		expect(result.steps.map((s) => s.id)).toEqual([1, 3]);
+		expect(result.final.objective).toBeCloseTo(1110);
+		expect(result.beamWidth).toBeUndefined(); // only echoed when > 1
+	});
+
+	it("a wider beam keeps a 2-point move alive that the greedy walk could not afford", async () => {
+		const result = await optimiseTree(makeBeamBridge(), { pointBudget: STATUS.pointsUsed + 2, beamWidth: 2 });
+		expect(result.steps.map((s) => s.id)).toEqual([2]);
+		expect(result.final.objective).toBeCloseTo(1190);
+		expect(result.final.pointsSpent).toBe(2);
+		expect(result.beamWidth).toBe(2);
+	});
+
+	it("is deterministic: same inputs, identical plan across runs", async () => {
+		const a = await optimiseTree(makeBeamBridge(), { pointBudget: STATUS.pointsUsed + 2, beamWidth: 3 });
+		const b = await optimiseTree(makeBeamBridge(), { pointBudget: STATUS.pointsUsed + 2, beamWidth: 3 });
+		expect(a.steps.map((s) => s.id)).toEqual(b.steps.map((s) => s.id));
+		expect(a.final.objective).toBe(b.final.objective);
+	});
+
+	it("beamDepth caps the number of steps below the point budget", async () => {
+		const increments: Record<number, number> = { 1: 300, 2: 100, 3: 50 };
+		const bridge = new FakeBridge({ TotalDPS: 1000 }, STATUS, [{ id: 1 }, { id: 2 }, { id: 3 }], (allocSet, id) => ({
+			pointsSpent: 1,
+			stats: { TotalDPS: 1000 + [...allocSet, id].reduce((s, n) => s + (increments[n] ?? 0), 0) },
+		}));
+
+		// Budget is 3 points; without the depth cap the greedy walk would allocate 1, 2, 3.
+		const result = await optimiseTree(bridge, { pointBudget: STATUS.pointsUsed + 3, beamDepth: 2 });
+
+		expect(result.steps.map((s) => s.id)).toEqual([1, 2]);
+		expect(result.final.objective).toBeCloseTo(1400);
+	});
+});

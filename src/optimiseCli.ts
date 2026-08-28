@@ -34,6 +34,9 @@ const USAGE = `usage: optimise-tree <path-to-build.xml> [options]
     --keywords <a,b,...>         keep only candidates whose stat lines mention one of these
     --exclude-keywords <a,b,...> drop candidates mentioning one of these
     --max-candidates <n>         per-step candidate cap after the screens (dev knob)
+    --beam-width <n>             partial plans kept in parallel (default 1 = greedy walk); >1
+                                 survives a step whose locally best move is a dead end
+    --beam-depth <n>             hard cap on add-steps (default: bounded only by the point budget)
 
   constraints (floors on any mainOutput metric)
     --min-resist <n>             floor Fire/Cold/Lightning resist at n
@@ -64,6 +67,8 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 	let keywords: string[] | undefined;
 	let excludeKeywords: string[] | undefined;
 	let maxCandidatesPerStep: number | undefined;
+	let beamWidth: number | undefined;
+	let beamDepth: number | undefined;
 	const constraints: Record<string, number> = {};
 	let preserveMetrics: string[] | undefined;
 
@@ -95,6 +100,10 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 			excludeKeywords = parseList(expectValue(argv, ++i, "--exclude-keywords"));
 		} else if (arg === "--max-candidates") {
 			maxCandidatesPerStep = parseIntFlag(expectValue(argv, ++i, "--max-candidates"), "--max-candidates");
+		} else if (arg === "--beam-width") {
+			beamWidth = parseIntFlag(expectValue(argv, ++i, "--beam-width"), "--beam-width");
+		} else if (arg === "--beam-depth") {
+			beamDepth = parseIntFlag(expectValue(argv, ++i, "--beam-depth"), "--beam-depth");
 		} else if (arg === "--min-resist") {
 			const floor = Number(expectValue(argv, ++i, "--min-resist"));
 			if (!Number.isFinite(floor)) throw new Error("--min-resist expects a number");
@@ -123,6 +132,12 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 	if (respecBudget !== undefined && respecBudget < 0) {
 		throw new Error("--respec-budget cannot be negative");
 	}
+	if (beamWidth !== undefined && beamWidth < 1) {
+		throw new Error("--beam-width must be >= 1");
+	}
+	if (beamDepth !== undefined && beamDepth < 1) {
+		throw new Error("--beam-depth must be >= 1");
+	}
 
 	// Resolve mode.
 	let resolvedRespec: number;
@@ -150,6 +165,8 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 		respecBudget: resolvedRespec,
 		proximity,
 		maxCandidatesPerStep,
+		beamWidth,
+		beamDepth,
 		keywords,
 		excludeKeywords,
 	};
@@ -170,7 +187,8 @@ function report(result: OptimiseTreeResult, wallSeconds: string): void {
 	console.log(
 		`mode: ${result.mode}   baseline ${objectiveLabel} ${fmt(result.baseline.objective)}   ` +
 			`points ${result.baseline.pointsUsed}/${result.baseline.pointsMax}` +
-			(result.mode === "repair" ? `   respec budget ${result.respecBudget}` : `   point budget ${result.pointBudget}`),
+			(result.mode === "repair" ? `   respec budget ${result.respecBudget}` : `   point budget ${result.pointBudget}`) +
+			(result.beamWidth ? `   beam width ${result.beamWidth}` : ""),
 	);
 	console.log();
 

@@ -22,8 +22,10 @@ over greedy far sooner than from-scratch, and reuses every existing primitive. W
 discover a tree region the greedy never entered — accepted for v1, from-scratch stays a stretch
 goal on the same infra.
 
-*Built so far:* the greedy seed + a plain greedy re-spend of freed points (leaf-only). The real
-`(W, D)` beam is deferred — greedy has been enough on every live run to date.
+*Built:* greedy seed + any-node (cascading) repair + a real width-`W` beam over the add-loop
+(`beamAddLoop`, shared by extend and repair; `--beam-width` / `--beam-depth`). `beamWidth 1` is
+byte-identical to the original greedy walk and stays the default — a bench sweep to justify a
+higher default is a follow-up.
 
 ## Point budget and starting mode
 
@@ -134,9 +136,11 @@ comparison is meaningless.
   1900–2700 recomputes → ~15–37 min *each*.
 - **Wall-clock secondary** — now overlapped across builds by `--concurrency=N` (see §9). The
   8.3 core-hours of the definitive run finished in 1h20m at N=8.
-- **Layer-5 cache hit rate** — `MemoEvaluator` tracks `hits` / `misses` / `hitRate`. Confirmed
-  **0.00 on every run** in the definitive benchmark: the greedy walk never revisits an allocSet
-  key. The cache only earns its place once a real `(W, D)` beam reconverges (deferred).
+- **Layer-5 cache hit rate** — `MemoEvaluator` tracks `hits` / `misses` / `hitRate`. Was
+  **0.00 on every run** in the definitive benchmark (the greedy `beamWidth 1` walk never revisits
+  an allocSet key). The cache earns its place at `beamWidth > 1`, where sibling `BeamState`s
+  reconverge on the same allocation set via different order — `beamAddLoop` dedups those before
+  they cost a recompute.
 
 ### Apples-to-apples checklist
 
@@ -276,10 +280,19 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
         unchanged (it already `DeallocNode`s, so cascades were always handled bridge-side). +2 unit
         tests (interior removal re-spends the whole cascade; an over-budget cascade is skipped for
         a smaller one). 73 tests green.
-     3. **Real `(W, D)` beam** — replace the single greedy walk with a width-`W` beam over depth
-        `D`, each beam node carrying its own constraint baseline + `removeIds` / `allocSet` state
-        (the `_from` RPCs already support this). New `--beam-width` / `--beam-depth`; defaults
-        from a bench sweep on the CORE corpus.
+     3. **Real `(W, D)` beam** — DONE 2026-08-28. `optimiseTree.ts`: `greedyAddLoop` → `beamAddLoop`,
+        shared by extend and repair. Keeps `beamWidth` `BeamState`s in parallel; each depth every
+        live state proposes its improving extensions (`expandState`, ranked `deltaPerPoint` desc /
+        id asc — the exact old greedy pick), all proposals pooled, de-duplicated by resulting
+        sorted allocation set, top `W` carried forward; each state holds its own `stats` for its
+        own `walk-state` constraint reference. Returns the highest-objective plan among terminal +
+        surviving states (ties: fewer points, fewer steps, lexicographic ids). **`beamWidth === 1`
+        is byte-identical to the old greedy walk** (verified live + unit test). `--beam-width` /
+        `--beam-depth` on the CLI (`beamWidth` echoed in the result when > 1). +5 tests (78 green):
+        W=1 == greedy, a width-2 beam keeps a 2-point move greedy can't afford, determinism across
+        runs, `beamDepth` caps steps, CLI parse. Cost ~W × (pool-list + eval batch) per depth; the
+        layer-5 memo dedups reconverging states. Default `W` stays 1 — a bench sweep to pick a
+        higher default is a follow-up, not blocking.
      4. **Fold in `freeze` / `freezeAscendancy`** as a general node list.
    - **Rollback-to-node mode (design note, 2026-08-28).** A targeted variant of any-node repair:
      instead of the planner picking which allocated nodes to free, the user names one **anchor

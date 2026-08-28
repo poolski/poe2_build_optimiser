@@ -72,4 +72,12 @@ describe("optimise-tree CLI arg parsing", () => {
 		expect(() => parseArgs([BUILD, "--proximity", "3.5"])).toThrow(/integer/);
 		expect(() => parseArgs([BUILD, "--respec-budget", "x"])).toThrow(/integer/);
 	});
+
+	it("parses --beam-width and --beam-depth, and rejects out-of-range values", () => {
+		const { options } = parseArgs([BUILD, "--beam-width", "3", "--beam-depth", "6"]);
+		expect(options.beamWidth).toBe(3);
+		expect(options.beamDepth).toBe(6);
+		expect(() => parseArgs([BUILD, "--beam-width", "0"])).toThrow(/beam-width must be >= 1/);
+		expect(() => parseArgs([BUILD, "--beam-depth", "0"])).toThrow(/beam-depth must be >= 1/);
+	});
 });

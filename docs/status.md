@@ -129,10 +129,13 @@ lifts both limits. Plan, cheapest-gating-first:
    the `k`-sweep frees `sum(pointsFreed)` per step. `stoppedBecause "no-leaves"` → `"nothing-removable"`;
    CLI copy + `RemovedNode.pointsFreed` doc updated; +2 unit tests (73 green). `removeIds` prologue
    was already cascade-safe bridge-side, so no bridge change.
-3. **Real `(W, D)` beam.** Replace the single greedy walk in `optimiseTree.ts` with a width-`W`
-   beam over depth `D`, each beam node carrying its own constraint baseline and its own
-   `removeIds` / `allocSet` state (the `_from` RPCs already exist). New `--beam-width` /
-   `--beam-depth` flags; pick defaults from a bench sweep on the existing CORE corpus + harness.
+3. **Real `(W, D)` beam** — DONE 2026-08-28. `greedyAddLoop` → `beamAddLoop` (shared by extend
+   and repair): keeps `beamWidth` partial plans, each depth pools every plan's improving
+   extensions, dedups by resulting allocation set, keeps the top `W` (ranked `deltaPerPoint` desc
+   / id asc — the exact old greedy pick), each plan carrying its own `walk-state` constraint
+   reference. `beamWidth 1` is **byte-identical** to the old greedy walk (verified live + test).
+   `--beam-width` / `--beam-depth` on the CLI. +5 tests (78 green). Default `W` stays 1; a bench
+   sweep for a higher default is a follow-up, not blocking.
 4. **Fold in `freeze` / `freezeAscendancy`** as a general node list (was always tied to this).
 5. **Rollback-to-node mode** (design note) — user names an anchor node; planner deallocs the
    anchor's whole downstream subtree (`DeallocNode(anchor)` cascade) and re-spends those points.

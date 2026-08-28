@@ -15,9 +15,10 @@
 // pointsFreed fits the budget; the driver then sweeps k = 1..N over that ranked set and keeps the
 // best repaired plan, because committing the whole budget in one shot is non-monotonic (a bigger
 // respec can yield a worse plan, especially now that one removal can cascade many points off).
-// Re-spend uses the same greedy add-loop, measured against the post-removal tree via the
-// `removeIds` prologue on the eval RPCs. Returns whichever is better, the loaded tree or the best
-// repaired one -- so it can always fall back to "change nothing". See the design doc's step 7.
+// Re-spend uses the same add-loop as extend (greedy at `beamWidth` 1, a width-`W` beam above
+// that), measured against the post-removal tree via the `removeIds` prologue on the eval RPCs.
+// Returns whichever is better, the loaded tree or the best repaired one -- so it can always fall
+// back to "change nothing". See the design doc's step 7.
 
 import { PobBridgeClient } from "./bridge";
 import { MemoEvaluator } from "./evaluator";
@@ -59,9 +60,11 @@ export interface OptimiseTreeOptions {
 	 * to plan ahead. In repair mode this caps the re-spend at `min(respecBudget-freed, headroom)`;
 	 * the default (no headroom) still lets repair re-spend exactly what it freed. */
 	pointBudget?: number;
-	/** > 0 selects repair mode. A *ceiling* on freed leaves: the driver sweeps k = 1..respecBudget
-	 * of the lowest-value allocated leaves, re-spends each prefix, and keeps the best plan (ties to
-	 * the smaller k). 0 / unset = extend mode. */
+	/** > 0 selects repair mode. A *ceiling* on the number of already-allocated points relocated:
+	 * candidates (any regular node, leaf or interior) are ranked by objective value lost, a greedy
+	 * knapsack in that order picks the set whose cascades fit the ceiling, and the driver sweeps
+	 * k = 1..N over it, re-spending each prefix and keeping the best plan (ties to the smaller k).
+	 * 0 / unset = extend mode. */
 	respecBudget?: number;
 	/** Max `pathLength` for a node to be considered at each step -- keeps the walk local and caps
 	 * path-node drag-in. Default 3. */
@@ -75,6 +78,15 @@ export interface OptimiseTreeOptions {
 	keywords?: string[];
 	/** Nodes containing any of these are dropped even if they matched `keywords`. */
 	excludeKeywords?: string[];
+	/** Beam width for the add-loop (extend walk / repair re-spend). 1 (default) = the original
+	 * greedy walk: one best-`deltaPerPoint` pick per step. >1 keeps that many partial plans in
+	 * parallel and returns whichever ends highest -- lets the search survive a step whose locally
+	 * best move is a dead end. Each unit of width is ~one extra pool-list + eval batch per depth
+	 * (the layer-5 memo dedups states that reconverge). */
+	beamWidth?: number;
+	/** Max number of add-steps the beam may take. Unset = bounded only by the point budget
+	 * (`headroom`). Mainly a cost knob for wide beams. */
+	beamDepth?: number;
 }
 
 export interface OptimiseStep {
@@ -113,6 +125,8 @@ export interface OptimiseTreeResult {
 	pointBudget: number;
 	/** Present in repair mode: the respec budget the caller asked for. */
 	respecBudget?: number;
+	/** Echoed when a beam wider than 1 was used for the add-loop. */
+	beamWidth?: number;
 	/** Repair mode: the nodes freed, most-expendable first. Empty in extend mode. */
 	removed: RemovedNode[];
 	/** The nodes to allocate, in order (repair mode: the re-spend of the freed points). */
@@ -171,6 +185,10 @@ interface AddLoopParams {
 	excludeKeywords: string[] | undefined;
 	proximity: number;
 	maxCandidatesPerStep: number | undefined;
+	/** Partial plans kept in parallel. 1 = the original greedy walk. */
+	beamWidth: number;
+	/** Hard cap on add-steps; undefined = bounded only by `headroom`. */
+	beamDepth: number | undefined;
 	/** Points the walk may spend. */
 	headroom: number;
 	/** Nodes deallocated before measuring (repair mode); [] in extend mode. Each may cascade
@@ -211,10 +229,13 @@ export async function optimiseTree(
 
 	const nodeTypeFilter = options.includeAllNodeTypes ? undefined : new Set(options.nodeTypes ?? DEFAULT_NODE_TYPES);
 
+	const beamWidth = Math.max(1, Math.trunc(options.beamWidth ?? 1));
+
 	const memo = new MemoEvaluator(bridge);
 	const skeleton = {
 		baseline: { objective: baselineObjective, pointsUsed: status.pointsUsed, pointsMax: status.pointsMax },
 		pointBudget,
+		beamWidth: beamWidth > 1 ? beamWidth : undefined,
 		removed: [] as RemovedNode[],
 		steps: [] as OptimiseStep[],
 		addedNodeIds: [] as number[],
@@ -234,6 +255,8 @@ export async function optimiseTree(
 		excludeKeywords: options.excludeKeywords,
 		proximity,
 		maxCandidatesPerStep: options.maxCandidatesPerStep,
+		beamWidth,
+		beamDepth: options.beamDepth !== undefined ? Math.max(1, Math.trunc(options.beamDepth)) : undefined,
 	};
 
 	if (respecBudget === 0) {
@@ -246,7 +269,7 @@ export async function optimiseTree(
 				stoppedBecause: "nothing-to-do",
 			});
 		}
-		const loop = await greedyAddLoop({
+		const loop = await beamAddLoop({
 			...commonLoopParams,
 			constraintReference: "loaded",
 			headroom: extendHeadroom,
@@ -353,7 +376,7 @@ export async function optimiseTree(
 		const kPostRemovalObjective = score(kPostRemoval.stats);
 		if (kPostRemovalObjective === undefined) continue; // removing these k makes the build unscorable
 
-		const kLoop = await greedyAddLoop({
+		const kLoop = await beamAddLoop({
 			...commonLoopParams,
 			constraintReference: "walk-state",
 			headroom: kPointsFreed + extendHeadroomPos,
@@ -400,102 +423,201 @@ export async function optimiseTree(
 	});
 }
 
-/** Greedy outward walk shared by extend and repair. Picks the best `deltaPerPoint` node each step
- * (id tie-break), stops at `headroom`, when nothing improves the objective, or when the candidate
- * pool empties. `removeIds` (repair) is threaded through every bridge call so all measurements are
- * against "loaded minus those nodes (and their cascades)". */
-async function greedyAddLoop(p: AddLoopParams): Promise<AddLoopOutcome> {
-	const hasConstraints = Object.keys(p.floors).length > 0;
-	const added: number[] = [];
-	const steps: OptimiseStep[] = [];
-	let currentObjective = p.startObjective;
-	let currentStats = p.startStats;
-	let spent = 0;
-	let stoppedBecause: AddLoopOutcome["stoppedBecause"] = "budget-reached";
+/** One partial plan the beam is carrying. */
+interface BeamState {
+	added: number[];
+	steps: OptimiseStep[];
+	spent: number;
+	objective: number;
+	stats: StatSet;
+}
 
-	while (spent < p.headroom) {
-		const remaining = p.headroom - spent;
-		const listParams: Record<string, unknown> = {
-			allocSet: added,
-			maxPathLength: p.proximity,
-			types: p.nodeTypeFilter ? [...p.nodeTypeFilter] : undefined,
-		};
-		if (p.removeIds.length > 0) listParams.removeIds = p.removeIds;
-		const { nodes: rawPool } = await p.bridge.call<{ nodes: AllocatableNode[] }>(
-			"list_allocatable_nodes_from",
-			listParams,
+/** A candidate one-step extension of a `BeamState`. */
+interface Expansion {
+	parent: BeamState;
+	node: AllocatableNode;
+	pointsSpent: number;
+	stats: StatSet;
+	objective: number;
+	deltaPerPoint: number;
+}
+
+/** Lexicographic compare of two ascending int arrays -- a deterministic total order over states. */
+function cmpIntArray(a: number[], b: number[]): number {
+	for (let i = 0; i < Math.min(a.length, b.length); i++) {
+		if (a[i] !== b[i]) return a[i] - b[i];
+	}
+	return a.length - b.length;
+}
+
+/** All improving one-step extensions of `state`, ranked exactly as the old greedy picked its single
+ * best: `deltaPerPoint` desc, then node id asc. `stopReason` is set when there are none. */
+async function expandState(
+	p: AddLoopParams,
+	state: BeamState,
+	hasConstraints: boolean,
+): Promise<{ expansions: Expansion[]; stopReason?: AddLoopOutcome["stoppedBecause"] }> {
+	const remaining = p.headroom - state.spent;
+	const listParams: Record<string, unknown> = {
+		allocSet: state.added,
+		maxPathLength: p.proximity,
+		types: p.nodeTypeFilter ? [...p.nodeTypeFilter] : undefined,
+	};
+	if (p.removeIds.length > 0) listParams.removeIds = p.removeIds;
+	const { nodes: rawPool } = await p.bridge.call<{ nodes: AllocatableNode[] }>("list_allocatable_nodes_from", listParams);
+
+	let pool = [...rawPool].sort((a, b) => a.id - b.id);
+	pool = filterByProximity(pool, p.proximity); // server already gates, but be robust to older bridges
+	if (p.keywords && p.keywords.length > 0) {
+		pool = pool.filter(
+			(n) =>
+				matchesAny(n.statLines, p.keywords!) &&
+				!(p.excludeKeywords && p.excludeKeywords.length > 0 && matchesAny(n.statLines, p.excludeKeywords)),
 		);
-
-		let pool = [...rawPool].sort((a, b) => a.id - b.id);
-		pool = filterByProximity(pool, p.proximity); // server already gates, but be robust to older bridges
-		if (p.keywords && p.keywords.length > 0) {
-			pool = pool.filter(
-				(n) =>
-					matchesAny(n.statLines, p.keywords!) &&
-					!(p.excludeKeywords && p.excludeKeywords.length > 0 && matchesAny(n.statLines, p.excludeKeywords)),
-			);
-		}
-		if (p.maxCandidatesPerStep !== undefined) {
-			pool = pool.slice(0, p.maxCandidatesPerStep);
-		}
-		if (pool.length === 0) {
-			stoppedBecause = steps.length === 0 ? "no-candidates" : "no-positive-candidate";
-			break;
-		}
-
-		const evals = await p.memo.evaluateFrom(
-			added,
-			pool.map((n) => n.id),
-			p.removeIds,
-		);
-		const poolById = new Map(pool.map((n) => [n.id, n]));
-		const constraintRef = p.constraintReference === "walk-state" ? currentStats : p.loadedBaseline;
-
-		let best:
-			| { node: AllocatableNode; pointsSpent: number; stats: StatSet; objective: number; deltaPerPoint: number }
-			| undefined;
-		for (const ev of evals) {
-			if (ev.pointsSpent <= 0 || ev.pointsSpent > remaining) continue;
-			if (ev.ascendancyPointsSpent > 0) continue; // regular points only
-			if (hasConstraints && firstConstraintViolation(p.floors, constraintRef, ev.stats)) continue;
-			const objective = p.score(ev.stats);
-			if (objective === undefined) continue;
-			const deltaPerPoint = (objective - currentObjective) / ev.pointsSpent;
-			const node = poolById.get(ev.nodeId);
-			if (!node) continue;
-			if (
-				!best ||
-				deltaPerPoint > best.deltaPerPoint ||
-				(deltaPerPoint === best.deltaPerPoint && node.id < best.node.id)
-			) {
-				best = { node, pointsSpent: ev.pointsSpent, stats: ev.stats, objective, deltaPerPoint };
-			}
-		}
-
-		if (!best || best.objective - currentObjective <= 0) {
-			stoppedBecause = "no-positive-candidate";
-			break;
-		}
-
-		steps.push({
-			id: best.node.id,
-			name: best.node.name,
-			type: best.node.type,
-			statLines: best.node.statLines,
-			pointsSpent: best.pointsSpent,
-			pathLength: best.node.pathLength,
-			objectiveBefore: currentObjective,
-			objectiveAfter: best.objective,
-			delta: best.objective - currentObjective,
-			deltaPerPoint: best.deltaPerPoint,
-		});
-		added.push(best.node.id);
-		spent += best.pointsSpent;
-		currentObjective = best.objective;
-		currentStats = best.stats;
+	}
+	if (p.maxCandidatesPerStep !== undefined) {
+		pool = pool.slice(0, p.maxCandidatesPerStep);
+	}
+	if (pool.length === 0) {
+		return { expansions: [], stopReason: state.steps.length === 0 ? "no-candidates" : "no-positive-candidate" };
 	}
 
-	return { steps, added, spent, finalObjective: currentObjective, finalStats: currentStats, stoppedBecause };
+	const evals = await p.memo.evaluateFrom(
+		state.added,
+		pool.map((n) => n.id),
+		p.removeIds,
+	);
+	const poolById = new Map(pool.map((n) => [n.id, n]));
+	const constraintRef = p.constraintReference === "walk-state" ? state.stats : p.loadedBaseline;
+
+	const expansions: Expansion[] = [];
+	for (const ev of evals) {
+		if (ev.pointsSpent <= 0 || ev.pointsSpent > remaining) continue;
+		if (ev.ascendancyPointsSpent > 0) continue; // regular points only
+		if (hasConstraints && firstConstraintViolation(p.floors, constraintRef, ev.stats)) continue;
+		const objective = p.score(ev.stats);
+		if (objective === undefined) continue;
+		if (objective - state.objective <= 0) continue; // only improving moves, same as the old greedy
+		const node = poolById.get(ev.nodeId);
+		if (!node) continue;
+		expansions.push({
+			parent: state,
+			node,
+			pointsSpent: ev.pointsSpent,
+			stats: ev.stats,
+			objective,
+			deltaPerPoint: (objective - state.objective) / ev.pointsSpent,
+		});
+	}
+	expansions.sort((a, b) => b.deltaPerPoint - a.deltaPerPoint || a.node.id - b.node.id);
+	return { expansions, stopReason: expansions.length === 0 ? "no-positive-candidate" : undefined };
+}
+
+/** Beam add-loop shared by extend and repair. Keeps `p.beamWidth` partial plans in parallel; each
+ * depth, every live plan proposes its improving extensions, all proposals are pooled, de-duplicated
+ * by resulting allocation set, and the top `beamWidth` (by `deltaPerPoint`, id tie-break) carry
+ * forward. Returns whichever plan -- terminal or survivor -- ends with the highest objective (ties:
+ * fewer points spent, then fewer steps, then lexicographic node ids). `beamWidth === 1` reduces to
+ * the original greedy walk exactly. `removeIds` (repair) is threaded through every bridge call so
+ * measurements are against "loaded minus those nodes (and their cascades)". */
+async function beamAddLoop(p: AddLoopParams): Promise<AddLoopOutcome> {
+	const hasConstraints = Object.keys(p.floors).length > 0;
+	const width = Math.max(1, p.beamWidth);
+	const maxDepth = p.beamDepth ?? p.headroom;
+
+	const initial: BeamState = {
+		added: [],
+		steps: [],
+		spent: 0,
+		objective: p.startObjective,
+		stats: p.startStats,
+	};
+
+	// Prefer a higher objective; break ties deterministically so the result never depends on beam
+	// iteration order.
+	const better = (a: BeamState, b: BeamState): boolean => {
+		if (a.objective !== b.objective) return a.objective > b.objective;
+		if (a.spent !== b.spent) return a.spent < b.spent;
+		if (a.steps.length !== b.steps.length) return a.steps.length < b.steps.length;
+		return cmpIntArray([...a.added].sort((x, y) => x - y), [...b.added].sort((x, y) => x - y)) < 0;
+	};
+
+	let beam: BeamState[] = [initial];
+	let best = initial;
+	let bestStop: AddLoopOutcome["stoppedBecause"] = "budget-reached";
+	const consider = (state: BeamState, stop: AddLoopOutcome["stoppedBecause"]) => {
+		if (better(state, best)) {
+			best = state;
+			bestStop = stop;
+		}
+	};
+
+	for (let depth = 0; depth < maxDepth && beam.length > 0; depth++) {
+		const proposals: Expansion[] = [];
+		for (const state of beam) {
+			if (state.spent >= p.headroom) {
+				consider(state, "budget-reached");
+				continue;
+			}
+			const { expansions, stopReason } = await expandState(p, state, hasConstraints);
+			if (expansions.length === 0) {
+				consider(state, stopReason ?? "no-positive-candidate");
+				continue;
+			}
+			proposals.push(...expansions);
+		}
+		if (proposals.length === 0) break; // every live plan is terminal
+
+		proposals.sort(
+			(a, b) =>
+				b.deltaPerPoint - a.deltaPerPoint ||
+				a.node.id - b.node.id ||
+				cmpIntArray(a.parent.added, b.parent.added),
+		);
+
+		const seen = new Set<string>();
+		const nextBeam: BeamState[] = [];
+		for (const e of proposals) {
+			const key = [...e.parent.added, e.node.id].sort((x, y) => x - y).join(",");
+			if (seen.has(key)) continue;
+			seen.add(key);
+			nextBeam.push({
+				added: [...e.parent.added, e.node.id],
+				steps: [
+					...e.parent.steps,
+					{
+						id: e.node.id,
+						name: e.node.name,
+						type: e.node.type,
+						statLines: e.node.statLines,
+						pointsSpent: e.pointsSpent,
+						pathLength: e.node.pathLength,
+						objectiveBefore: e.parent.objective,
+						objectiveAfter: e.objective,
+						delta: e.objective - e.parent.objective,
+						deltaPerPoint: e.deltaPerPoint,
+					},
+				],
+				spent: e.parent.spent + e.pointsSpent,
+				objective: e.objective,
+				stats: e.stats,
+			});
+			if (nextBeam.length === width) break;
+		}
+		beam = nextBeam;
+	}
+
+	// Whatever is still alive at the depth / loop limit is also a candidate final plan.
+	for (const state of beam) consider(state, "budget-reached");
+
+	return {
+		steps: best.steps,
+		added: best.added,
+		spent: best.spent,
+		finalObjective: best.objective,
+		finalStats: best.stats,
+		stoppedBecause: bestStop,
+	};
 }
 
 function matchesAny(statLines: string[], keywords: string[]): boolean {
