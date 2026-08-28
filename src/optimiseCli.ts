@@ -17,6 +17,8 @@ const USAGE = `usage: optimise-tree <path-to-build.xml> [options]
     --respec-budget <n>          repair mode: relocate up to n points from low-value allocated
                                  nodes (one removal may cascade several points off) and re-spend
     --repair-nodes <n>           alias for --respec-budget
+    --freeze <id,id,...>         repair mode: allocated node ids the regret set may never free
+                                 (ascendancy nodes are always frozen)
 
   budget (extend mode)
     --point-budget <n>           absolute cap on total regular points the plan may occupy
@@ -69,6 +71,7 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 	let maxCandidatesPerStep: number | undefined;
 	let beamWidth: number | undefined;
 	let beamDepth: number | undefined;
+	let freeze: number[] | undefined;
 	const constraints: Record<string, number> = {};
 	let preserveMetrics: string[] | undefined;
 
@@ -104,6 +107,8 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 			beamWidth = parseIntFlag(expectValue(argv, ++i, "--beam-width"), "--beam-width");
 		} else if (arg === "--beam-depth") {
 			beamDepth = parseIntFlag(expectValue(argv, ++i, "--beam-depth"), "--beam-depth");
+		} else if (arg === "--freeze") {
+			freeze = parseList(expectValue(argv, ++i, "--freeze")).map((t) => parseIntFlag(t, "--freeze"));
 		} else if (arg === "--min-resist") {
 			const floor = Number(expectValue(argv, ++i, "--min-resist"));
 			if (!Number.isFinite(floor)) throw new Error("--min-resist expects a number");
@@ -167,6 +172,7 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 		maxCandidatesPerStep,
 		beamWidth,
 		beamDepth,
+		freeze,
 		keywords,
 		excludeKeywords,
 	};

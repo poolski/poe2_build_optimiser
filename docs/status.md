@@ -136,7 +136,11 @@ lifts both limits. Plan, cheapest-gating-first:
    reference. `beamWidth 1` is **byte-identical** to the old greedy walk (verified live + test).
    `--beam-width` / `--beam-depth` on the CLI. +5 tests (78 green). Default `W` stays 1; a bench
    sweep for a higher default is a follow-up, not blocking.
-4. **Fold in `freeze` / `freezeAscendancy`** as a general node list (was always tied to this).
+4. **General `freeze` list** — DONE 2026-08-28. `OptimiseTreeOptions.freeze: number[]` /
+   `--freeze <id,…>`: allocated node ids the repair regret set may never free (dropped before the
+   `evaluate_dealloc_candidates` probe, so they cost nothing). Ascendancy nodes stay
+   unconditionally frozen — no `freezeAscendancy` toggle, since their point pool can't be
+   re-spent anyway. Freezing every removable node yields `nothing-removable`. +3 tests (81 green).
 5. **Rollback-to-node mode** (design note) — user names an anchor node; planner deallocs the
    anchor's whole downstream subtree (`DeallocNode(anchor)` cascade) and re-spends those points.
    "What if I respecced back to *here* and re-allocated everything past it?" Needs an

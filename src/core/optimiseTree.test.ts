@@ -397,6 +397,26 @@ describe("optimiseTree (repair mode)", () => {
 		expect(result.steps).toEqual([]);
 	});
 
+	it("never frees a node in the freeze list", async () => {
+		const bridge = makeBridge({ 1: 500, 2: 50 });
+
+		const result = await optimiseTree(bridge, { respecBudget: 2, freeze: [100] });
+
+		expect(result.removed.map((r) => r.id)).not.toContain(100);
+		expect(result.removed.map((r) => r.id)).toEqual([101]); // next-lowest value lost, minus the frozen 100
+		// k=1 wins the sweep: free 101's 1 point, re-spend it into candidate 1 (+500).
+		expect(result.final.objective).toBeCloseTo(1000 - 30 + 500); // 1470
+	});
+
+	it("returns 'nothing-removable' when the freeze list covers every removable node", async () => {
+		const bridge = makeBridge({ 1: 500 });
+
+		const result = await optimiseTree(bridge, { respecBudget: 2, freeze: [100, 101, 102] });
+
+		expect(result.stoppedBecause).toBe("nothing-removable");
+		expect(result.removed).toEqual([]);
+	});
+
 	it("frees an interior node (pointsFreed > 1) and re-spends the whole cascade", async () => {
 		// Node 110 is interior: removing it frees 3 points and drops DPS by 20. Re-spend candidates
 		// 1/2/3 each add +40, additive, 1 pt each -> the walk should reclaim all 3 freed points.

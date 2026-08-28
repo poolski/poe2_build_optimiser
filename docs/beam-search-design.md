@@ -50,10 +50,12 @@ single knob separating the two starting modes:
 | **Repair** | `N` | Seed from the current allocation, then free up to `N` lowest-value points (the regret set) and re-search. Output: "respec these `M`, allocate these instead." Costs in-game respec currency. |
 | **From-scratch** | ∞ + bare tree | Deferred stretch goal. |
 
-`freeze: nodeId[]` (or `freezeAscendancy: true`) marks nodes the regret set may never pick —
-generalises the "freeze ascendancy" open question below. Extend mode is `freeze = all
-currently-allocated`. (Today both modes skip ascendancy steps outright; the general `freeze` list
-is a future item, tied to any-node repair — see Implementation status §7.)
+`freeze: nodeId[]` (`--freeze` on the CLI) marks allocated nodes the regret set may never choose
+to free. Extend mode is implicitly `freeze = all currently-allocated` (it only adds). Ascendancy
+nodes are *always* frozen — their points are a separate pool the re-spend can't use, so there is
+no `freezeAscendancy` toggle. A frozen node can still be collaterally freed if it sits downstream
+of a chosen *interior* removal (`evaluate_dealloc_candidates` reports a cascade's size, not its
+member ids); freeze protects a node from being the removal *target*.
 
 ## Perf target
 
@@ -293,7 +295,13 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
         runs, `beamDepth` caps steps, CLI parse. Cost ~W × (pool-list + eval batch) per depth; the
         layer-5 memo dedups reconverging states. Default `W` stays 1 — a bench sweep to pick a
         higher default is a follow-up, not blocking.
-     4. **Fold in `freeze` / `freezeAscendancy`** as a general node list.
+     4. **General `freeze` list** — DONE 2026-08-28. `OptimiseTreeOptions.freeze: number[]` /
+        `--freeze <id,…>`: allocated node ids excluded from the repair regret set (dropped before
+        the `evaluate_dealloc_candidates` probe, so they cost nothing). Ascendancy nodes stay
+        unconditionally frozen — no `freezeAscendancy` toggle, since their points can't be
+        re-spent. Freezing every removable node → `nothing-removable`. +3 tests (81 green).
+        Verified live: `--freeze 2334` on `RampantlyBisexual` keeps `Dexterity` and the regret set
+        picks other 0-value nodes for the same +11.9%.
    - **Rollback-to-node mode (design note, 2026-08-28).** A targeted variant of any-node repair:
      instead of the planner picking which allocated nodes to free, the user names one **anchor
      node** already on their tree. The planner deallocs the anchor's entire downstream subtree

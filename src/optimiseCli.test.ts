@@ -80,4 +80,10 @@ describe("optimise-tree CLI arg parsing", () => {
 		expect(() => parseArgs([BUILD, "--beam-width", "0"])).toThrow(/beam-width must be >= 1/);
 		expect(() => parseArgs([BUILD, "--beam-depth", "0"])).toThrow(/beam-depth must be >= 1/);
 	});
+
+	it("parses --freeze into a list of node ids", () => {
+		const { options } = parseArgs([BUILD, "--respec-budget", "3", "--freeze", "123, 456, 789"]);
+		expect(options.freeze).toEqual([123, 456, 789]);
+		expect(() => parseArgs([BUILD, "--freeze", "12x"])).toThrow(/integer/);
+	});
 });

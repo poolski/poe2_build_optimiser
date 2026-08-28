@@ -66,6 +66,12 @@ export interface OptimiseTreeOptions {
 	 * k = 1..N over it, re-spending each prefix and keeping the best plan (ties to the smaller k).
 	 * 0 / unset = extend mode. */
 	respecBudget?: number;
+	/** Repair mode: allocated node ids the regret set may never choose to free. Ascendancy nodes
+	 * are always frozen regardless (their points are a separate pool the re-spend can't use). A
+	 * frozen node can still be collaterally freed if it sits downstream of a chosen *interior*
+	 * removal -- freeze protects a node from being the removal target, not from another node's
+	 * cascade. Ignored in extend mode (nothing is freed there). */
+	freeze?: number[];
 	/** Max `pathLength` for a node to be considered at each step -- keeps the walk local and caps
 	 * path-node drag-in. Default 3. */
 	proximity?: number;
@@ -308,7 +314,10 @@ export async function optimiseTree(
 		});
 
 	const { nodes: allocated } = await bridge.call<{ nodes: AllocatedNode[] }>("list_allocated_nodes");
-	const regularIds = allocated.filter((n) => !n.ascendancyName).map((n) => n.id);
+	// Ascendancy nodes are always frozen (separate point pool, no re-spend payoff); `options.freeze`
+	// adds regular nodes the user wants protected from the regret set.
+	const frozen = new Set(options.freeze ?? []);
+	const regularIds = allocated.filter((n) => !n.ascendancyName && !frozen.has(n.id)).map((n) => n.id);
 	if (regularIds.length === 0) {
 		return noChange("nothing-removable");
 	}
