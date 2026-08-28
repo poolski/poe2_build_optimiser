@@ -256,10 +256,35 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
      still surfaced. Pre-sweep live numbers (one-shot): `RampantlyBisexual` / TotalDPS / respec 3
      → +11.9% at net 0 pts; `MA-FlickerStrike` / TotalEHP / respec 5 → +13%. Post-sweep bench
      numbers in `docs/beam-bench-<objective>.md`.
-   - **Any-node repair (later opt-in)** — allow non-leaf removal (cascades downstream off). Needs
-     an arbitrary-exact-allocation eval RPC and `DeallocNode`-cascade verification. Folds in
-     `freeze` / `freezeAscendancy` as a general list, and — if quality is still short — the real
-     `(W, D)` beam with per-beam-node constraint baselines instead of the plain greedy re-spend.
+   - **Any-node repair — ACTIVE NEXT TRACK (chosen 2026-08-28).** Allow non-leaf removal
+     (`DeallocNode` cascades everything only reachable through the removed node). `bridge.lua`
+     `evaluate_dealloc_candidates` already does this and already reports the true `pointsFreed`;
+     `optimiseTree.ts:296` just filters to `pointsFreed == 1`. Steps:
+     1. **Cascade-verification spike** (gating, cheap) — drive `evaluate_dealloc_candidates` on
+        real builds with mid-tree nodes; confirm the cascaded off-set + `pointsFreed` match PoB's
+        own points-used display, and that the re-spend candidate pool after a mid-tree `removeIds`
+        prologue still contains the orphaned notables. Result → `docs/gotchas.md`.
+     2. **Lift the leaf-only filter** — the `k`-sweep counts *points* freed, not leaves; regret
+        ranking already scores each removal in isolation; `removeIds` re-spend prologue unchanged.
+     3. **Real `(W, D)` beam** — replace the single greedy walk with a width-`W` beam over depth
+        `D`, each beam node carrying its own constraint baseline + `removeIds` / `allocSet` state
+        (the `_from` RPCs already support this). New `--beam-width` / `--beam-depth`; defaults
+        from a bench sweep on the CORE corpus.
+     4. **Fold in `freeze` / `freezeAscendancy`** as a general node list.
+   - **Rollback-to-node mode (design note, 2026-08-28).** A targeted variant of any-node repair:
+     instead of the planner picking which allocated nodes to free, the user names one **anchor
+     node** already on their tree. The planner deallocs the anchor's entire downstream subtree
+     (every node whose only path to the class-start runs through the anchor — exactly the
+     `DeallocNode(anchor)` cascade, minus the anchor itself if the user wants to keep it as the
+     re-spend frontier), then re-spends all those freed points against the objective. Semantics:
+     "what if I respecced back to *here* and re-allocated everything past it?" `respecBudget`
+     becomes the size of that cascade rather than a sweep ceiling; the sweep collapses to a single
+     `k`. Useful for "my tree past the mid-game pivot is a mess, re-plan that half" without
+     touching the early core. Needs: an `anchorNodeId` param on the repair path, the cascade set
+     from step 1's verified `DeallocNode` behaviour, and a re-spend frontier seeded at the anchor.
+     Open sub-question: whether to also offer "roll back to anchor *and* free N more of the
+     lowest-value survivors" (compose with the normal regret sweep) or keep it strictly
+     subtree-only.
 8. **Corpus assembly** — DONE (2026-08-28). 6 local + 14 poe.ninja builds + the gutting tool.
    `spike/characteriseBuild.ts` (`npm run characterise-build`) emits a manifest row;
    `docs/beam-corpus.md` holds the manifest + gap list + the poe.ninja pull table/caveats.

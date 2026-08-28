@@ -1,5 +1,10 @@
 # Skill / support-gem optimiser — design
 
+> **SHELVED 2026-08-28 — out of scope.** The project is passive-skill-tree only; skill gems and
+> support gems are immutable calculation inputs. This document (design sketch + the completed
+> PoE1-vs-PoE2 assumption audit below) is kept for reference in case scope ever reopens. Nothing
+> here is on the roadmap. See `docs/status.md` §Scope.
+
 Design sketch for a second recommender: given a loaded build and an objective (e.g. "maximise
 defences and physical damage"), choose which **active skills**, **support gems**, and
 **persistent/Spirit skills** to run. Distinct from the passive-tree recommender — different
@@ -8,9 +13,9 @@ the fitness oracle, the `constraints`/`preserveMetrics` feasibility filter from
 `src/core/recommendTree.ts`, and the greedy-seed + local-repair scaffold from
 `src/core/optimiseTree.ts` (the beam-search track, now complete — see `docs/beam-search-design.md`).
 
-Nothing here is implemented yet. The [Must verify first](#must-verify-first) section lists the
-PoE2-vs-PoE1 assumptions that have to be checked against vendored data before any of this gets
-coded — same discipline as `docs/gotchas.md`.
+Nothing here is implemented yet. The [Verified against vendored source](#verified-against-vendored-source-2026-08-28)
+section records the PoE2-vs-PoE1 assumption audit done before any of this gets coded — same
+discipline as `docs/gotchas.md`.
 
 ## Shape of the problem
 
@@ -25,31 +30,39 @@ objective**. The evaluator is the whole game; everything else is search strategy
 - **Support assignment** — for each active skill, which supports fill its sockets.
 - **Spirit allocation** — which persistent skills to run within the Spirit budget.
 
-### Hard constraints (all grounded in vendored code)
+### Hard constraints
 
-- **≤ 5 support gems per skill.** `pob-runtime/PathOfBuilding-PoE2/src/Modules/CalcSetup.lua:2125`
-  (`if socketedSupportGems > 5 then` … warn). Verify whether PoE2 skill gems have a *lower* innate
-  cap that scales with gem level — `CalcSetup` is counting gear sockets there, which may be
-  leftover model (see Must verify).
-- **A support gem family is used at most once on the character.** `src/Data/Gems.lua` groups
-  supports by `gemFamily` (e.g. `"Rapid Attacks"` covers Rapid Attacks I/II/III, which differ only
-  by `Tier` and stat-req). You pick at most one tier of one family, and — assuming the PoE1 "one
-  support per character" rule still holds in this fork — not on two skills at once. This
-  uniqueness is what makes it a genuine *assignment* problem, not N independent choices.
-- **Tag applicability.** A support does nothing on a skill it does not tag-match. `Gems.lua`
-  `tags` on the support (`attack`, `projectile`, `physical`, `melee`, …) vs the active skill's
-  `tags`. Pre-filter on this; do not spend an evaluator call to discover a no-op.
-- **Attribute requirements.** `reqStr` / `reqDex` / `reqInt` per gem in `Gems.lua`. Higher-tier
-  supports in a family cost more attribute. The candidate build must actually meet them.
+All grounded in vendored code — but see [Verified against vendored source](#verified-against-vendored-source-2026-08-28):
+the oracle enforces almost none of these, so most are constraints **our search** must apply.
+
+- **≤ 5 support gems per skill.** *Self-imposed.* `CalcSetup.lua:2108-2130` only raises a
+  non-blocking UI warning past 5; `gemList` is unbounded and the calc applies every support. No
+  level / rarity scaling. We cap at 5.
+- **A support gem family is used at most once on the character.** *Self-imposed.* The oracle
+  dedups `gemFamily` only *within one socket group* (`addBestSupport`, `CalcSetup.lua:502-547`) —
+  it will apply the same family to two skills and count both. `Gems.lua` groups tiers by
+  `gemFamily` (`"Rapid Attacks"` = Rapid Attacks I/II/III, differ by `Tier` / stat-req). Enforcing
+  "one tier of one family, once" in the assignment solver is what keeps this an *assignment*
+  problem.
+- **Tag applicability.** A support does nothing on a skill it cannot support. The real check is
+  `calcLib.canGrantedEffectSupportActiveSkill` (`CalcTools.lua:85-110`): the support's
+  `requireSkillTypes` / `excludeSkillTypes` (SkillType postfix expressions) vs the active skill's
+  `skillTypes` — **not** raw `tags`. Pre-filter on that; do not spend an evaluator call to
+  discover a no-op.
+- **Attribute requirements.** *No equip gate.* Support gems have no minimum-stat requirement to
+  socket. PoB surfaces an aggregate `output.ReqStr/ReqDex/ReqInt` (support-gem contribution ≈
+  `5 × count-of-that-colour` across the whole character) and colours it red when it exceeds
+  `Str/Dex/Int`, but it is display-only — never disables a gem or changes a number. At most a
+  **soft** `ReqStr/Dex/Int <= Str/Dex/Int` bias in the objective, never a hard filter.
 - **Weapon requirements.** Some active gems carry `weaponRequirements` (`Gems.lua`, e.g. Leap Slam
   → `"One Hand Mace, Two Hand Mace"`). Infeasible with the wrong weapon equipped.
-- **Spirit budget.** Persistent skills reserve Spirit via `spiritReservationFlat` /
-  `spiritReservationPercent` (`src/Modules/CalcDefence.lua:216-221`). `SpiritUnreserved` /
-  `SpiritUnreservedPercent` are output stats and go negative when over-reserved
-  (`src/Modules/BuildDisplayStats.lua:140`, with a `warnFunc`). So `SpiritUnreserved >= 0` drops
-  straight into the existing `constraints` map — no new feasibility code.
-- **Support socket colour**, if this fork still colours skill-gem sockets
-  (`slotSupportGemSocketsCount = { R, G, B }`, `CalcSetup.lua:2106`). See Must verify.
+- **Spirit budget.** Persistent skills (`skillTypes[SkillType.Persistent]` + `HasReservation`)
+  reserve **flat** Spirit via `spiritReservationFlat` (`CalcDefence.lua:215-222`; the `…Percent`
+  path has no data). Socketed support gems add their own `spiritReservationFlat` (`sup_*.lua`);
+  skill quality can reduce it via `base_(spirit_)reservation_efficiency_+%`.
+  `output.SpiritUnreserved` is set unconditionally (`CalcDefence.lua:342`) and goes negative when
+  over-reserved (`BuildDisplayStats.lua:140`). `SpiritUnreserved >= 0` drops into `constraints` —
+  but wire it through **`keepViolating`** from the start: real builds load already over-reserved.
 
 ## Objective
 
@@ -123,22 +136,80 @@ near-duplicates constantly.
 New code: the two bridge RPCs above, the pool-pruning filter, the assignment solver, the 2-opt +
 coordinate-descent driver, and the Pareto-front collector.
 
-## Must verify first
+## Verified against vendored source (2026-08-28)
 
-Check against vendored data before writing code — the fork carries live PoE1 leftovers
-(`docs/gotchas.md`: `maxWeaponSets`, masteries, `node.path`):
+Audit of the five PoE1-vs-PoE2 assumptions before any code — same discipline as `docs/gotchas.md`.
+Line refs are into `pob-runtime/PathOfBuilding-PoE2/`. Bottom line: **the oracle enforces almost
+none of the "rules" below — most are ours to impose in the search, and the calc will happily
+evaluate an illegal gem config without complaint.**
 
-- **The "one support gem per character" rule.** PoE1 forbids the same support on two skills. Grep
-  the skills-tab / `CalcSetup` code for a global used-support set before assuming it.
-- **Support sockets per skill.** Is it a flat 5 (`CalcSetup.lua:2125`), or does it scale with
-  skill-gem level / rarity in PoE2? The `> 5` check may be counting gear sockets from PoE1's
-  model.
-- **Socket colours.** Do PoE2 skill-gem support sockets have R/G/B colours
-  (`slotSupportGemSocketsCount`, `CalcSetup.lua:2106`), or is that dead gear-socket code? If
-  colourless, drop the colour constraint entirely.
-- **Spirit reservation semantics.** Confirm `spiritReservationFlat` / `spiritReservationPercent`
-  are the fields actually populated for PoE2 auras/heralds, and that `SpiritUnreserved` is present
-  in `mainOutput` (like `TotalEHP`, it may sit behind a conditional block).
-- **Gem levels / quality as decision variables.** In scope or not? If gem level is free to choose,
-  it multiplies the search space; if it is fixed by character level / available uncut gems, treat
-  it as input.
+1. **"One support gem per character" — NOT enforced.** Dedup is per-socket-group only.
+   `CalcSetup.lua:1740-1748` buckets supports into `supportLists[slotName][group]`;
+   `CalcSetup.lua:1908-1912` hands each active skill `appliedSupportList = copyTable(supportLists[
+   group] …)`; `addBestSupport` (`CalcSetup.lua:502-547`) dedups only within the list it is passed
+   (same `grantedEffect`, overlapping `gemFamily`, or `plusVersionOf`). No character-wide set;
+   `GemSelectControl:FilterSupport` (`GemSelectControl.lua:113-124`) has no "already used"
+   exclusion; `calcs.createActiveSkill` (`CalcActiveSkill.lua:144`) consumes whatever list it is
+   given. → The same support / `gemFamily` **can** apply to two socket groups and both count. The
+   "family capacity 1 globally" that makes this an assignment problem is **our** constraint; the
+   solver and 2-opt must carry it explicitly, not rely on rejected candidates.
+
+2. **≤ 5 supports per skill — no model at all.** `CalcSetup.lua:2108-2130` counts
+   `socketedSupportGems` per group and, `if > 5`, appends the group label to
+   `itemWarnings.socketLimitWarning` (surfaced only in the UI, `Build.lua:2210`). The calc still
+   applies every socketed support. `socketGroup.gemList` is an unbounded array; no per-gem
+   socket-count field is loaded or computed; `Gems.lua` skill entries have no socket count
+   (`socketLimit` is item-bases only). No level / rarity scaling anywhere. → Flat 5 is a sane
+   self-imposed cap but it is ours; the oracle imposes nothing.
+
+3. **Socket colours — none; there is no equip gate either.** `color = 1|2|3` on a support
+   (`sup_str/dex/int.lua`) is just the gem's attribute type. `slotSupportGemSocketsCount = {R,G,B}`
+   (`CalcSetup.lua:2106-2163`) feeds only: the aggregate attribute requirement
+   (`ReqStr/Dex/Int` includes a `"Support Gems"` row = `5 × count-of-that-colour` across **all**
+   socket groups), the `Red/Green/BlueSupportGems` multipliers, and a few notables (Crystallised
+   Immunity, Gem Studded, Gemling). That `ReqStr/Dex/Int` value **is** in `mainOutput` (probed:
+   `ReqStr=75`, `Str=77` on `Fimozix-L100-ES`) and colour-codes red when unmet — but it is
+   **display-only**: an unmet requirement never disables a support or changes any damage / defence
+   number, and there is no minimum-stat gate to socket a support in the first place. → No
+   colour-matching constraint. If we want realistic colour balance we can read
+   `ReqStr/Dex/Int` vs `Str/Dex/Int` as a **soft** signal, but it is optional and the oracle will
+   not self-limit ("run 20 int supports" evaluates fine). The exact in-game escalation curve is
+   ours to model if we care; PoB approximates it as linear `5 / support`.
+
+4. **Spirit reservation — flat only, confirmed in `mainOutput`.** `CalcDefence.lua:215-222` reads
+   `spiritReservationFlat`; a `spiritReservationPercent` path exists but **zero** skill-data
+   entries populate it (dead / future). Persistent skills carry `spiritReservationFlat` per gem
+   level (`act_*.lua`; Herald of Ash = 30 flat at all levels) and **support gems carry their own
+   `spiritReservationFlat`** (`sup_*.lua`; 10/15/20/30/40) that adds when socketed on a reserving
+   skill, via `skillModList:Sum("BASE", skillCfg, "ExtraSpirit")`. Quality / alt-quality on some
+   skills gives `base_(spirit_)reservation_efficiency_+%` — a flat-percent reduction (the "0 to
+   −10% from quality" case), flowing through `SpiritReservationEfficiency` / `ReservationEfficiency`
+   mods. `output.SpiritUnreserved = Spirit − reserved` is set **unconditionally**
+   (`CalcDefence.lua:336-342`), unlike `TotalEHP`; probed live it reads `-80` on an over-reserved
+   build. `SpiritUnreservedPercent` is only set when `Spirit > 0`. → `SpiritUnreserved >= 0` drops
+   straight into `constraints` — but real builds can load **already** violating it (the probe build
+   does), so it needs `keepViolating` semantics from day one, not a hard gate. "Which skills
+   reserve" = `skillTypes[SkillType.Persistent]` + `SkillType.HasReservation`, not a name match.
+
+5. **Gem level / quality — plain build-file inputs, no calc-time gate.** `SkillsTab.lua:348-349`
+   reads `level` / `quality` verbatim from `<Gem>`; `calcLib.validateGemLevel`
+   (`CalcTools.lua:42-58`) only clamps to `1..#grantedEffect.levels` / `naturalMaxLevel`;
+   `ProcessGemLevel`'s character-level cap (`SkillsTab.lua:1197-1232`) is UI default-population
+   only and never runs inside `BuildOutput()`. The bridge can set any in-range value and the
+   oracle evaluates it. Realistic bounds: **quality 0-20 in steps of 5, level max 20 (21 if
+   corrupted)**; corruption can also alter gem stats — **not worth modelling**. → Decision-variable
+   or not is purely our scope call. **v1: treat as fixed input** (use the loaded values); revisit
+   later. If varied, bound level ≤ 20 (21 corrupted) and quality ∈ {0,5,10,15,20}.
+
+### Net changes to the plan above
+
+- Drop the **support-socket-colour** constraint entirely (#3).
+- The **≤ 5 / skill** cap (#2) and **support-family-once-per-character** rule (#1) are ours to
+  enforce in the assignment solver + 2-opt — the oracle accepts illegal configs silently.
+- **Attribute requirements** (#3): no equip gate; at most a soft `ReqStr/Dex/Int <= Str/Dex/Int`
+  bias, not a hard filter.
+- **Spirit** (#4): wire `keepViolating` for `SpiritUnreserved` from the start; remember supports
+  and quality both move the reservation number.
+- **Tag applicability**: the real check is `calcLib.canGrantedEffectSupportActiveSkill`
+  (`CalcTools.lua:85-110`) — `requireSkillTypes` / `excludeSkillTypes` (SkillType expressions)
+  against the active skill's `skillTypes`, **not** raw gem `tags`. Pre-filter on that.

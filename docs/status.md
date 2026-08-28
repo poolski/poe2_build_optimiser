@@ -109,39 +109,63 @@ Key findings:
   Inoculation (`Maximum Life is 1`) — the failure the floor exists for. `--min-resist` alone
   does not stop it (CI touches no resist) → another reason resists are the wrong thing to floor.
 
+### Active next track — any-node (cascading) repair + a real `(W, D)` beam
+
+Chosen 2026-08-28 as the next work (gem optimisation is out of scope, so the tree optimiser gets
+deepened instead). What shipped as "beam search" is greedy-seed + **leaf-only** repair; this
+lifts both limits. Plan, cheapest-gating-first:
+
+1. **Cascade-verification spike** (gating, cheap). `evaluate_dealloc_candidates` (`bridge.lua:1020`)
+   already `DeallocNode`s an arbitrary node and reports the true `pointsFreed` (it cascades) — the
+   driver just *filters* to `pointsFreed == 1` (`optimiseTree.ts:296`). Before trusting non-leaf
+   removal: drive it on real builds with mid-tree nodes, confirm the cascaded off-set and
+   `pointsFreed` match PoB's own points-used display, and confirm the re-spend candidate pool
+   after a mid-tree `removeIds` prologue still contains the orphaned notables. Write the result
+   into `docs/gotchas.md`.
+2. **Any-node repair.** Drop the leaf-only filter; the k-sweep counts *points* freed, not leaves
+   (removing one mid-tree node can free several). Regret ranking already scores each removal in
+   isolation; the `removeIds` re-spend prologue already threads through every bridge call.
+3. **Real `(W, D)` beam.** Replace the single greedy walk in `optimiseTree.ts` with a width-`W`
+   beam over depth `D`, each beam node carrying its own constraint baseline and its own
+   `removeIds` / `allocSet` state (the `_from` RPCs already exist). New `--beam-width` /
+   `--beam-depth` flags; pick defaults from a bench sweep on the existing CORE corpus + harness.
+4. **Fold in `freeze` / `freezeAscendancy`** as a general node list (was always tied to this).
+5. **Rollback-to-node mode** (design note) — user names an anchor node; planner deallocs the
+   anchor's whole downstream subtree (`DeallocNode(anchor)` cascade) and re-spends those points.
+   "What if I respecced back to *here* and re-allocated everything past it?" Needs an
+   `anchorNodeId` param on the repair path.
+
+Full sketch: `docs/beam-search-design.md` §7 ("Any-node repair") + §"Open questions".
+
 ### Deferred past v1 (only if a real need appears)
 
 - Pruning layers 3 / 4 / 6 (`docs/beam-search-design.md`) — greedy re-spend has been sufficient.
-- Any-node (cascading) repair + a real `(W, D)` beam — needs an arbitrary-exact-alloc eval RPC +
-  `DeallocNode`-cascade verification.
 - `--target-level` → point-budget derivation — needs the act→quest-point mapping verified against
   vendored data (the verify-PoE2-vs-PoE1-assumptions discipline, `docs/gotchas.md`).
+- From-scratch mode (∞ budget + bare tree) — stretch goal.
+
+## Scope
+
+**Passive skill tree only.** Skill gems and their support gems are immutable calculation inputs —
+the optimiser never edits `socketGroupList` (decided 2026-08-28). The skill / support-gem
+optimiser is shelved indefinitely, not "next".
 
 ## Other tracks
 
-### Skill / support-gem optimiser — NOT STARTED (next major track)
+### Skill / support-gem optimiser — SHELVED (out of scope)
 
-Design sketch: `docs/skill-optimiser-design.md`. A constrained assignment + knapsack problem
-around the same headless-calc oracle, reusing the `constraints` / `preserveMetrics` gate. Ordered
-start:
+Design sketch + the completed PoE1-vs-PoE2 assumption audit are kept in
+`docs/skill-optimiser-design.md` for reference only, in case scope ever reopens. Not on the
+roadmap. Audit headline (still valid if revived): the calc engine enforces almost none of the gem
+rules — one-support-per-character, ≤5-per-skill, family-uniqueness would all be ours to impose;
+socket colours don't exist; no minimum-stat gate to socket a support; Spirit is flat-only and
+loads already-violating (needs `keepViolating`); gem level/quality are free inputs.
 
-1. **"Must verify first" audit** (gating, cheap) — 5 PoE1-vs-PoE2 assumptions to check against
-   vendored PoB source (`docs/skill-optimiser-design.md` §Must verify first): the "one support
-   per character" rule, support sockets per skill (flat 5 vs level-scaled), skill-gem socket
-   colours, Spirit reservation field semantics, and whether gem level/quality are decision
-   variables.
-2. **Two new bridge RPCs** — `list_socket_groups` and `evaluate_gem_changes`. Rollback primitive
-   is the open question (the skills tab likely needs deep-copy-and-restore of `socketGroupList`
-   rather than the tree's undo-state); watch for a stale-cache trap analogous to `node.path`.
-3. **Search pipeline** — pool pruning → fast bipartite assignment pass (Hungarian / min-cost
-   flow on log-additive marginal gains) → 2-opt local search with the real evaluator → Spirit
-   knapsack as a coordinate-descent step.
+### Bridge → standalone shared package — NOT STARTED, no trigger
 
-### Bridge → standalone shared package — NOT STARTED
-
-The agreed trigger for extracting `pob-runtime/bridge.lua` + `src/core/bridge.ts` into a shared
-package is it gaining a *second* consumer — i.e. the skill optimiser. Do the extraction early in
-that work.
+The agreed trigger was a *second* consumer of `pob-runtime/bridge.lua` + `src/core/bridge.ts`.
+With the skill optimiser shelved there is no second consumer on the roadmap, so this stays
+untriggered until the web frontend (or something else) needs the bridge outside the CLI.
 
 ### Web frontend — deferred
 
