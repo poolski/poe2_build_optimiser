@@ -230,11 +230,25 @@ export interface RecommendTreeOptions {
 	 * before `damageType`; in `filter` mode it shrinks the pool, in `prioritize` mode it only
 	 * reorders it ahead of a `maxCandidates` cut. */
 	objective?: string | ObjectiveSpec;
+	/** Called once per evaluated batch and once at the end. Must not throw; never affects the
+	 * ranking or which candidates are evaluated. Undefined = no callback (CLI default). */
+	onProgress?: (ev: RecommendProgress) => void;
 	/** Proximity gate: drop candidates whose `pathLength` (points AllocNode would spend to connect
 	 * them from the current tree) exceeds this. Caps path-node drag-in and keeps the pool local --
 	 * the beam repair loop expands locally anyway. Nodes with no `pathLength` are kept (the gate
 	 * can't judge them). Unset = no proximity gate. */
 	maxPathLength?: number;
+}
+
+/** Coarse progress signal for a recommend pass. A single fast batch loop, so a per-batch
+ * "scored X / Y" tick is enough. Fire-and-forget: never affects the ranking. */
+export interface RecommendProgress {
+	phase: "scoring" | "finalising";
+	/** Real BuildOutput recomputes so far, from the bridge's get_metrics (0 against an older
+	 * bridge without the counter). */
+	buildOutputs: number;
+	candidatesTotal: number;
+	candidatesScored: number;
 }
 
 /** Keep only nodes within `k` path-points of the current tree. A node with no `pathLength` is
@@ -343,11 +357,31 @@ export async function recommendTree(
 
 	const allocatable = options.maxCandidates !== undefined ? candidates.slice(0, options.maxCandidates) : candidates;
 
+	// Progress is opt-in and side-effect-free. `buildOutputs` comes from the bridge's own counter
+	// (no new RPC -- get_metrics already exists); an older bridge without it just reports 0.
+	const emitProgress = async (phase: RecommendProgress["phase"], scored: number): Promise<void> => {
+		if (!options.onProgress) return;
+		let buildOutputs = 0;
+		try {
+			buildOutputs = (await bridge.call<{ buildOutputCount?: number }>("get_metrics")).buildOutputCount ?? 0;
+		} catch {
+			/* older bridge -- leave 0 */
+		}
+		try {
+			options.onProgress({ phase, buildOutputs, candidatesTotal: allocatable.length, candidatesScored: scored });
+		} catch {
+			/* a broken UI callback must not fail the pass */
+		}
+	};
+
 	const recommendations: RecommendedNode[] = [];
+	let scored = 0;
 	for (const batch of chunk(allocatable, batchSize)) {
 		const { results } = await bridge.call<{ results: CandidateResult[] }>("evaluate_candidate_nodes", {
 			nodeIds: batch.map((node) => node.id),
 		});
+		scored += batch.length;
+		await emitProgress("scoring", scored);
 		const byId = new Map(batch.map((node) => [node.id, node]));
 		for (const result of results) {
 			// A candidate's true point cost includes every path node AllocNode had to pull in to
@@ -389,5 +423,6 @@ export async function recommendTree(
 	// corridor all report the same bundled delta -- see docs/gotchas.md), and V8's sort is only
 	// stable, not total, so without this the top-N slice could vary with input order.
 	recommendations.sort((a, b) => b.deltaPerPoint - a.deltaPerPoint || a.id - b.id);
+	await emitProgress("finalising", scored);
 	return recommendations.slice(0, top);
 }

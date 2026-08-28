@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PobBridgeClient } from "@poe2/pob-bridge";
-import { optimiseTree } from "./optimiseTree";
+import { optimiseTree, OptimiseProgress } from "./optimiseTree";
 import { TreeStatus } from "./recommendTree";
 
 interface FakeNode {
@@ -628,5 +628,131 @@ describe("optimiseTree (beam width)", () => {
 
 		expect(result.steps.map((s) => s.id)).toEqual([1, 2]);
 		expect(result.final.objective).toBeCloseTo(1400);
+	});
+});
+
+describe("optimiseTree (progress + cancellation)", () => {
+	// A long-ish extend walk: 4 improving 1-point nodes, budget for all 4.
+	const walkBridge = () => {
+		const inc: Record<number, number> = { 1: 300, 2: 100, 3: 50, 4: 25 };
+		return new FakeBridge({ TotalDPS: 1000 }, STATUS, [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }], (allocSet, id) => ({
+			pointsSpent: 1,
+			stats: { TotalDPS: 1000 + [...allocSet, id].reduce((s, n) => s + (inc[n] ?? 0), 0) },
+		}));
+	};
+	const WALK_OPTS = { pointBudget: STATUS.pointsUsed + 4 };
+
+	it("emits baseline -> add-loop* -> finalising for an extend walk", async () => {
+		const phases: OptimiseProgress["phase"][] = [];
+		await optimiseTree(walkBridge(), { ...WALK_OPTS, onProgress: (ev) => phases.push(ev.phase) });
+
+		expect(phases[0]).toBe("baseline");
+		expect(phases.at(-1)).toBe("finalising");
+		expect(phases.slice(1, -1).every((p) => p === "add-loop")).toBe(true);
+		expect(phases.filter((p) => p === "add-loop").length).toBeGreaterThanOrEqual(1);
+	});
+
+	it("emits baseline -> regret-probe -> k-sweep(+add-loop)* -> finalising for a repair run", async () => {
+		// three removable leaves, a re-spend that beats the baseline
+		const vlost: Record<number, number> = { 100: 10, 101: 30, 102: 100 };
+		const gain: Record<number, number> = { 1: 500, 2: 50, 3: 20 };
+		const bridge = new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 1 }, { id: 2 }, { id: 3 }],
+			(allocSet, id, removeIds) => {
+				const lost = (removeIds ?? []).reduce((s, r) => s + (vlost[r] ?? 0), 0);
+				const g = [...allocSet, id].reduce((s, n) => s + (gain[n] ?? 0), 0);
+				return { pointsSpent: 1, stats: { TotalDPS: 1000 - lost + g } };
+			},
+			{
+				allocated: [
+					{ id: 100, removedStats: { TotalDPS: 990 } },
+					{ id: 101, removedStats: { TotalDPS: 970 } },
+					{ id: 102, removedStats: { TotalDPS: 900 } },
+				],
+				statsFromFn: (_a, removeIds) => ({
+					TotalDPS: 1000 - removeIds.reduce((s, r) => s + (vlost[r] ?? 0), 0),
+				}),
+			},
+		);
+
+		const phases: OptimiseProgress["phase"][] = [];
+		await optimiseTree(bridge, { respecBudget: 3, onProgress: (ev) => phases.push(ev.phase) });
+
+		expect(phases[0]).toBe("baseline");
+		expect(phases[1]).toBe("regret-probe");
+		expect(phases.at(-1)).toBe("finalising");
+		expect(phases.filter((p) => p === "k-sweep").length).toBeGreaterThanOrEqual(1);
+		expect(phases).toContain("add-loop");
+		expect(phases.indexOf("k-sweep")).toBeLessThan(phases.indexOf("add-loop"));
+		expect(new Set(phases)).toEqual(new Set(["baseline", "regret-probe", "k-sweep", "add-loop", "finalising"]));
+	});
+
+	it("buildOutputs is monotonic non-decreasing and ends at result.buildOutputCount", async () => {
+		const seen: number[] = [];
+		const result = await optimiseTree(walkBridge(), {
+			...WALK_OPTS,
+			onProgress: (ev) => seen.push(ev.buildOutputs),
+		});
+
+		expect(seen.length).toBeGreaterThan(1);
+		for (let i = 1; i < seen.length; i++) expect(seen[i]).toBeGreaterThanOrEqual(seen[i - 1]);
+		expect(seen.at(-1)).toBe(result.buildOutputCount);
+	});
+
+	it("a throwing onProgress does not change the result and does not reject", async () => {
+		const clean = await optimiseTree(walkBridge(), WALK_OPTS);
+		const withThrower = await optimiseTree(walkBridge(), {
+			...WALK_OPTS,
+			onProgress: () => {
+				throw new Error("boom");
+			},
+		});
+		expect(withThrower).toEqual(clean);
+	});
+
+	it("a throwing shouldContinue is treated as 'keep going' and does not change the result", async () => {
+		const clean = await optimiseTree(walkBridge(), WALK_OPTS);
+		const withThrower = await optimiseTree(walkBridge(), {
+			...WALK_OPTS,
+			shouldContinue: () => {
+				throw new Error("boom");
+			},
+		});
+		expect(withThrower).toEqual(clean);
+	});
+
+	it("shouldContinue always true is byte-identical to not passing it", async () => {
+		const clean = await optimiseTree(walkBridge(), WALK_OPTS);
+		const withHook = await optimiseTree(walkBridge(), { ...WALK_OPTS, shouldContinue: () => true });
+		expect(withHook).toEqual(clean);
+	});
+
+	it("shouldContinue returning false after the 2nd add-loop tick stops with the plan so far", async () => {
+		let addLoopTicks = 0;
+		const result = await optimiseTree(walkBridge(), {
+			...WALK_OPTS,
+			onProgress: (ev) => {
+				if (ev.phase === "add-loop") addLoopTicks++;
+			},
+			shouldContinue: () => addLoopTicks < 2, // false from the 2nd add-loop tick onward
+		});
+
+		expect(result.stoppedBecause).toBe("cancelled");
+		// depth 0 committed one step (node 1); the 2nd tick cancels before depth 1 commits.
+		expect(result.steps.map((s) => s.id)).toEqual([1]);
+		expect(result.final.objective).toBeCloseTo(1300);
+		expect(result.final.pointsSpent).toBe(1);
+		expect(result.addedNodeIds).toEqual([1]);
+	});
+
+	it("shouldContinue false from the very first tick returns a clean no-op", async () => {
+		const result = await optimiseTree(walkBridge(), { ...WALK_OPTS, shouldContinue: () => false });
+
+		expect(result.stoppedBecause).toBe("cancelled");
+		expect(result.steps).toEqual([]);
+		expect(result.final.objective).toBe(1000);
+		expect(result.final.pointsSpent).toBe(0);
 	});
 });
