@@ -174,9 +174,10 @@ drops quality is too aggressive and gets retuned.
 
 ## Implementation status
 
-As of 2026-08-28 — steps 1–11 complete. Steps 1–10 committed (HEAD `ba0df4a`), 71 unit tests
-green; step 11 (`docs/beam-search-repro.md` + harness default-floor change) pending commit.
-Live-verification runs were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
+As of 2026-08-28 — **steps 1–11 all complete and committed** (step 11 = `d612057`), 71 unit
+tests green. The living project status/roadmap is `docs/status.md`; this section is the
+per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
+`MA-FlickerStrike` unless noted.
 
 - **Done:** steps 1–7 (extend mode + leaf-only repair), step 10 (CLI), the step 9 benchmark
   harness (now parallel — `--concurrency=N`, one shared bridge per build; per-recompute timing via
@@ -385,13 +386,11 @@ Live-verification runs were against `RampantlyBisexual.xml` and `MA-FlickerStrik
   so `pointBudget = pointsUsed` no longer inherits the `<WeaponSet1/2>` inflation. Weapon-set
   nodes have their own budget (`weaponSetPointsMax`); a `--target-level` derivation still needs
   the per-act quest-point total but no longer a weapon-set term on the normal pool.
-- **ε for the "no change" regression test (step 11).** The constraint-rejection repro showed
-  exact `0.0` landings with no float dust, so start with exact equality and add a relative ε only
-  if a real run shows neutral-node noise (same call the status memory already made for
-  constraints).
-
 ### Resolved
 
+- **ε for the "no change" regression test (step 11)** — RESOLVED. Exact equality is enough:
+  `repair-not-worthwhile` lands on `final === base` with no float dust (matches the
+  constraint-rejection repro). No relative ε added. See §11.
 - **Ascendancy nodes** — both modes skip ascendancy steps outright (`ascendancyPointsSpent > 0` /
   `ascendancyPointsFreed > 0`). A general `freeze` list for regular nodes stays a future item,
   tied to any-node repair (§7).

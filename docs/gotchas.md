@@ -51,8 +51,9 @@ stats (TotalDPS 41715 vs baseline 39525) until the recompute was added.
 **`PassiveSpec:ImportFromNodeList` allocates its `hashList` verbatim with no connectivity
 check.** It does `node.alloc = true; self.allocNodes[id] = node` for every id, then
 `BuildAllDependsAndPaths()` (`PassiveSpec.lua:353-372`). `RestoreUndoState` is just a call to it
-with the snapshot's `hashList`. Implication for beam *repair* (not yet built): you cannot model
-"loaded allocation minus a mid-tree node" by handing `ImportFromNodeList` the filtered id list --
+with the snapshot's `hashList`. Implication for beam *repair* (built, leaf-only — this is why):
+you cannot model "loaded allocation minus a mid-tree node" by handing `ImportFromNodeList` the
+filtered id list --
 the now-disconnected downstream nodes stay `alloc = true` and keep counting toward `pointsUsed`.
 Removing a **leaf** is safe (nothing downstream); a general respec needs `DeallocNode` (which
 *does* cascade to dependents) or a connectivity pass. This is why the design's regret set should

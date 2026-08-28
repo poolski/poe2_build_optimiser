@@ -5,7 +5,8 @@ defences and physical damage"), choose which **active skills**, **support gems**
 **persistent/Spirit skills** to run. Distinct from the passive-tree recommender — different
 decision space — but it reuses the same three primitives: the PoB-PoE2 headless calc engine as
 the fitness oracle, the `constraints`/`preserveMetrics` feasibility filter from
-`src/core/recommendTree.ts`, and (once built) the beam-search scaffold.
+`src/core/recommendTree.ts`, and the greedy-seed + local-repair scaffold from
+`src/core/optimiseTree.ts` (the beam-search track, now complete — see `docs/beam-search-design.md`).
 
 Nothing here is implemented yet. The [Must verify first](#must-verify-first) section lists the
 PoE2-vs-PoE1 assumptions that have to be checked against vendored data before any of this gets
@@ -116,7 +117,7 @@ near-duplicates constantly.
 | Fitness oracle | PoB-PoE2 calc engine via `pob-runtime/bridge.lua` + `src/core/bridge.ts` |
 | Feasibility gate | `constraints` / `preserveMetrics` / `keepViolating` in `src/core/recommendTree.ts` (incl. absent-metric = skip, not zero) |
 | Marginal-gain ranking idiom | `deltaPerPoint` ranking in `recommendTree.ts` |
-| Multi-step search scaffold | beam search (ACTIVE NEXT TASK for the tree side) |
+| Multi-step search scaffold | greedy-seed + local repair in `src/core/optimiseTree.ts` (beam-search track complete — `docs/beam-search-design.md`) |
 | CLI shape | `src/cli.ts` flag conventions (`--constraint Metric=n`, `--preserve A,B`, …) |
 
 New code: the two bridge RPCs above, the pool-pruning filter, the assignment solver, the 2-opt +
