@@ -233,6 +233,17 @@ a `dps-ehp` blend or a `--preserve Evasion` floor would reject it. Good constrai
   interesting repair behaviour only shows up at ~20+ spare. Genuine mid-level builds (30–60 spare)
   come from synthetic gutting (`npm run gut-build`) or hand-levelled local characters; the ladder
   can't supply them (level 80+ only).
+  - **poe-snipe.com — considered, rejected 2026-08-28.** `https://poe-snipe.com/search` has real
+    PoE2 characters in the L30–50 band (11 pages), i.e. exactly the low-level tree *shape* the
+    ladder can't give. But there is **no PoB export**: no import-string / "copy PoB code" control
+    anywhere on the character page (contrast poe.ninja's `pathOfBuildingExport`). Tree + items are
+    buried in the Next.js RSC server payload with no documented JSON endpoint, and characters are
+    keyed by an internal UUID (`/poe2/character?id=<uuid>`), not account/character names, so PoB's
+    own "import from account" flow can't take them either. Recovering builds would mean
+    reverse-engineering the RSC payload into synthetic PoB XML — a fragile ~1–2h spike. Not worth
+    it: `npm run gut-build` already covers the spare-point-count / recovery-ceiling need the
+    benchmark actually consumes, and the corpus is closed. Revisit only if a genuine low-level
+    tree *shape* (not just spare-point count) turns out to matter.
 - **Hand-tuned vs naive pair exists** — `Martial Artist - Shattering Palm + Flicker Strike`
   (hand-tuned) vs `MA-FlickerStrike` (naive) and, separately, the deliberately-gutted `Ranger
   (L37)`. `MA-FlickerStrike` has 31 spare so it can exercise a real re-spend; the hand-tuned Monk

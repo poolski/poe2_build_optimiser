@@ -4,14 +4,18 @@
 // + summary to docs/beam-bench-<objective>.md (and stdout).
 //
 //   npm run bench-tree-approaches -- [objective] [extraPoints] [--no-constraints] [--only=substr]
-//                                    [--concurrency=N] [--fresh-bridge]
+//                                    [--concurrency=N] [--fresh-bridge] [--preserve=A,B]
 //
 //   objective       objective spec for parseObjective -- "TotalDPS" (default), "TotalEHP",
 //                   "dps-ehp:0.5", "blend:A,B,W", or any bare mainOutput key.
 //   extraPoints      headroom above each build's pointsUsed for the extend row (default 8).
 //                    Gutted builds override this with the number of points that were gutted, so
 //                    "extend" is a like-for-like "spend the spare points back" test.
-//   --no-constraints drop the default "preserve the 3 elemental resists" floor.
+//   --no-constraints drop the default "preserve TotalEHP (no regression)" floor.
+//   --preserve=A,B   extra metric names pinned at their loaded-baseline value (no-regression floor)
+//                    on EVERY build, on top of the resist floor and any per-build `preserve` set in
+//                    the corpus table. Use for a corpus-wide lock; per-build defences (evasion for
+//                    a Monk, armour for a marauder) belong in the table's `preserve` field instead.
 //   --only=substr    restrict the corpus to builds whose label contains `substr` (debug aid).
 //   --full           run the complete step-8 corpus (CORE_CORPUS + EXTENDED_CORPUS, 25 builds).
 //                    Default is CORE_CORPUS only (the routine regression subset -- see below).
@@ -66,6 +70,13 @@ import { optimiseTree, OptimiseTreeResult } from "../src/core/optimiseTree";
 import { asNumber, StatSet } from "../src/core/stats";
 
 const BUILDS_DIR = "D:/My Documents/Path of Building (PoE2)/Builds";
+// Default no-regression floor applied to every build (unless --no-constraints). TotalEHP is PoB's
+// combined effective-HP number, so it guards life/ES/evasion/armour/block as one aggregate without
+// assuming any particular defence layer. Elemental resists are deliberately NOT floored here:
+// resists come from gear, not the passive tree, so pinning them steers the planner toward a target
+// it should not be chasing. `resistsHeld` still reports whether they regressed anyway (diagnostic,
+// not enforced).
+const DEFAULT_PRESERVE = ["TotalEHP"];
 const PRESERVE_RESISTS = ["FireResist", "ColdResist", "LightningResist"];
 
 /** docs/beam-bench-<objective>.md -- one committed fixture per objective. */
@@ -81,6 +92,11 @@ interface CorpusBuild {
 	tier: string;
 	note?: string;
 	heldOut?: boolean;
+	/** Metric names pinned at this build's loaded-baseline value (no-regression floor) for every
+	 * approach, in addition to the resist floor and any `--preserve=` list. This is where a build's
+	 * *hand-picked* defensive investment goes: repair must not be allowed to cannibalise it, so the
+	 * lock has to be per-build (a Monk's evasion/ES vs an armour build's Armour). */
+	preserve?: string[];
 }
 
 // Routine regression subset. `note` carries the measured wall (sum of the 3 approaches) from the
@@ -92,6 +108,12 @@ const CORE_CORPUS: CorpusBuild[] = [
 		label: "MA-Shattering",
 		tier: "tuned",
 		note: "hand-tuned, 10 spare -- validation 'repair ~= no change'; ~696s",
+		// Hand-picked hybrid life/evasion/ES defence (Life 1462 / Evasion 11371 / ES 3557 vs the
+		// naive sibling's 1703 / 9050 / 2373). Under raw TotalDPS, without this floor repair frees an
+		// evasion/ES node and allocates Chaos Inoculation (Life->1) for +40% "DPS"; with it, repair
+		// returns exact no-change on this build while still gaining +11% on the naive sibling. This is
+		// the step-11 validation -- see docs/beam-search-repro.md.
+		preserve: ["Life", "Evasion", "EnergyShield"],
 	},
 	{ rel: "ninja/TechnoIceShot-L100-28M.xml", label: "TechnoIceShot", tier: "strong", heldOut: true, note: "evasion; -1 spare; ~1689s" },
 	{ rel: "ninja/dosesondoses-L84-ES.xml", label: "dosesondoses", tier: "mid", heldOut: true, note: "ES; 16 spare; ~698s" },
@@ -222,6 +244,7 @@ async function runApproachOn(
 	extendHeadroom: number,
 	objectiveSpec: string,
 	constraintsOn: boolean,
+	preserveMetrics: string[],
 ): Promise<RunOutput> {
 	await bridge.call("reset_metrics");
 	const status = await bridge.call<{ pointsUsed: number }>("get_tree_status");
@@ -233,9 +256,19 @@ async function runApproachOn(
 		proximity: approach.proximity,
 		respecBudget: approach.respecBudget,
 		objectiveFn: parseObjective(objectiveSpec),
-		preserveMetrics: constraintsOn ? PRESERVE_RESISTS : undefined,
+		preserveMetrics: preserveMetrics.length > 0 ? preserveMetrics : undefined,
 	});
 	return { result, baseStats, wallSeconds: (Date.now() - t0) / 1000 };
+}
+
+/** DEFAULT_PRESERVE (unless --no-constraints) ∪ corpus-wide --preserve ∪ this build's own
+ * `preserve`, de-duped, order stable. */
+function preserveFor(cb: CorpusBuild, constraintsOn: boolean, globalPreserve: string[]): string[] {
+	const out: string[] = [];
+	for (const m of [...(constraintsOn ? DEFAULT_PRESERVE : []), ...globalPreserve, ...(cb.preserve ?? [])]) {
+		if (!out.includes(m)) out.push(m);
+	}
+	return out;
 }
 
 /** Fixed-size worker pool: at most `limit` `worker` calls in flight at once, walking `items` in
@@ -257,8 +290,9 @@ async function runWithConcurrency<T, R>(
 	await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => runNext()));
 }
 
-/** Every preserved resist in the final plan is >= its loaded-baseline value (small tolerance for
- * float dust). optimiseTree enforces this internally; a false here is a bug worth surfacing. */
+/** Diagnostic only (resists are no longer an enforced floor -- see DEFAULT_PRESERVE): did every
+ * elemental resist survive the plan at >= its loaded-baseline value anyway? A false flags that
+ * dropping the resist floor let a plan trade resist away. */
 function resistsHeld(baseStats: StatSet, finalStats: StatSet): boolean {
 	return PRESERVE_RESISTS.every((m) => asNumber(finalStats[m]) >= asNumber(baseStats[m]) - 0.01);
 }
@@ -295,6 +329,8 @@ function render(
 	objectiveSpec: string,
 	defaultExtra: number,
 	constraintsOn: boolean,
+	globalPreserve: string[],
+	perBuildPreserve: { label: string; metrics: string[] }[],
 	skipped: string[],
 	progress: { done: number; total: number } | null,
 	corpusDesc: string,
@@ -309,12 +345,21 @@ function render(
 	}
 	lines.push(
 		`objective \`${objectiveSpec}\`, extend headroom +${defaultExtra} pts (gutted builds: +pointsRemoved), ` +
-			`constraints: ${constraintsOn ? "preserve Fire/Cold/Lightning resist" : "none"}. ` +
+			`constraints: ${constraintsOn ? `preserve ${DEFAULT_PRESERVE.join("/")} (no regression)` : "none"}` +
+			`${globalPreserve.length > 0 ? ` + \`--preserve=${globalPreserve.join(",")}\` on every build` : ""}. ` +
 			`Generated ${new Date().toISOString()}.`,
 	);
 	lines.push(``);
 	lines.push(`Corpus: ${corpusDesc}`);
 	lines.push(``);
+	if (perBuildPreserve.length > 0) {
+		lines.push(
+			`Per-build preserve floors (hand-picked defence locked at loaded baseline): ` +
+				perBuildPreserve.map((p) => `**${p.label}** → \`${p.metrics.join(", ")}\``).join("; ") +
+				`.`,
+		);
+		lines.push(``);
+	}
 	lines.push(
 		`| build | tier | approach | base | final | lift % | Δabs | gap | recov | net pts | respec | res ok | BuildOutputs | sim s | ms/BO | cache hit % | wall s | stopped |`,
 	);
@@ -428,11 +473,13 @@ async function runBuild(
 	objectiveSpec: string,
 	defaultExtra: number,
 	constraintsOn: boolean,
+	globalPreserve: string[],
 	freshBridge: boolean,
 	log: (s: string) => void,
 	bumpRuns: () => void,
 ): Promise<BuildRunResult> {
 	const buildXmlPath = path.join(BUILDS_DIR, cb.rel);
+	const preserveMetrics = preserveFor(cb, constraintsOn, globalPreserve);
 	const tag = `[${ci + 1}/${total}] ${cb.label} (${cb.tier}${cb.heldOut ? ", held-out" : ""})`;
 
 	if (!fs.existsSync(buildXmlPath)) {
@@ -445,7 +492,8 @@ async function runBuild(
 	const extendHeadroom = sidecar ? sidecar.pointsRemoved : defaultExtra;
 	const objectivesMatch = sidecar ? normObj(sidecar.objectiveSpec) === normObj(objectiveSpec) : false;
 	log(
-		`${tag}  headroom +${extendHeadroom}${sidecar ? ` (gutted: ${sidecar.pointsRemoved} removed, gap ${sidecar.gapToRecover.toFixed(2)}${objectivesMatch ? "" : `, obj '${sidecar.objectiveSpec}' != bench -> no recov %`})` : ""}  -- start`,
+		`${tag}  headroom +${extendHeadroom}${sidecar ? ` (gutted: ${sidecar.pointsRemoved} removed, gap ${sidecar.gapToRecover.toFixed(2)}${objectivesMatch ? "" : `, obj '${sidecar.objectiveSpec}' != bench -> no recov %`})` : ""}` +
+			`  preserve [${preserveMetrics.join(", ") || "none"}]  -- start`,
 	);
 
 	const rows: Row[] = [];
@@ -477,12 +525,12 @@ async function runBuild(
 				if (freshBridge) {
 					const b = await openBridgeWithBuild(buildXmlPath);
 					try {
-						out = await runApproachOn(b, approach, extendHeadroom, objectiveSpec, constraintsOn);
+						out = await runApproachOn(b, approach, extendHeadroom, objectiveSpec, constraintsOn, preserveMetrics);
 					} finally {
 						b.dispose();
 					}
 				} else {
-					out = await runApproachOn(sharedBridge!, approach, extendHeadroom, objectiveSpec, constraintsOn);
+					out = await runApproachOn(sharedBridge!, approach, extendHeadroom, objectiveSpec, constraintsOn, preserveMetrics);
 				}
 			} catch (err) {
 				const msg = err instanceof Error ? err.message : String(err);
@@ -557,6 +605,10 @@ async function main() {
 	const fullCorpus = flags.includes("--full");
 	const concFlag = flags.find((f) => f.startsWith("--concurrency="))?.slice("--concurrency=".length);
 	const concurrency = Math.max(1, Math.trunc(Number(concFlag ?? process.env.BENCH_CONCURRENCY ?? 4)) || 4);
+	const globalPreserve = (flags.find((f) => f.startsWith("--preserve="))?.slice("--preserve=".length) ?? "")
+		.split(",")
+		.map((s) => s.trim())
+		.filter(Boolean);
 
 	const baseCorpus = fullCorpus ? [...CORE_CORPUS, ...EXTENDED_CORPUS] : CORE_CORPUS;
 	const corpus = onlyFlag ? baseCorpus.filter((c) => c.label.toLowerCase().includes(onlyFlag.toLowerCase())) : baseCorpus;
@@ -582,7 +634,13 @@ async function main() {
 		`\n=== bench-tree-approaches: objective '${objectiveSpec}', +${defaultExtra} extend headroom, ` +
 			`constraints ${constraintsOn ? "on" : "off"}, concurrency ${concurrency}${freshBridge ? ", fresh-bridge" : ""} ===`,
 	);
-	log(`corpus: ${corpus.length} builds x ${APPROACHES.length} approaches = ${totalRuns} runs\n`);
+	log(`corpus: ${corpus.length} builds x ${APPROACHES.length} approaches = ${totalRuns} runs`);
+	if (globalPreserve.length > 0) log(`--preserve on every build: ${globalPreserve.join(", ")}`);
+	const perBuildPreserve = corpus
+		.filter((c) => (c.preserve ?? []).length > 0)
+		.map((c) => ({ label: c.label, metrics: c.preserve! }));
+	for (const p of perBuildPreserve) log(`per-build preserve: ${p.label} -> ${p.metrics.join(", ")}`);
+	log("");
 
 	const writeOut = (inProgress: boolean) => {
 		const sorted = [...rows].sort((a, b) => a.ci - b.ci || a.ai - b.ai);
@@ -593,6 +651,8 @@ async function main() {
 				objectiveSpec,
 				defaultExtra,
 				constraintsOn,
+				globalPreserve,
+				perBuildPreserve,
 				skipped,
 				inProgress ? { done: buildsDone, total: corpus.length } : null,
 				corpusDesc,
@@ -604,7 +664,7 @@ async function main() {
 		corpus,
 		concurrency,
 		(cb, ci) =>
-			runBuild(cb, ci, corpus.length, objectiveSpec, defaultExtra, constraintsOn, freshBridge, log, () => {
+			runBuild(cb, ci, corpus.length, objectiveSpec, defaultExtra, constraintsOn, globalPreserve, freshBridge, log, () => {
 				runsDone++;
 			}),
 		(res) => {
@@ -624,7 +684,9 @@ async function main() {
 
 	writeOut(false);
 	const finalSorted = [...rows].sort((a, b) => a.ci - b.ci || a.ai - b.ai);
-	console.log(render(finalSorted, objectiveSpec, defaultExtra, constraintsOn, skipped, null, corpusDesc));
+	console.log(
+		render(finalSorted, objectiveSpec, defaultExtra, constraintsOn, globalPreserve, perBuildPreserve, skipped, null, corpusDesc),
+	);
 	log(`\n=== complete in ${clock(elapsed())} -- ${rows.length} rows, ${skipped.length} skipped ===`);
 	log(`wrote ${path.relative(path.join(__dirname, ".."), outFile)}`);
 }

@@ -174,8 +174,9 @@ drops quality is too aggressive and gets retuned.
 
 ## Implementation status
 
-As of 2026-08-28 — all committed (HEAD `ba0df4a`), 71 unit tests green. Live-verification runs
-were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
+As of 2026-08-28 — steps 1–11 complete. Steps 1–10 committed (HEAD `ba0df4a`), 71 unit tests
+green; step 11 (`docs/beam-search-repro.md` + harness default-floor change) pending commit.
+Live-verification runs were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
 
 - **Done:** steps 1–7 (extend mode + leaf-only repair), step 10 (CLI), the step 9 benchmark
   harness (now parallel — `--concurrency=N`, one shared bridge per build; per-recompute timing via
@@ -190,9 +191,18 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
   gutting tool covers it and the corpus proceeds with that. **Corpus split into CORE (9, the
   benchmark default) + EXTENDED (16, `--full`)** after the definitive run showed the full set is
   too slow for a routine check (`ba0df4a`; see §8).
-- **Remaining:** step 11 (validation write-up) — the only open step. The `dps-ehp:0.5` fixture is
-  the quantitative backing, but the blend at +8 headroom does **not** separate tuned from naive
-  (numbers in §11). §11 carries a concrete ordered handoff plan; start there.
+- **Step 11 (validation write-up) — DONE 2026-08-28.** `docs/beam-search-repro.md`. Repair returns
+  **exact no-change** on the hand-tuned Monk (`185998.36 → 185998.36`, `repair-not-worthwhile`) and
+  on a strong *held-out* build (`TechnoIceShot`), **+11.4 %** on the naive Monk sibling, and large
+  gains on weak/gutted builds — under raw `TotalDPS` with a no-regression floor on the
+  **tree-sourced defensive layers** (`Life,Evasion,EnergyShield`). Key finding: the `dps-ehp:0.5`
+  blend does **not** separate tuned from naive (both ≈ +1.3 %), and a preserve floor is inert on
+  top of it — the blend already blocks the bad trade but flattens the contrast, and repair still
+  reallocates notables the blend cannot price. Backing: CORE bench re-run under `TotalDPS`
+  (`docs/beam-bench-totaldps.md`, 9 builds, 54 min). Harness change: default floor switched from
+  the 3 elemental resists to `TotalEHP` no-regression — resists come from gear, not the tree, so
+  flooring them steers the planner wrong (`res ok` = y on all 27 runs confirms nothing traded them
+  away regardless). Per-build `preserve` override added for hand-picked defence.
 - **Deferred past v1:** pruning layers 3 / 4 / 6; any-node (cascading) repair; the real `(W, D)`
   beam (plain greedy re-spend has been enough so far).
 
@@ -286,11 +296,13 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
      CORE keeps 3 of the 4 held-out builds.
 9. **Benchmark harness** — DONE, incl. the definitive run.
    `npm run bench-tree-approaches -- [objective] [extraPoints] [--no-constraints] [--concurrency=N]
-   [--full] [--fresh-bridge] [--only=substr]` runs corpus × {`extend+N` fresh points, `repair-r3`,
-   `repair-r6`} → per-build table (lift %, net pts, respec, `res ok` feasibility recheck,
-   BuildOutputs, `sim s`, `ms/BO`, cache-hit %, wall s, stop reason) + a per-build summary with a
-   repair-monotonicity flag + a cost-by-approach median. Preserve-the-3-elemental-resists floor by
-   default.
+   [--full] [--fresh-bridge] [--only=substr] [--preserve=A,B]` runs corpus × {`extend+N` fresh
+   points, `repair-r3`, `repair-r6`} → per-build table (lift %, net pts, respec, `res ok` resist
+   diagnostic, BuildOutputs, `sim s`, `ms/BO`, cache-hit %, wall s, stop reason) + a per-build
+   summary with a repair-monotonicity flag + a cost-by-approach median. Default no-regression floor
+   `DEFAULT_PRESERVE = ["TotalEHP"]` (was the 3 elemental resists until step 11 — resists come from
+   gear, not the tree); `--preserve=A,B` adds to it corpus-wide, and each `CorpusBuild` may carry a
+   `preserve` override for hand-picked defence (`MA-Shattering` → `Life,Evasion,EnergyShield`).
    - **Parallel (`9d50dad`).** `--concurrency=N` (default 4 / `$BENCH_CONCURRENCY`): a fixed-size
      worker pool over builds, one shared LuaJIT bridge per build (all 3 approaches, `load_build_xml`
      once). Deterministic regardless of N — rows carry a hidden `(ci, ai)` key and are sorted before
@@ -314,48 +326,46 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
     `--constraint Metric=N` / `--preserve A,B`. Shared helpers in `src/cliShared.ts`; `parseArgs`
     unit-tested (12 tests). `--beam-width` / `--beam-depth` / `--target-level` /
     `--freeze-ascendancy` omitted — no backing feature yet.
-11. **Validation** — TODO (only remaining step). **Fresh-agent handoff plan below.**
+11. **Validation** — DONE 2026-08-28. `docs/beam-search-repro.md`.
 
-    **Goal.** `docs/beam-search-repro.md` (mirror `docs/constraint-rejection-repro.md`: setup →
-    the two builds → numbers table → conclusion) demonstrating that repair *improves* the naive
-    validation build and returns *≈no change* on the hand-tuned one:
-    - naive: `MA-FlickerStrike.xml` (~90k DPS, user-gutted)
-    - tuned: `Martial Artist - Shattering Palm + Flicker Strike.xml` (~186k DPS, hand-picked defences)
+    **What shipped.** The repro doc mirrors `docs/constraint-rejection-repro.md`: the tuned/naive
+    Monk pair, the objective + floor recipe, a 2×2 of CLI transcripts, and the CORE bench re-run as
+    corpus-wide backing.
+    - naive: `MA-FlickerStrike.xml` (~90k DPS, user-gutted, 25 spare)
+    - tuned: `Martial Artist - Shattering Palm + Flicker Strike.xml` (~186k DPS, hand-picked
+      evasion/ES defence, 10 spare)
 
-    **Blocker (confirmed on the definitive 25-build run, `ba0df4a`).** Under `dps-ehp:0.5` at +8
-    headroom the two builds land on the same lift, so "≈no change vs improves" has no contrast:
+    **Result.** Under raw `TotalDPS` + a no-regression floor on the tree-sourced defensive layers
+    (`--preserve Life,Evasion,EnergyShield`): repair returns **exact no-change** on the tuned build
+    (`185998.36 → 185998.36`, `repair-not-worthwhile`) and on the strong held-out `TechnoIceShot`,
+    **+11.4%** on the naive sibling (frees 2 dead notables → `Glaciation`), and large net-zero gains
+    on weak/gutted builds (`R_Thor` +130%, `Venereable-gut25-high` +83%). Monotonic (r6 ≥ r3) on all
+    9 CORE builds.
+
+    **Why not the blend (the plan's expected path).** `dps-ehp:0.5` at +8 headroom does *not*
+    separate tuned from naive — both ≈ +1.3% on every approach:
 
     | build | extend+8 | repair-r3 | repair-r6 |
     |---|--:|--:|--:|
     | `MA-Shattering` (tuned) | +1.82% | +0.57% | +1.33% |
     | `MA-FlickerStrike` (naive) | +1.75% | +0.63% | +1.30% |
 
-    Root cause: under raw `TotalDPS` + resist-only floors an earlier run had repair *gain +23% on
-    the tuned build* by respeccing its evasion/ES leaves — exactly the hand-picked defence the
-    validation must show repair leaving alone. The `dps-ehp:0.5` blend suppresses that but also
-    flattens the tuned/naive gap. The scalar blend is the wrong tool; a `preserveMetrics` floor on
-    the specific defences is sharper (forbids cannibalising them outright rather than penalising
-    it).
+    A `preserveMetrics` floor is *inert* on top of the blend: the blend already blocks the bad trade
+    (Chaos Inoculation tanks `TotalEHP`), so the floored layers were never being touched — but the
+    blend also flattens the contrast, and repair still finds ~1.3% by freeing notables the blend
+    cannot price (`Immaterial` / suppression, `One with the Storm`, ailment/utility). Raw metric +
+    a floor on the specific layers forbids the bad trade outright *and* keeps the contrast.
 
-    **Steps.**
-    1. **Wire `--preserve` through the bench harness.** `spike/benchTreeApproaches.ts` builds an
-       `OptimiseTreeOptions` per (build, approach) run — add a `--preserve A,B` passthrough to
-       `preserveMetrics`, plus a **per-build override** (the tuned Monk's defences differ from
-       `R_Thor`'s armour, etc.), since one global set won't fit the whole corpus. `--preserve` is
-       already parsed + honoured in `src/optimiseCli.ts` / `src/core/optimiseTree.ts` — this is
-       harness plumbing only, no core change.
-    2. **Pick the preserve set for `MA-Shattering`.** Inspect what the hand-tuned build actually
-       invested in (`npm run characterise-build` on the XML, or read the tree) — likely some of
-       evasion / ES / block / spell suppression / life — and pin those metric names.
-    3. **Re-run** `npm run bench-tree-approaches -- dps-ehp:0.5 8 --full` with the preserve set
-       applied. Expect: `MA-FlickerStrike` keeps a visible repair gain; `MA-Shattering` collapses
-       toward ≈0 because its defensive leaves are now locked.
-    4. **Fallback lever if separation is still thin:** widen headroom (positional `extraPoints`
-       arg, try +15–20). Try preserve alone first — it's the cleaner story.
-    5. **Write `docs/beam-search-repro.md`.** The `--full` fixture (`docs/beam-bench-dps-ehp-0-5.md`
-       after the re-run) is the quantitative backing. For the "≈no change" assertion start with
-       exact equality (the constraint repro saw exact `0.0` landings, no float dust); add a
-       relative ε only if a real run shows neutral-node noise.
+    **Harness changes (`spike/benchTreeApproaches.ts`).** `--preserve=A,B` global passthrough +
+    per-build `preserve` override on `CorpusBuild` (`MA-Shattering` → `Life,Evasion,EnergyShield`).
+    Default floor switched from the 3 elemental resists to `DEFAULT_PRESERVE = ["TotalEHP"]` — a
+    build-agnostic aggregate, and resists come from gear not the tree so flooring them steered the
+    planner wrong. `res ok` (now a diagnostic, not an enforced floor) = y on all 27 CORE runs, so
+    nothing traded resist away regardless. Backing fixture: `docs/beam-bench-totaldps.md`
+    (regenerated as the 9-build CORE `TotalDPS` run, 54 min at `--concurrency=4`).
+
+    **"No change" assertion.** Exact equality — `repair-not-worthwhile` lands on `final === base`
+    with no float dust (matches the constraint repro). No relative ε added.
 
 ## Open questions to resolve early
 
