@@ -302,20 +302,33 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
         re-spent. Freezing every removable node → `nothing-removable`. +3 tests (81 green).
         Verified live: `--freeze 2334` on `RampantlyBisexual` keeps `Dexterity` and the regret set
         picks other 0-value nodes for the same +11.9%.
-   - **Rollback-to-node mode (design note, 2026-08-28).** A targeted variant of any-node repair:
-     instead of the planner picking which allocated nodes to free, the user names one **anchor
-     node** already on their tree. The planner deallocs the anchor's entire downstream subtree
-     (every node whose only path to the class-start runs through the anchor — exactly the
-     `DeallocNode(anchor)` cascade, minus the anchor itself if the user wants to keep it as the
-     re-spend frontier), then re-spends all those freed points against the objective. Semantics:
-     "what if I respecced back to *here* and re-allocated everything past it?" `respecBudget`
-     becomes the size of that cascade rather than a sweep ceiling; the sweep collapses to a single
-     `k`. Useful for "my tree past the mid-game pivot is a mess, re-plan that half" without
-     touching the early core. Needs: an `anchorNodeId` param on the repair path, the cascade set
-     from step 1's verified `DeallocNode` behaviour, and a re-spend frontier seeded at the anchor.
-     Open sub-question: whether to also offer "roll back to anchor *and* free N more of the
-     lowest-value survivors" (compose with the normal regret sweep) or keep it strictly
-     subtree-only.
+     5. **Rollback-to-node (anchor) option** — SCHEDULED. Not a mode; one extra input to the repair
+        path that *composes* with steps 2–4. The user names one **anchor node** already on their
+        tree; the planner force-frees the anchor's entire downstream subtree — every node whose
+        only path to the class-start runs through the anchor, i.e. the `DeallocNode(anchor)`
+        cascade *minus the anchor itself* (the anchor stays allocated and becomes the re-spend
+        frontier). Those nodes are removed unconditionally: not scored, not knapsacked, not part of
+        the `k`-sweep. Everything steps 2–4 built then runs on top of that seed:
+        - `respecBudget` keeps its meaning but applies to the **survivors**. `--rollback-to <id>`
+          alone → subtree-only. `--rollback-to <id> --respec-budget 6` → "roll back past that node
+          **and** free 6 more of the lowest-value survivors" (this answers the old open
+          sub-question: compose, don't choose).
+        - The step-3 beam re-spends cascade-points + any swept points, frontier seeded at the
+          anchor and any other removal sites.
+        - `freeze` interaction: a frozen node inside the anchor's cascade is still collaterally
+          freed — same caveat as step 4 (freeze protects a node from being the removal *target*,
+          not from a cascade).
+        - Needs: `anchorNodeId?: number` on `OptimiseTreeOptions`, resolve → cascade set from
+          step 1's verified `DeallocNode` behaviour, force it into `dropped`, seed the frontier.
+        **Scope constraint — leaf / mid-to-late anchors only.** An anchor near the class-start
+        frees essentially the whole tree, which reduces to from-scratch construction and hits the
+        zero-delta pathing plateau: `expandState` filters to `objective - state.objective > 0`, so
+        with almost nothing allocated every travel-node candidate scores 0 and the loop stops at
+        depth 0. Making anchor-at-start work = solving from-scratch mode (lookahead past the
+        plateau / a pathing heuristic) — that stays **past v1**. This step ships the mid/late-pivot
+        use ("my tree past the mid-game pivot is a mess, re-plan that half without touching the
+        early core"), where a connected spine remains for the beam to grow from. A sensible guard:
+        reject / warn when the cascade covers more than some fraction of allocated points.
 8. **Corpus assembly** — DONE (2026-08-28). 6 local + 14 poe.ninja builds + the gutting tool.
    `spike/characteriseBuild.ts` (`npm run characterise-build`) emits a manifest row;
    `docs/beam-corpus.md` holds the manifest + gap list + the poe.ninja pull table/caveats.

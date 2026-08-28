@@ -141,10 +141,17 @@ lifts both limits. Plan, cheapest-gating-first:
    `evaluate_dealloc_candidates` probe, so they cost nothing). Ascendancy nodes stay
    unconditionally frozen — no `freezeAscendancy` toggle, since their point pool can't be
    re-spent anyway. Freezing every removable node yields `nothing-removable`. +3 tests (81 green).
-5. **Rollback-to-node mode** (design note) — user names an anchor node; planner deallocs the
-   anchor's whole downstream subtree (`DeallocNode(anchor)` cascade) and re-spends those points.
-   "What if I respecced back to *here* and re-allocated everything past it?" Needs an
-   `anchorNodeId` param on the repair path.
+5. **Rollback-to-node (anchor) option** — SCHEDULED. An extra input to the repair path (not a
+   separate mode) that *composes* with steps 2–4. User names an **anchor node**; the planner
+   force-frees the anchor's downstream subtree (`DeallocNode(anchor)` cascade minus the anchor
+   itself — the anchor stays as the re-spend frontier), unconditionally (not scored/knapsacked).
+   `respecBudget` then still applies to the survivors: `--rollback-to <id>` alone = subtree-only,
+   `+ --respec-budget N` = also free N more lowest-value survivors. Step-3 beam re-spends the lot.
+   Needs `anchorNodeId?: number` on `OptimiseTreeOptions` + cascade resolution from step 1.
+   **Scope: leaf / mid-to-late anchors only.** Anchor-at-start ≈ from-scratch and stalls on the
+   zero-delta pathing plateau (`expandState` filters to Δobjective > 0, so an empty tree stops at
+   depth 0); solving that = from-scratch mode, which stays past-v1. Guard: warn/reject when the
+   cascade covers more than ~a fraction of allocated points.
 
 Full sketch: `docs/beam-search-design.md` §7 ("Any-node repair") + §"Open questions".
 
@@ -153,7 +160,9 @@ Full sketch: `docs/beam-search-design.md` §7 ("Any-node repair") + §"Open ques
 - Pruning layers 3 / 4 / 6 (`docs/beam-search-design.md`) — greedy re-spend has been sufficient.
 - `--target-level` → point-budget derivation — needs the act→quest-point mapping verified against
   vendored data (the verify-PoE2-vs-PoE1-assumptions discipline, `docs/gotchas.md`).
-- From-scratch mode (∞ budget + bare tree) — stretch goal.
+- From-scratch mode (∞ budget + bare tree) — stretch goal. Also the blocker for
+  rollback-to-node with an anchor near the class-start: both need the add-loop to spend
+  zero-delta pathing steps toward a distant payoff.
 
 ## Scope
 
