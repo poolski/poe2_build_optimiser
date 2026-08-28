@@ -4,6 +4,9 @@
   "description": "Recommends passive tree allocations for a PoE2 build using Path of Building's own headless calculation engine.",
   "private": true,
   "main": "dist/cli.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "recommend-tree": "ts-node src/cli.ts",
     "optimise-tree": "ts-node src/optimiseCli.ts",
@@ -20,6 +23,7 @@
   "devDependencies": {
     "@types/node": "^22.0.0",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   },
