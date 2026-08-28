@@ -168,6 +168,47 @@ Full sketch: `docs/beam-search-design.md` §7 ("Any-node repair") + §"Open ques
   rollback-to-node with an anchor near the class-start: both need the add-loop to spend
   zero-delta pathing steps toward a distant payoff.
 
+## Active next track: web UI + bridge service (added 2026-08-28)
+
+The tree optimiser is feature-complete and the CLI surface has settled, so the next track is a
+**local web UI** over the same `src/core/` functions. It also pulls the long-deferred
+**bridge → standalone package** work along with it: a browser cannot shell out to LuaJIT, so the
+bridge has to move behind a long-lived service boundary. The two land together.
+
+**Shape (assumed until decided otherwise):** local-first — a `localhost` app wrapping the local
+LuaJIT bridge, single user, not hosted. A third consumer of `src/core/` after the two CLIs, using
+the same "parse in / data out" contract; no core changes expected beyond an optional progress
+callback.
+
+**Decide before building:**
+
+1. **First-version scope.** Full optimiser (extend / repair / rollback modes, objective,
+   constraints, `freeze`, beam `W`/`D`) — *recommended*, the read-only "next node" view alone is
+   thin — or ship the recommender view first and add the optimiser after.
+2. **Build input.** Paste a PoB export code (`base64(zlib(xml))` — `spike/fetchNinjaBuilds.ts`
+   already decodes exactly this) and/or file upload.
+3. **Long-running jobs.** An optimise run is hundreds of ~280 ms recomputes = minutes, so it
+   can't be a plain request/response: submit → progress stream (SSE/WS) → result. The bench
+   harness's `--concurrency` parallel-bridge worker pool is the reference implementation.
+4. **Result rendering.** Text/list diff of node names (cheap) vs. an actual passive-tree canvas
+   with allocated / added / dropped nodes highlighted (needs vendored `TreeData/` coords + assets
+   — a lot more work). Start with the list; canvas is an optional follow-up.
+5. **Stack.** TypeScript (repo is already TS); framework TBD.
+
+**Phased plan (proposal):**
+
+1. **Bridge service extraction** — lift `pob-runtime/bridge.lua` + `src/core/bridge.ts` into a
+   package with a long-lived process pool + a small RPC surface (load build, run
+   recommend/optimise, stream progress). Reuse the bench harness's worker-pool pattern.
+2. **API layer** — thin HTTP server in this repo exposing `recommendTree` / `optimiseTree` over
+   the service, with job IDs + a progress stream.
+3. **Minimal UI** — paste PoB code → pick mode + objective + constraints → run → node-list diff +
+   copyable updated PoB code. No tree canvas.
+4. **Tree canvas** — optional follow-up, render `TreeData/` with the node diff highlighted.
+
+Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below this
+— pick them up only on demand.
+
 ## Scope
 
 **Passive skill tree only.** Skill gems and their support gems are immutable calculation inputs —
@@ -185,15 +226,15 @@ rules — one-support-per-character, ≤5-per-skill, family-uniqueness would all
 socket colours don't exist; no minimum-stat gate to socket a support; Spirit is flat-only and
 loads already-violating (needs `keepViolating`); gem level/quality are free inputs.
 
-### Bridge → standalone shared package — NOT STARTED, no trigger
+### Bridge → standalone shared package — folded into the web UI track
 
-The agreed trigger was a *second* consumer of `pob-runtime/bridge.lua` + `src/core/bridge.ts`.
-With the skill optimiser shelved there is no second consumer on the roadmap, so this stays
-untriggered until the web frontend (or something else) needs the bridge outside the CLI.
+Was blocked on needing a second consumer of `pob-runtime/bridge.lua` + `src/core/bridge.ts`. The
+web UI is that consumer, so this is now step 1 of the *Active next track* above rather than its
+own line.
 
-### Web frontend — deferred
+### Web frontend — promoted to the Active next track
 
-The core/CLI split keeps the seam clean; deferred until the CLI tools settle.
+See *Active next track: web UI + bridge service* above.
 
 ## How to pick this up
 
