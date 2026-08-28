@@ -123,9 +123,12 @@ lifts both limits. Plan, cheapest-gating-first:
    freeing 10 pts at Δobj 0); after a mid-tree `removeIds` the freed nodes reappear in the pool
    at `pathLength` 1–2; `get_stats` round-trips byte-for-byte. **Remaining work is driver
    accounting** — the `k`-sweep must count *points* freed (variable per removal), not leaves.
-2. **Any-node repair.** Drop the leaf-only filter; the k-sweep counts *points* freed, not leaves
-   (removing one mid-tree node can free several). Regret ranking already scores each removal in
-   isolation; the `removeIds` re-spend prologue already threads through every bridge call.
+2. **Any-node repair** — DONE 2026-08-28. `optimiseTree.ts` repair path keeps every removable
+   regular node (leaf or interior), ranks by objective value lost, greedy-knapsacks in that order
+   to a `respecBudget` *points* ceiling (an over-budget cascade is skipped for a smaller one), and
+   the `k`-sweep frees `sum(pointsFreed)` per step. `stoppedBecause "no-leaves"` → `"nothing-removable"`;
+   CLI copy + `RemovedNode.pointsFreed` doc updated; +2 unit tests (73 green). `removeIds` prologue
+   was already cascade-safe bridge-side, so no bridge change.
 3. **Real `(W, D)` beam.** Replace the single greedy walk in `optimiseTree.ts` with a width-`W`
    beam over depth `D`, each beam node carrying its own constraint baseline and its own
    `removeIds` / `allocSet` state (the `_from` RPCs already exist). New `--beam-width` /

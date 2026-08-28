@@ -252,22 +252,30 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
      no-change) on builds where `repair-r3` gained 20%+. Constraints gated against running
      walk-state (`constraintReference: "walk-state"`), then the whole plan re-checked vs the loaded
      baseline. Recommends the repair only if a swept plan has `finalObjective > baselineObjective`
-     and ≥1 step, else `stoppedBecause: "repair-not-worthwhile"` / `"no-leaves"` with `removed`
-     still surfaced. Pre-sweep live numbers (one-shot): `RampantlyBisexual` / TotalDPS / respec 3
-     → +11.9% at net 0 pts; `MA-FlickerStrike` / TotalEHP / respec 5 → +13%. Post-sweep bench
-     numbers in `docs/beam-bench-<objective>.md`.
+     and ≥1 step, else `stoppedBecause: "repair-not-worthwhile"` / `"nothing-removable"` (renamed
+     from `"no-leaves"` in step 2) with `removed` still surfaced. Pre-sweep live numbers (one-shot):
+     `RampantlyBisexual` / TotalDPS / respec 3 → +11.9% at net 0 pts; `MA-FlickerStrike` / TotalEHP
+     / respec 5 → +13%. Post-sweep bench numbers in `docs/beam-bench-<objective>.md`.
    - **Any-node repair — ACTIVE NEXT TRACK (chosen 2026-08-28).** Allow non-leaf removal
      (`DeallocNode` cascades everything only reachable through the removed node). `bridge.lua`
      `evaluate_dealloc_candidates` already does this and already reports the true `pointsFreed`;
-     `optimiseTree.ts:296` just filters to `pointsFreed == 1`. Steps:
+     the driver filter was the only leaf-only limit. Steps:
      1. **Cascade-verification spike** — DONE 2026-08-28. `spike/verifyDeallocCascade.ts`
         (`npm run verify-dealloc-cascade`); write-up in `docs/gotchas.md` (§`DeallocNode` cascade).
         Verdict: fit for any-node repair — `pointsFreed` trustworthy for interior nodes, ~80 % of
         allocated nodes are interior, 25–55 % of interior removals are cheap/helpful, freed nodes
         re-enter the pool at `pathLength` 1–2, `get_stats` round-trips byte-for-byte. Remaining
         work is driver accounting, not a bridge gap.
-     2. **Lift the leaf-only filter** — the `k`-sweep counts *points* freed, not leaves; regret
-        ranking already scores each removal in isolation; `removeIds` re-spend prologue unchanged.
+     2. **Lift the leaf-only filter** — DONE 2026-08-28. `optimiseTree.ts` repair path now keeps
+        every removable regular node (`ascendancyPointsFreed == 0 && pointsFreed >= 1`), ranks by
+        objective value lost, then greedy-knapsacks in that order so cumulative `pointsFreed` fits
+        the `respecBudget` *points* ceiling (a single removal bigger than the whole budget is
+        skipped; scanning continues for a smaller one). The `k`-sweep frees `sum(pointsFreed)` per
+        step, not `k`, and `pointsFreed` / `final.pointsSpent` in the result use the real cascade
+        total. `stoppedBecause: "no-leaves"` → `"nothing-removable"`. `removeIds` re-spend prologue
+        unchanged (it already `DeallocNode`s, so cascades were always handled bridge-side). +2 unit
+        tests (interior removal re-spends the whole cascade; an over-budget cascade is skipped for
+        a smaller one). 73 tests green.
      3. **Real `(W, D)` beam** — replace the single greedy walk with a width-`W` beam over depth
         `D`, each beam node carrying its own constraint baseline + `removeIds` / `allocSet` state
         (the `_from` RPCs already support this). New `--beam-width` / `--beam-depth`; defaults

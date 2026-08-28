@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // CLI: plan a multi-step passive-tree change for a build -- extend mode (add points within a
-// budget) or leaf-only repair mode (free the lowest-value allocated leaves and re-spend them).
+// budget) or repair mode (free the lowest-value allocated nodes, cascade included, and re-spend
+// the freed points).
 // Argument parsing + console output live here; core/optimiseTree.ts returns plain data.
 
 import { PobBridge } from "./core/bridge";
@@ -13,7 +14,8 @@ const USAGE = `usage: optimise-tree <path-to-build.xml> [options]
 
   mode
     --mode <extend|repair>       default: repair if --respec-budget > 0, else extend
-    --respec-budget <n>          repair mode: free up to n low-value allocated leaves and re-spend
+    --respec-budget <n>          repair mode: relocate up to n points from low-value allocated
+                                 nodes (one removal may cascade several points off) and re-spend
     --repair-nodes <n>           alias for --respec-budget
 
   budget (extend mode)
@@ -173,10 +175,11 @@ function report(result: OptimiseTreeResult, wallSeconds: string): void {
 	console.log();
 
 	if (result.removed.length > 0) {
-		console.log(`Freed ${result.pointsFreed} leaf point(s):`);
+		console.log(`Freed ${result.pointsFreed} point(s) by removing ${result.removed.length} node(s):`);
 		for (const r of result.removed) {
+			const cascade = r.pointsFreed > 1 ? `   frees ${r.pointsFreed} pts (cascade)` : "";
 			console.log(
-				`  - ${r.name} (${r.type})   value lost ${fmt(r.valueLost)}   ` +
+				`  - ${r.name} (${r.type})${cascade}   value lost ${fmt(r.valueLost)}   ` +
 					`[${objectiveLabel} ${fmt(result.baseline.objective)} -> ${fmt(r.objectiveAfterRemoval)} without it]`,
 			);
 		}

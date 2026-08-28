@@ -1,21 +1,23 @@
 // Multi-step passive-tree planner -- the successor to the single-pass greedy `recommendTree`.
 // See docs/beam-search-design.md for the full design (greedy-seed + local beam repair).
 //
-// STATUS: extend mode + leaf-only repair mode.
+// STATUS: extend mode + any-node (cascading) repair mode.
 //
 // Extend mode (respecBudget 0 / unset) = "start from the tree as loaded, tell me which nodes to
 // allocate next, in order" -- a pure greedy walk outward from the current frontier, bounded by a
 // point budget and a proximity radius.
 //
-// Repair mode (respecBudget > 0) = free some of the lowest-value *allocated leaves* (a leaf frees
-// exactly one point; nothing downstream cascades off, so what remains is still a connected tree),
-// then re-spend the freed points with the same greedy add-loop, measuring against the post-removal
-// tree via the `removeIds` prologue on the eval RPCs. `respecBudget` is a *ceiling*: the driver
-// sweeps k = 1..respecBudget freed leaves and keeps the best repaired plan, because removing the
-// full budget in one shot is non-monotonic (a bigger budget can yield a worse plan). Returns
-// whichever is better, the loaded tree or the best repaired one -- so it can always fall back to
-// "change nothing". Non-leaf (cascading) removal is a later opt-in and needs an arbitrary-allocation
-// eval RPC; see the design doc's step 7.
+// Repair mode (respecBudget > 0) = free some of the lowest-value *allocated regular nodes* and
+// re-spend the points. Removing a node deallocs it plus everything only connected through it
+// (`DeallocNode` cascades; verified in docs/gotchas.md), so one removal can free >1 point; a leaf
+// frees exactly one. `respecBudget` is a ceiling on *points* relocated. Candidates are ranked by
+// objective value lost, then a greedy knapsack in that order picks the set whose cumulative
+// pointsFreed fits the budget; the driver then sweeps k = 1..N over that ranked set and keeps the
+// best repaired plan, because committing the whole budget in one shot is non-monotonic (a bigger
+// respec can yield a worse plan, especially now that one removal can cascade many points off).
+// Re-spend uses the same greedy add-loop, measured against the post-removal tree via the
+// `removeIds` prologue on the eval RPCs. Returns whichever is better, the loaded tree or the best
+// repaired one -- so it can always fall back to "change nothing". See the design doc's step 7.
 
 import { PobBridgeClient } from "./bridge";
 import { MemoEvaluator } from "./evaluator";
@@ -90,15 +92,16 @@ export interface OptimiseStep {
 	deltaPerPoint: number;
 }
 
-/** A leaf the repair pass deallocated to free its point. */
+/** An allocated node the repair pass deallocated to free its point(s). */
 export interface RemovedNode {
 	id: number;
 	name: string;
 	type: string;
 	statLines: string[];
-	/** Always 1 for a leaf -- kept for symmetry with the bridge payload. */
+	/** Points freed by removing this node: 1 for a leaf, more for an interior node whose
+	 * downstream cascades off with it (`DeallocNode` semantics). */
 	pointsFreed: number;
-	/** Objective with just this node removed from the loaded tree. */
+	/** Objective with just this node (and its cascade) removed from the loaded tree. */
 	objectiveAfterRemoval: number;
 	/** baselineObjective - objectiveAfterRemoval. Negative = removing it *helped* the objective. */
 	valueLost: number;
@@ -110,7 +113,7 @@ export interface OptimiseTreeResult {
 	pointBudget: number;
 	/** Present in repair mode: the respec budget the caller asked for. */
 	respecBudget?: number;
-	/** Repair mode: the leaves freed, most-expendable first. Empty in extend mode. */
+	/** Repair mode: the nodes freed, most-expendable first. Empty in extend mode. */
 	removed: RemovedNode[];
 	/** The nodes to allocate, in order (repair mode: the re-spend of the freed points). */
 	steps: OptimiseStep[];
@@ -129,7 +132,7 @@ export interface OptimiseTreeResult {
 		| "no-positive-candidate"
 		| "no-candidates"
 		| "nothing-to-do"
-		| "no-leaves"
+		| "nothing-removable"
 		| "repair-not-worthwhile";
 	/** Populated when the bridge exposes get_metrics (real BuildOutput recomputes this run). */
 	buildOutputCount?: number;
@@ -170,7 +173,8 @@ interface AddLoopParams {
 	maxCandidatesPerStep: number | undefined;
 	/** Points the walk may spend. */
 	headroom: number;
-	/** Leaves deallocated before measuring (repair mode); [] in extend mode. */
+	/** Nodes deallocated before measuring (repair mode); [] in extend mode. Each may cascade
+	 * downstream, so this is not necessarily the count of points freed. */
 	removeIds: number[];
 	startObjective: number;
 	startStats: StatSet;
@@ -266,7 +270,7 @@ export async function optimiseTree(
 		});
 	}
 
-	// ---- repair mode (leaf-only) ----
+	// ---- repair mode (any allocated regular node; removal cascades) ----
 	const noChange = (
 		reason: OptimiseTreeResult["stoppedBecause"],
 		removed: RemovedNode[] = [],
@@ -283,7 +287,7 @@ export async function optimiseTree(
 	const { nodes: allocated } = await bridge.call<{ nodes: AllocatedNode[] }>("list_allocated_nodes");
 	const regularIds = allocated.filter((n) => !n.ascendancyName).map((n) => n.id);
 	if (regularIds.length === 0) {
-		return noChange("no-leaves");
+		return noChange("nothing-removable");
 	}
 
 	const { results: deallocs } = await bridge.call<{ results: DeallocResult[] }>("evaluate_dealloc_candidates", {
@@ -291,44 +295,60 @@ export async function optimiseTree(
 	});
 	const nodeById = new Map(allocated.map((n) => [n.id, n]));
 
-	const leaves: RemovedNode[] = [];
+	// Every removable regular node (leaf or interior). `pointsFreed` is the whole cascade: the node
+	// plus everything only connected to the tree through it (DeallocNode semantics, docs/gotchas.md).
+	const candidates: RemovedNode[] = [];
 	for (const d of deallocs) {
-		if (d.pointsFreed !== 1 || d.ascendancyPointsFreed !== 0) continue;
+		if (d.ascendancyPointsFreed !== 0 || d.pointsFreed < 1) continue; // repair stays on the regular pool
 		const meta = nodeById.get(d.nodeId);
 		if (!meta) continue;
 		const objAfter = score(d.stats);
-		// A leaf whose removal makes the build unscorable (e.g. drops DPS to 0) is never expendable.
+		// A node whose removal makes the build unscorable (e.g. drops DPS to 0) is never expendable.
 		const valueLost = objAfter === undefined ? Number.POSITIVE_INFINITY : baselineObjective - objAfter;
-		leaves.push({
+		candidates.push({
 			id: d.nodeId,
 			name: meta.name,
 			type: meta.type,
 			statLines: meta.statLines,
-			pointsFreed: 1,
+			pointsFreed: d.pointsFreed,
 			objectiveAfterRemoval: objAfter ?? Number.NaN,
 			valueLost,
 		});
 	}
 
-	// Least value lost first (negative = removing it helps); id tie-break for determinism.
-	leaves.sort((a, b) => a.valueLost - b.valueLost || a.id - b.id);
-	const dropped = leaves.filter((l) => Number.isFinite(l.valueLost)).slice(0, respecBudget);
+	// Least value lost first (negative = removing it helps); id tie-break for determinism. Then a
+	// greedy knapsack in that order: take a candidate if its whole cascade still fits under the
+	// `respecBudget` points ceiling, else skip it and keep scanning for a smaller one that fits.
+	// (For an all-leaves tree this is exactly the old "first `respecBudget` leaves".)
+	candidates.sort((a, b) => a.valueLost - b.valueLost || a.id - b.id);
+	const dropped: RemovedNode[] = [];
+	let droppedPoints = 0;
+	for (const c of candidates) {
+		if (!Number.isFinite(c.valueLost)) continue;
+		if (droppedPoints + c.pointsFreed > respecBudget) continue;
+		dropped.push(c);
+		droppedPoints += c.pointsFreed;
+	}
 	if (dropped.length === 0) {
-		return noChange("no-leaves");
+		return noChange("nothing-removable");
 	}
 
-	// Sweep k = 1..dropped.length and keep the best repaired plan. Removing exactly `respecBudget`
-	// leaves in one shot is non-monotonic: the deepest few in the value-lost ranking may not really
-	// be expendable (the ranking scores each leaf's removal in isolation, and the proximity-bounded
-	// re-spend can't always path back to a good replacement), so a bigger budget can yield a worse
-	// -- or sub-baseline, hence no-change -- plan than a smaller one. `respecBudget` is a ceiling,
-	// not a target. Cost: up to `dropped.length` re-spend walks; the one-time dealloc probe above is
+	// Sweep k = 1..dropped.length and keep the best repaired plan. Committing the whole budget in
+	// one shot is non-monotonic: the deepest few in the value-lost ranking may not really be
+	// expendable (the ranking scores each removal in isolation, and the proximity-bounded re-spend
+	// can't always path back to a good replacement), so a bigger respec can yield a worse -- or
+	// sub-baseline, hence no-change -- plan than a smaller one. This is sharper now that one interior
+	// removal can cascade many points off in a single sweep step. `respecBudget` is a ceiling, not a
+	// target. Cost: up to `dropped.length` re-spend walks; the one-time dealloc probe above is
 	// shared. Ties go to the smaller k (less respec currency spent) via the strict `>` + ascending k.
 	const extendHeadroomPos = Math.max(0, extendHeadroom);
 	let bestK = 0;
 	let bestLoop: AddLoopOutcome | undefined;
+	let bestFreed = 0;
 	for (let k = 1; k <= dropped.length; k++) {
-		const kDroppedIds = dropped.slice(0, k).map((l) => l.id);
+		const kDropped = dropped.slice(0, k);
+		const kDroppedIds = kDropped.map((l) => l.id);
+		const kPointsFreed = kDropped.reduce((s, l) => s + l.pointsFreed, 0);
 		const kPostRemoval = await memo.statsFrom([], kDroppedIds);
 		const kPostRemovalObjective = score(kPostRemoval.stats);
 		if (kPostRemovalObjective === undefined) continue; // removing these k makes the build unscorable
@@ -336,7 +356,7 @@ export async function optimiseTree(
 		const kLoop = await greedyAddLoop({
 			...commonLoopParams,
 			constraintReference: "walk-state",
-			headroom: k + extendHeadroomPos,
+			headroom: kPointsFreed + extendHeadroomPos,
 			removeIds: kDroppedIds,
 			startObjective: kPostRemovalObjective,
 			startStats: kPostRemoval.stats,
@@ -353,6 +373,7 @@ export async function optimiseTree(
 		if (!bestLoop || kLoop.finalObjective > bestLoop.finalObjective) {
 			bestK = k;
 			bestLoop = kLoop;
+			bestFreed = kPointsFreed;
 		}
 	}
 
@@ -360,19 +381,19 @@ export async function optimiseTree(
 		return noChange("repair-not-worthwhile", dropped);
 	}
 
-	const usedLeaves = dropped.slice(0, bestK);
+	const usedRemovals = dropped.slice(0, bestK);
 	return withMetrics(bridge, memo, {
 		...skeleton,
 		mode: "repair",
 		respecBudget,
-		removed: usedLeaves,
+		removed: usedRemovals,
 		steps: bestLoop.steps,
 		addedNodeIds: bestLoop.added,
-		pointsFreed: usedLeaves.length,
+		pointsFreed: bestFreed,
 		pointsRespent: bestLoop.spent,
 		final: {
 			objective: bestLoop.finalObjective,
-			pointsSpent: bestLoop.spent - usedLeaves.length,
+			pointsSpent: bestLoop.spent - bestFreed,
 			stats: bestLoop.finalStats,
 		},
 		stoppedBecause: bestLoop.stoppedBecause,
@@ -382,7 +403,7 @@ export async function optimiseTree(
 /** Greedy outward walk shared by extend and repair. Picks the best `deltaPerPoint` node each step
  * (id tie-break), stops at `headroom`, when nothing improves the objective, or when the candidate
  * pool empties. `removeIds` (repair) is threaded through every bridge call so all measurements are
- * against "loaded minus those leaves". */
+ * against "loaded minus those nodes (and their cascades)". */
 async function greedyAddLoop(p: AddLoopParams): Promise<AddLoopOutcome> {
 	const hasConstraints = Object.keys(p.floors).length > 0;
 	const added: number[] = [];

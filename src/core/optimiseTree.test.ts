@@ -23,7 +23,8 @@ interface AllocatedFake {
 	type?: string;
 	statLines?: string[];
 	ascendancyName?: string;
-	/** Points freed by removing it. 1 => leaf (the only kind repair v1 drops). Default 1. */
+	/** Points freed by removing it: 1 => leaf, >1 => interior node whose downstream cascades off.
+	 * Default 1. */
 	pointsFreed?: number;
 	/** Stats with just this node removed from the loaded tree. */
 	removedStats: Record<string, unknown>;
@@ -383,16 +384,77 @@ describe("optimiseTree (repair mode)", () => {
 		expect(result.removed.map((r) => r.id)).toEqual([301]);
 	});
 
-	it("returns 'no-leaves' when nothing allocated is a leaf", async () => {
+	it("returns 'nothing-removable' when every removal's cascade exceeds the budget", async () => {
 		const bridge = new FakeBridge({ TotalDPS: 1000 }, STATUS, [{ id: 1 }], () => ({ pointsSpent: 1, stats: {} }), {
 			allocated: [{ id: 400, pointsFreed: 4, removedStats: { TotalDPS: 700 } }],
 		});
 
-		const result = await optimiseTree(bridge, { respecBudget: 2 });
+		const result = await optimiseTree(bridge, { respecBudget: 2 }); // 400 frees 4 > 2
 
 		expect(result.mode).toBe("repair");
-		expect(result.stoppedBecause).toBe("no-leaves");
+		expect(result.stoppedBecause).toBe("nothing-removable");
 		expect(result.removed).toEqual([]);
 		expect(result.steps).toEqual([]);
+	});
+
+	it("frees an interior node (pointsFreed > 1) and re-spends the whole cascade", async () => {
+		// Node 110 is interior: removing it frees 3 points and drops DPS by 20. Re-spend candidates
+		// 1/2/3 each add +40, additive, 1 pt each -> the walk should reclaim all 3 freed points.
+		const bridge = new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 1 }, { id: 2 }, { id: 3 }],
+			(allocSet, id, removeIds) => {
+				const lost = (removeIds ?? []).includes(110) ? 20 : 0;
+				const gain = [...allocSet, id].reduce((s, n) => s + ([1, 2, 3].includes(n) ? 40 : 0), 0);
+				return { pointsSpent: 1, stats: { TotalDPS: 1000 - lost + gain } };
+			},
+			{
+				allocated: [{ id: 110, pointsFreed: 3, removedStats: { TotalDPS: 980 } }],
+				statsFromFn: (_a, removeIds) => ({ TotalDPS: 1000 - (removeIds.includes(110) ? 20 : 0) }),
+			},
+		);
+
+		const result = await optimiseTree(bridge, { respecBudget: 3 });
+
+		expect(result.removed.map((r) => r.id)).toEqual([110]);
+		expect(result.removed[0].pointsFreed).toBe(3);
+		expect(result.pointsFreed).toBe(3);
+		expect(result.steps.map((s) => s.id)).toEqual([1, 2, 3]);
+		expect(result.pointsRespent).toBe(3);
+		expect(result.final.pointsSpent).toBe(0); // net: freed 3, re-spent 3
+		expect(result.final.objective).toBeCloseTo(1000 - 20 + 120); // 1100
+	});
+
+	it("skips a removal whose cascade exceeds the budget and takes a smaller one that fits", async () => {
+		// 120 is the cheapest to lose (valueLost 5) but frees 5 > budget 3; 121 (valueLost 10)
+		// frees 2 and fits. Re-spend candidates 1/2 add +30 each.
+		const vlost: Record<number, number> = { 120: 5, 121: 10 };
+		const bridge = new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 1 }, { id: 2 }],
+			(allocSet, id, removeIds) => {
+				const lost = (removeIds ?? []).reduce((s, r) => s + (vlost[r] ?? 0), 0);
+				const gain = [...allocSet, id].reduce((s, n) => s + ([1, 2].includes(n) ? 30 : 0), 0);
+				return { pointsSpent: 1, stats: { TotalDPS: 1000 - lost + gain } };
+			},
+			{
+				allocated: [
+					{ id: 120, pointsFreed: 5, removedStats: { TotalDPS: 995 } },
+					{ id: 121, pointsFreed: 2, removedStats: { TotalDPS: 990 } },
+				],
+				statsFromFn: (_a, removeIds) => ({
+					TotalDPS: 1000 - removeIds.reduce((s, r) => s + (vlost[r] ?? 0), 0),
+				}),
+			},
+		);
+
+		const result = await optimiseTree(bridge, { respecBudget: 3 });
+
+		expect(result.removed.map((r) => r.id)).toEqual([121]);
+		expect(result.pointsFreed).toBe(2);
+		expect(result.steps.map((s) => s.id)).toEqual([1, 2]);
+		expect(result.final.objective).toBeCloseTo(1000 - 10 + 60); // 1050
 	});
 });
