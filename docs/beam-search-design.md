@@ -190,9 +190,9 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
   gutting tool covers it and the corpus proceeds with that. **Corpus split into CORE (9, the
   benchmark default) + EXTENDED (16, `--full`)** after the definitive run showed the full set is
   too slow for a routine check (`ba0df4a`; see §8).
-- **Remaining:** step 11 (validation write-up). The `dps-ehp:0.5` fixture is the quantitative
-  backing; the open question is whether the blend at +8 headroom separates tuned from naive well
-  enough (it does not, quite — see §11).
+- **Remaining:** step 11 (validation write-up) — the only open step. The `dps-ehp:0.5` fixture is
+  the quantitative backing, but the blend at +8 headroom does **not** separate tuned from naive
+  (numbers in §11). §11 carries a concrete ordered handoff plan; start there.
 - **Deferred past v1:** pruning layers 3 / 4 / 6; any-node (cascading) repair; the real `(W, D)`
   beam (plain greedy re-spend has been enough so far).
 
@@ -314,21 +314,48 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
     `--constraint Metric=N` / `--preserve A,B`. Shared helpers in `src/cliShared.ts`; `parseArgs`
     unit-tested (12 tests). `--beam-width` / `--beam-depth` / `--target-level` /
     `--freeze-ascendancy` omitted — no backing feature yet.
-11. **Validation** — TODO (only remaining step). Show repair improves the naive build of the
-    validation pair (`MA-FlickerStrike`) and returns ≈no change on the hand-tuned one
-    (`Martial Artist - Shattering Palm + Flicker Strike`). **Must use a blended objective**
-    (`dps-ehp:0.5`) or a `preserveMetrics` set covering the defences the player hand-picked —
-    under raw `TotalDPS` + resist-only floors the first bench run had repair finding +23% on the
-    *tuned* build by respeccing its evasion/ES leaves, so "≈ no change" can't hold there. Write up
-    as `docs/beam-search-repro.md`, mirroring `docs/constraint-rejection-repro.md` — the committed
-    `docs/beam-bench-dps-ehp-0-5.md` fixture is the quantitative backing.
-    **Caveat, now confirmed on the full 25-build run (`ba0df4a`):** under `dps-ehp:0.5` at +8
-    headroom the tuned `MA-Shattering` moves `extend +1.82% / r3 +0.57% / r6 +1.33%` and the naive
-    `MA-FlickerStrike` `extend +1.75% / r3 +0.63% / r6 +1.30%` — the blend stops repair
-    cannibalising the tuned defences, but the tuned-vs-naive separation is essentially nil at this
-    headroom. Step 11 needs wider headroom, or a `preserveMetrics` set instead of the scalar blend,
-    to make the contrast legible — the harness supports both (`extraPoints` positional; `--preserve`
-    is on `optimiseTree` but not yet wired into `benchTreeApproaches.ts`).
+11. **Validation** — TODO (only remaining step). **Fresh-agent handoff plan below.**
+
+    **Goal.** `docs/beam-search-repro.md` (mirror `docs/constraint-rejection-repro.md`: setup →
+    the two builds → numbers table → conclusion) demonstrating that repair *improves* the naive
+    validation build and returns *≈no change* on the hand-tuned one:
+    - naive: `MA-FlickerStrike.xml` (~90k DPS, user-gutted)
+    - tuned: `Martial Artist - Shattering Palm + Flicker Strike.xml` (~186k DPS, hand-picked defences)
+
+    **Blocker (confirmed on the definitive 25-build run, `ba0df4a`).** Under `dps-ehp:0.5` at +8
+    headroom the two builds land on the same lift, so "≈no change vs improves" has no contrast:
+
+    | build | extend+8 | repair-r3 | repair-r6 |
+    |---|--:|--:|--:|
+    | `MA-Shattering` (tuned) | +1.82% | +0.57% | +1.33% |
+    | `MA-FlickerStrike` (naive) | +1.75% | +0.63% | +1.30% |
+
+    Root cause: under raw `TotalDPS` + resist-only floors an earlier run had repair *gain +23% on
+    the tuned build* by respeccing its evasion/ES leaves — exactly the hand-picked defence the
+    validation must show repair leaving alone. The `dps-ehp:0.5` blend suppresses that but also
+    flattens the tuned/naive gap. The scalar blend is the wrong tool; a `preserveMetrics` floor on
+    the specific defences is sharper (forbids cannibalising them outright rather than penalising
+    it).
+
+    **Steps.**
+    1. **Wire `--preserve` through the bench harness.** `spike/benchTreeApproaches.ts` builds an
+       `OptimiseTreeOptions` per (build, approach) run — add a `--preserve A,B` passthrough to
+       `preserveMetrics`, plus a **per-build override** (the tuned Monk's defences differ from
+       `R_Thor`'s armour, etc.), since one global set won't fit the whole corpus. `--preserve` is
+       already parsed + honoured in `src/optimiseCli.ts` / `src/core/optimiseTree.ts` — this is
+       harness plumbing only, no core change.
+    2. **Pick the preserve set for `MA-Shattering`.** Inspect what the hand-tuned build actually
+       invested in (`npm run characterise-build` on the XML, or read the tree) — likely some of
+       evasion / ES / block / spell suppression / life — and pin those metric names.
+    3. **Re-run** `npm run bench-tree-approaches -- dps-ehp:0.5 8 --full` with the preserve set
+       applied. Expect: `MA-FlickerStrike` keeps a visible repair gain; `MA-Shattering` collapses
+       toward ≈0 because its defensive leaves are now locked.
+    4. **Fallback lever if separation is still thin:** widen headroom (positional `extraPoints`
+       arg, try +15–20). Try preserve alone first — it's the cleaner story.
+    5. **Write `docs/beam-search-repro.md`.** The `--full` fixture (`docs/beam-bench-dps-ehp-0-5.md`
+       after the re-run) is the quantitative backing. For the "≈no change" assertion start with
+       exact equality (the constraint repro saw exact `0.0` landings, no float dust); add a
+       relative ε only if a real run shows neutral-node noise.
 
 ## Open questions to resolve early
 
