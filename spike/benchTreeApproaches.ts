@@ -13,6 +13,8 @@
 //                    "extend" is a like-for-like "spend the spare points back" test.
 //   --no-constraints drop the default "preserve the 3 elemental resists" floor.
 //   --only=substr    restrict the corpus to builds whose label contains `substr` (debug aid).
+//   --full           run the complete step-8 corpus (CORE_CORPUS + EXTENDED_CORPUS, 25 builds).
+//                    Default is CORE_CORPUS only (the routine regression subset -- see below).
 //   --concurrency=N  run N builds in parallel (default 4, or $BENCH_CONCURRENCY). Each parallel
 //                    slot owns one LuaJIT bridge process, and the three approaches of a build share
 //                    it -- so peak process count is N, and load_build_xml runs once per build, not
@@ -39,9 +41,22 @@
 // 1.0 == the approach fully clawed back what gutting removed; >1.0 == it beat the original tree.
 // Only computed when the bench objective matches the sidecar's `objectiveSpec`.
 //
-// The full step-8 corpus: 6 local + 12 usable poe.ninja (2 are 0-DPS headless) + 5 gutted.
-// Held-out builds (never used while tuning K/W/D) are marked in the output; the definitive run
-// uses them.
+// CORPUS SPLIT (trimmed 2026-08-28). The first full `dps-ehp:0.5` run over all 25 step-8 builds
+// took 1h20m at --concurrency=8 -- too slow for a routine regression check. Per-build cost is
+// deterministic, so the corpus is now split by measured cost / coverage value:
+//
+//   CORE_CORPUS (9, the default)  -- validation pair + 3 held-out + an armour build + 3 gutted.
+//     Spans evasion / ES / armour / life and 8..25 spare points, keeps the two ground-truth
+//     recovery-fraction bases (TheTradie, Venereable), and every build a step-11 write-up needs.
+//     Inferred wall @ --concurrency=8: ~38 min (deterministic per-build times from the full run;
+//     pole is Venereable-gut25-high at ~37 min -- a build's 3 approaches run serially on one
+//     bridge). Drop the Venereable-gut25 build -> ~30 min; drop repair-r6 -> ~15 min.
+//   EXTENDED_CORPUS (16)  -- everything else, incl. HuntressTank (its repair-r6 alone is 37 min)
+//     and the 2 builds that score 0-DPS headless. Appended by --full for the definitive run.
+//
+// Held-out builds (never used while tuning K/W/D) are marked `*` in the output. CORE carries 3 of
+// the 4; the 4th (HuntressTank) plus the rest come back with --full, which is what the definitive
+// step-11 run should use.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -68,40 +83,47 @@ interface CorpusBuild {
 	heldOut?: boolean;
 }
 
-const CORPUS: CorpusBuild[] = [
-	// --- local (6) ---
-	{ rel: "Ranger.xml", label: "Ranger-L37", tier: "naive", note: "deliberately gutted, L37 so budget = pointsUsed+extra" },
-	{ rel: "RampantlyBisexual.xml", label: "RampantlyBisexual", tier: "mid", note: "23 spare" },
-	{ rel: "Blood Mage.xml", label: "Blood Mage", tier: "n/a", note: "TotalDPS=0 headless -- skips under a DPS/blend objective" },
-	{ rel: "Monk/Flicker Strike Invoker.xml", label: "Flicker-Invoker", tier: "mid", note: "10 spare" },
-	{ rel: "Monk/MA-FlickerStrike.xml", label: "MA-FlickerStrike", tier: "naive", note: "25 spare -- validation 'repair improves'" },
+// Routine regression subset. `note` carries the measured wall (sum of the 3 approaches) from the
+// 2026-08-28 full `dps-ehp:0.5` run so the trim rationale stays auditable without a re-run.
+const CORE_CORPUS: CorpusBuild[] = [
+	{ rel: "Monk/MA-FlickerStrike.xml", label: "MA-FlickerStrike", tier: "naive", note: "25 spare -- validation 'repair improves'; ~953s" },
 	{
 		rel: "Monk/Martial Artist - Shattering Palm + Flicker Strike.xml",
 		label: "MA-Shattering",
 		tier: "tuned",
-		note: "hand-tuned, 10 spare -- validation 'repair ~= no change'",
+		note: "hand-tuned, 10 spare -- validation 'repair ~= no change'; ~696s",
 	},
-	// --- poe.ninja (14; BlandisThree + (Blood Mage above) are 0-DPS headless) ---
+	{ rel: "ninja/TechnoIceShot-L100-28M.xml", label: "TechnoIceShot", tier: "strong", heldOut: true, note: "evasion; -1 spare; ~1689s" },
+	{ rel: "ninja/dosesondoses-L84-ES.xml", label: "dosesondoses", tier: "mid", heldOut: true, note: "ES; 16 spare; ~698s" },
+	{ rel: "ninja/SnusInMyBlood-L100-weak.xml", label: "SnusInMyBlood", tier: "weak", heldOut: true, note: "evasion, bad res; -1 spare; ~777s" },
+	{ rel: "ninja/R_Thor-L84-weak.xml", label: "R_Thor", tier: "weak", note: "armour; 16 spare; repair beats extend here; ~666s" },
+	// gutted -- the .json sidecars drive the recovery-fraction score; two different base builds.
+	{ rel: "ninja/gutted/TheTradie-L84-400k-gut8-low.xml", label: "TheTradie-gut8-low", tier: "gutted", note: "policy low -- 'relocate wasted points', gap ~0; ~553s" },
+	{ rel: "ninja/gutted/TheTradie-L84-400k-gut25-high.xml", label: "TheTradie-gut25-high", tier: "gutted", note: "policy high -- honest ceiling (evasion base); ~757s" },
+	{ rel: "ninja/gutted/Venereable-L100-13M-gut25-high.xml", label: "Venereable-gut25-high", tier: "gutted", note: "policy high -- honest ceiling (life base, L100); ~2249s -- the wall pole" },
+];
+
+// Cut from routine runs for wall-clock. Re-included by --full (order here continues CORE's ci).
+const EXTENDED_CORPUS: CorpusBuild[] = [
+	// --- local ---
+	{ rel: "Ranger.xml", label: "Ranger-L37", tier: "naive", note: "deliberately gutted, L37 so budget = pointsUsed+extra; redundant w/ MA-FlickerStrike as the naive case" },
+	{ rel: "RampantlyBisexual.xml", label: "RampantlyBisexual", tier: "mid", note: "23 spare; constraint-rejection repro build" },
+	{ rel: "Blood Mage.xml", label: "Blood Mage", tier: "n/a", note: "TotalDPS=0 headless -- skips under a DPS/blend objective" },
+	{ rel: "Monk/Flicker Strike Invoker.xml", label: "Flicker-Invoker", tier: "mid", note: "10 spare" },
+	// --- poe.ninja ---
 	{ rel: "ninja/stillAengus-L100-46M.xml", label: "stillAengus", tier: "strong", note: "evasion/ES thin; -2 spare (over-alloc residual)" },
-	{ rel: "ninja/TechnoIceShot-L100-28M.xml", label: "TechnoIceShot", tier: "strong", heldOut: true, note: "evasion; -1 spare" },
 	{ rel: "ninja/Venereable-L100-13M.xml", label: "Venereable", tier: "strong", note: "life only, thin; -1 spare" },
-	{ rel: "ninja/HuntressTank-L100-5.8M.xml", label: "HuntressTank", tier: "strong", heldOut: true, note: "evasion, huge EHP; -2 spare" },
+	{ rel: "ninja/HuntressTank-L100-5.8M.xml", label: "HuntressTank", tier: "strong", heldOut: true, note: "evasion, huge EHP; -2 spare; repair-r6 alone is ~37 min -- kept out of routine runs" },
 	{ rel: "ninja/Fimozix-L100-ES.xml", label: "Fimozix", tier: "strong", note: "ES/evasion (CI); -1 spare" },
 	{ rel: "ninja/KinkyDommyMommy-L92-glass.xml", label: "KinkyDommyMommy", tier: "mid", note: "ES, thin; 7 spare" },
-	{ rel: "ninja/TheTradie-L84-400k.xml", label: "TheTradie", tier: "mid", note: "evasion; 15 spare (decent for lvl)" },
+	{ rel: "ninja/TheTradie-L84-400k.xml", label: "TheTradie", tier: "mid", note: "evasion; 15 spare (decent for lvl); gutted variants are in CORE" },
 	{ rel: "ninja/JiduQiuliang-L100-glass.xml", label: "JiduQiuliang", tier: "weak", note: "pure glass; -1 spare" },
 	{ rel: "ninja/QingCum-L100-nodmg.xml", label: "QingCum", tier: "weak", note: "armour tank, no dmg; -1 spare" },
-	{ rel: "ninja/dosesondoses-L84-ES.xml", label: "dosesondoses", tier: "mid", heldOut: true, note: "ES; 16 spare" },
 	{ rel: "ninja/furufuru-L100-weak.xml", label: "furufuru", tier: "weak", note: "armour; 7 spare" },
-	{ rel: "ninja/R_Thor-L84-weak.xml", label: "R_Thor", tier: "weak", note: "armour; 16 spare" },
-	{ rel: "ninja/SnusInMyBlood-L100-weak.xml", label: "SnusInMyBlood", tier: "weak", heldOut: true, note: "evasion, bad res; -1 spare" },
 	{ rel: "ninja/BlandisThree-L92-tank.xml", label: "BlandisThree", tier: "n/a", note: "0-DPS headless -- skips under a DPS/blend objective" },
-	// --- synthetic gutting (5; sidecar .json drives the recovery-fraction score) ---
-	{ rel: "ninja/gutted/TheTradie-L84-400k-gut8-low.xml", label: "TheTradie-gut8-low", tier: "gutted", note: "policy low -- 'relocate wasted points' case, gap ~0" },
+	// --- synthetic gutting (the `random`-policy siblings of CORE's `high` ones) ---
 	{ rel: "ninja/gutted/TheTradie-L84-400k-gut25-random.xml", label: "TheTradie-gut25-rand", tier: "gutted", note: "policy random s1" },
-	{ rel: "ninja/gutted/TheTradie-L84-400k-gut25-high.xml", label: "TheTradie-gut25-high", tier: "gutted", note: "policy high -- honest ceiling" },
 	{ rel: "ninja/gutted/Venereable-L100-13M-gut25-random.xml", label: "Venereable-gut25-rand", tier: "gutted", note: "policy random s1" },
-	{ rel: "ninja/gutted/Venereable-L100-13M-gut25-high.xml", label: "Venereable-gut25-high", tier: "gutted", note: "policy high -- honest ceiling" },
 ];
 
 /** Parsed `.json` sidecar written next to a gutted XML by spike/gutBuild.ts. */
@@ -275,6 +297,7 @@ function render(
 	constraintsOn: boolean,
 	skipped: string[],
 	progress: { done: number; total: number } | null,
+	corpusDesc: string,
 ): string {
 	const lines: string[] = [];
 	lines.push(`<!-- generated by \`npm run bench-tree-approaches\` -- do not edit by hand -->`);
@@ -290,10 +313,7 @@ function render(
 			`Generated ${new Date().toISOString()}.`,
 	);
 	lines.push(``);
-	lines.push(
-		`Corpus: full step-8 set — 6 local + 12 usable poe.ninja + 5 synthetic-gutted. ` +
-			`Held-out builds (marked \`*\`) are included: this is the definitive run, not a tuning pass.`,
-	);
+	lines.push(`Corpus: ${corpusDesc}`);
 	lines.push(``);
 	lines.push(
 		`| build | tier | approach | base | final | lift % | Δabs | gap | recov | net pts | respec | res ok | BuildOutputs | sim s | ms/BO | cache hit % | wall s | stopped |`,
@@ -534,10 +554,18 @@ async function main() {
 	const constraintsOn = !flags.includes("--no-constraints");
 	const freshBridge = flags.includes("--fresh-bridge");
 	const onlyFlag = flags.find((f) => f.startsWith("--only="))?.slice("--only=".length);
+	const fullCorpus = flags.includes("--full");
 	const concFlag = flags.find((f) => f.startsWith("--concurrency="))?.slice("--concurrency=".length);
 	const concurrency = Math.max(1, Math.trunc(Number(concFlag ?? process.env.BENCH_CONCURRENCY ?? 4)) || 4);
 
-	const corpus = onlyFlag ? CORPUS.filter((c) => c.label.toLowerCase().includes(onlyFlag.toLowerCase())) : CORPUS;
+	const baseCorpus = fullCorpus ? [...CORE_CORPUS, ...EXTENDED_CORPUS] : CORE_CORPUS;
+	const corpus = onlyFlag ? baseCorpus.filter((c) => c.label.toLowerCase().includes(onlyFlag.toLowerCase())) : baseCorpus;
+	const corpusDesc = onlyFlag
+		? `--only=${onlyFlag} → ${corpus.length} build(s) from ${fullCorpus ? "the full step-8" : "the CORE"} set. Held-out marked \`*\`.`
+		: fullCorpus
+			? `full step-8 set (${corpus.length} builds: CORE + EXTENDED). Held-out builds marked \`*\`. Use this for the definitive step-11 run.`
+			: `CORE regression subset (${corpus.length} builds: validation pair + 3 held-out + armour + 3 gutted). ` +
+				`\`--full\` adds the other ${EXTENDED_CORPUS.length}. Held-out builds marked \`*\`.`;
 	const outFile = outFileFor(objectiveSpec);
 	const rows: Row[] = [];
 	const skipped: string[] = [];
@@ -567,6 +595,7 @@ async function main() {
 				constraintsOn,
 				skipped,
 				inProgress ? { done: buildsDone, total: corpus.length } : null,
+				corpusDesc,
 			),
 		);
 	};
@@ -595,7 +624,7 @@ async function main() {
 
 	writeOut(false);
 	const finalSorted = [...rows].sort((a, b) => a.ci - b.ci || a.ai - b.ai);
-	console.log(render(finalSorted, objectiveSpec, defaultExtra, constraintsOn, skipped, null));
+	console.log(render(finalSorted, objectiveSpec, defaultExtra, constraintsOn, skipped, null, corpusDesc));
 	log(`\n=== complete in ${clock(elapsed())} -- ${rows.length} rows, ${skipped.length} skipped ===`);
 	log(`wrote ${path.relative(path.join(__dirname, ".."), outFile)}`);
 }
