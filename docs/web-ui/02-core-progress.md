@@ -1,0 +1,87 @@
+# Phase 1 — `onProgress` in the core
+
+The **only** change to `src/core/*` in the whole web-UI track. An optimise run is minutes of
+opaque work; the UI needs a progress signal. Keep it optional, side-effect-free, and invisible to
+the CLIs and the bench harness.
+
+Lives in phase 1 because the API server (phase 2) needs it to relay SSE.
+
+## The addition
+
+`src/core/optimiseTree.ts`:
+
+```ts
+export interface OptimiseProgress {
+  /** Coarse stage of the run. */
+  phase:
+    | "baseline"          // measuring the loaded tree
+    | "regret-probe"      // repair: scoring dealloc candidates
+    | "add-loop"          // extend walk / repair re-spend (the long part)
+    | "k-sweep"           // repair: re-running the add-loop for k = 1..N freed prefixes
+    | "finalising";
+  /** Real BuildOutput recomputes so far (from the memo evaluator's counter). The honest
+   *  progress denominator is unknown up front, so the UI shows a rate + elapsed, not a bar,
+   *  unless `estimatedTotal` is set. */
+  buildOutputs: number;
+  estimatedTotal?: number;   // set once the add-loop knows its candidate-pool size for a depth
+  /** Best objective value found so far on any live plan (baseline before the first improving
+   *  step). Lets the UI show "climbing". */
+  bestObjective: number;
+  /** add-loop / k-sweep only. */
+  depth?: number;            // current add-step index
+  k?: number;                // current k-sweep index, 1-based
+  kTotal?: number;
+  /** A short human line, e.g. "re-spend step 3: Glaciation (+1240/pt)". Optional; the UI can
+   *  build its own from the fields above. */
+  note?: string;
+}
+
+export interface OptimiseTreeOptions {
+  // …existing fields…
+  /** Called synchronously at phase boundaries and once per add-loop depth / k-sweep iteration.
+   *  Must not throw and must not touch its arguments after returning (the object is reused).
+   *  Never affects search order or results. Undefined = no callback (CLI default). */
+  onProgress?: (ev: OptimiseProgress) => void;
+}
+```
+
+`recommendTree` gets the same optional `onProgress` with a trimmed event (`phase: "scoring" |
+"finalising"`, `buildOutputs`, `candidatesTotal`, `candidatesScored`). It is a single fast pass,
+so a coarse "scored 120 / 400 candidates" tick per batch is enough.
+
+## Where the calls go
+
+- **`optimiseTree`** top: emit `baseline` after `get_stats` / `get_tree_status`.
+- **Repair path**, before `evaluate_dealloc_candidates`: emit `regret-probe`.
+- **`beamAddLoop`** (`optimiseTree.ts`, shared by extend + repair): emit `add-loop` once per
+  depth, with `depth`, `buildOutputs` from `memo`, `bestObjective` = best live plan's objective,
+  and `estimatedTotal` once the depth's pooled candidate count is known.
+- **k-sweep** (repair driver): emit `k-sweep` with `k` / `kTotal` before each re-spend.
+- **`withMetrics`** wrap-up: emit `finalising`.
+
+`buildOutputs` comes from the existing `MemoEvaluator` counter (`memo` already tracks it for
+`cacheHitRate`); expose a `memo.buildOutputs` getter if it isn't public yet. No new bridge RPC —
+`get_metrics` stays the end-of-run reconciliation.
+
+## Constraints on the implementation
+
+- **Determinism unchanged.** The callback is fire-and-forget. It must not be `await`ed, must not
+  gate a branch, and must run after the state it reports is already committed. The bench harness
+  compares byte-for-byte across runs (`docs/beam-search-repro.md`); a progress call that
+  reordered anything would break that.
+- **No throw propagation.** Wrap the user callback: `try { onProgress?.(ev) } catch {}`. A
+  broken UI callback must not fail a job.
+- **Object reuse is fine** but documented — the API relay copies the fields it forwards, so a
+  reused object is not a problem in practice; still, say "don't retain the argument".
+- **CLIs stay silent.** `optimiseCli.ts` / `cli.ts` don't pass `onProgress`. Optionally add a
+  `--progress` flag later that prints a `.` per `add-loop` tick to stderr — not in this phase.
+
+## Tests
+
+- `optimiseTree` with an `onProgress` spy: assert the phase sequence for extend
+  (`baseline → add-loop* → finalising`) and repair
+  (`baseline → regret-probe → k-sweep×N (each with add-loop* inside) → finalising`).
+- `buildOutputs` is monotonic non-decreasing across ticks and its last value equals
+  `result.buildOutputCount`.
+- A callback that throws does not change the result vs the same options without it (byte-equal),
+  and does not reject the promise.

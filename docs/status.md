@@ -175,36 +175,42 @@ The tree optimiser is feature-complete and the CLI surface has settled, so the n
 **bridge → standalone package** work along with it: a browser cannot shell out to LuaJIT, so the
 bridge has to move behind a long-lived service boundary. The two land together.
 
-**Shape (assumed until decided otherwise):** local-first — a `localhost` app wrapping the local
-LuaJIT bridge, single user, not hosted. A third consumer of `src/core/` after the two CLIs, using
-the same "parse in / data out" contract; no core changes expected beyond an optional progress
-callback.
+**Shape:** local-first — a `localhost` app wrapping the local LuaJIT bridge, single user, not
+hosted. A third consumer of `src/core/` after the two CLIs, using the same "parse in / data out"
+contract; the only core change is an optional `onProgress` callback.
 
-**Decide before building:**
+**Full plan is now `docs/web-ui/` — one file per domain:**
 
-1. **First-version scope.** Full optimiser (extend / repair / rollback modes, objective,
-   constraints, `freeze`, beam `W`/`D`) — *recommended*, the read-only "next node" view alone is
-   thin — or ship the recommender view first and add the optimiser after.
-2. **Build input.** Paste a PoB export code (`base64(zlib(xml))` — `spike/fetchNinjaBuilds.ts`
-   already decodes exactly this) and/or file upload.
-3. **Long-running jobs.** An optimise run is hundreds of ~280 ms recomputes = minutes, so it
-   can't be a plain request/response: submit → progress stream (SSE/WS) → result. The bench
-   harness's `--concurrency` parallel-bridge worker pool is the reference implementation.
-4. **Result rendering.** Text/list diff of node names (cheap) vs. an actual passive-tree canvas
-   with allocated / added / dropped nodes highlighted (needs vendored `TreeData/` coords + assets
-   — a lot more work). Start with the list; canvas is an optional follow-up.
-5. **Stack.** TypeScript (repo is already TS); framework TBD.
+| File | Domain |
+|------|--------|
+| `docs/web-ui/README.md` | Index, decisions of record, architecture, sequencing |
+| `docs/web-ui/01-bridge-service.md` | Phase 1 — `pob-runtime/` + `bridge.ts` → `packages/pob-bridge` with a `PobBridgePool` |
+| `docs/web-ui/02-core-progress.md` | Phase 1 — `onProgress` in `optimiseTree` / `recommendTree` |
+| `docs/web-ui/03-shared-contract.md` | Phase 2 — `packages/contract`: Zod schemas + inferred DTOs |
+| `docs/web-ui/04-api-server.md` | Phase 2 — `packages/api`: Hono + Zod, builds / jobs / SSE |
+| `docs/web-ui/05-frontend.md` | Phase 3 — `packages/web`: Vite + React wizard, node-list diff |
+| `docs/web-ui/06-tree-canvas.md` | Phase 4 (deferred) — visual diff canvas; overhead scoped |
+| `docs/web-ui/07-performance.md` | Cross-cutting — why PoB stays the fitness oracle + the speed-lever table |
 
-**Phased plan (proposal):**
+**Decisions of record (2026-08-28, with the user):**
 
-1. **Bridge service extraction** — lift `pob-runtime/bridge.lua` + `src/core/bridge.ts` into a
-   package with a long-lived process pool + a small RPC surface (load build, run
-   recommend/optimise, stream progress). Reuse the bench harness's worker-pool pattern.
-2. **API layer** — thin HTTP server in this repo exposing `recommendTree` / `optimiseTree` over
-   the service, with job IDs + a progress stream.
-3. **Minimal UI** — paste PoB code → pick mode + objective + constraints → run → node-list diff +
-   copyable updated PoB code. No tree canvas.
-4. **Tree canvas** — optional follow-up, render `TreeData/` with the node diff highlighted.
+1. **Scope — full optimiser** (extend / repair / rollback, objective, constraints, `freeze`,
+   beam `W`/`D`). Recommender comes along as a lighter job type.
+2. **Build input — paste PoB code *and* `.xml` upload.**
+3. **Bridge packaging — extract `packages/pob-bridge` now** (not "pool in the server, extract
+   later"). Repo moves to npm workspaces.
+4. **Stack — Vite + React SPA + Hono API** (`@hono/node-server`, `streamSSE`, `serveStatic`),
+   **Zod** for request validation + shared types, **no job-queue lib** (in-memory registry +
+   `EventEmitter`; port the bench harness's `runWithConcurrency` for the pool).
+5. **Result rendering — node-list diff for v1.** Tree canvas is phase 4, deferred. When built:
+   stylised only (shapes not sprites, dot-size by tier, PoE2 colours, no orbit rotation), by
+   porting the **MIT** Canvas2D renderer from `poe2-tools/poe2-build-planner` (same stack) onto
+   our PoB `tree.json` — ~1 day, no GGG art. PoB-faithful render (DDS texture pipeline) stays
+   out of scope.
+6. **PoB stays the fitness oracle.** Not replaced by a home-grown engine over GGG's data
+   exports — the exports are data, not the damage formula. The ~280 ms/recompute cost is a
+   speed-lever problem (parallel bridge pool, candidate pruning, objective-scoped `BuildOutput`,
+   …), not an architecture problem. Rationale + full lever table: `docs/web-ui/07-performance.md`.
 
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below this
 — pick them up only on demand.
