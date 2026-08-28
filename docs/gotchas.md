@@ -59,6 +59,32 @@ Removing a **leaf** is safe (nothing downstream); a general respec needs `Deallo
 *does* cascade to dependents) or a connectivity pass. This is why the design's regret set should
 start life restricted to leaves.
 
+**`DeallocNode` cascade — verified fit for any-node repair (2026-08-28, `spike/verifyDeallocCascade.ts`,
+`npm run verify-dealloc-cascade`).** The any-node-repair track (`docs/status.md` §Active next
+track) needs to trust non-leaf removal. Confirmed live on 3 corpus builds (`RampantlyBisexual`
+L80, `Fimozix` L100, `MA-FlickerStrike` L92):
+- `evaluate_dealloc_candidates` already reports the true `pointsFreed` for interior nodes (it
+  `DeallocNode`s and diffs `CountAllocNodes()`); no `weird` results (never `< 1`, never
+  `ascendancyPointsFreed != 0` on a regular node).
+- **Interior removals dominate:** ~80 % of allocated regular nodes are interior (`pointsFreed > 1`);
+  leaf-only repair only ever sees the other ~20 %. `pointsFreed` distribution is bimodal — p50
+  ≈ 5–9 (useful granularity), p90 ≈ 87–133 (removing near the class start cascades the whole
+  tree; the regret ranking's value-lost score sinks those to the bottom, harmless to leave in).
+- **The candidates leaf-only repair was missing are real:** 25–55 % of interior removals move the
+  objective by < 5 % or *help* it — dead cross-build pathing (`Bow Damage` / `Cold Damage` nodes
+  on a Flicker Monk), long `Strength` chains at −2.6 % DPS, an unused `Jewel Socket [Socket]`
+  freeing 10 points at Δobj 0.0 %.
+- **Re-spend can recover:** after a mid-tree `removeIds` prologue, `list_allocatable_nodes_from`
+  surfaces the cascaded-off nodes back in the pool at `pathLength` 1–2, and the removed node
+  itself is re-allocatable.
+- **Round-trip is clean:** a fresh `get_stats` after an interior `..._from({removeIds:[m]})`
+  equals the loaded baseline byte-for-byte — `CreateUndoState` / `RestoreUndoState` handles the
+  big cascade, same as for leaves.
+
+The remaining work is **driver accounting**, not a bridge-capability gap: the `k`-sweep in
+`optimiseTree.ts` must count *points* freed (variable per removal), not leaves, and net-points
+math must use each removal's real `pointsFreed`.
+
 **Masteries are a PoE1-only mechanic -- no node in PoE2's vendored tree data ever has
 `type == "Mastery"`.** `PassiveSpec.lua` still carries a full `masterySelections`/mastery-effect
 code path (leftover from this codebase's PoE1 ancestry, like the "Labyrinth" progress-panel text

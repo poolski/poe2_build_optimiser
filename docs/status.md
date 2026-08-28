@@ -115,13 +115,14 @@ Chosen 2026-08-28 as the next work (gem optimisation is out of scope, so the tre
 deepened instead). What shipped as "beam search" is greedy-seed + **leaf-only** repair; this
 lifts both limits. Plan, cheapest-gating-first:
 
-1. **Cascade-verification spike** (gating, cheap). `evaluate_dealloc_candidates` (`bridge.lua:1020`)
-   already `DeallocNode`s an arbitrary node and reports the true `pointsFreed` (it cascades) — the
-   driver just *filters* to `pointsFreed == 1` (`optimiseTree.ts:296`). Before trusting non-leaf
-   removal: drive it on real builds with mid-tree nodes, confirm the cascaded off-set and
-   `pointsFreed` match PoB's own points-used display, and confirm the re-spend candidate pool
-   after a mid-tree `removeIds` prologue still contains the orphaned notables. Write the result
-   into `docs/gotchas.md`.
+1. **Cascade-verification spike** — DONE 2026-08-28 (`spike/verifyDeallocCascade.ts`,
+   `npm run verify-dealloc-cascade`; write-up in `docs/gotchas.md`). Verdict: `DeallocNode`
+   cascade is fit for any-node repair. On 3 corpus builds — ~80 % of allocated regular nodes are
+   interior (leaf-only sees the other ~20 %); 25–55 % of interior removals move the objective
+   < 5 % or help it (dead cross-build pathing, long attribute chains, an unused jewel socket
+   freeing 10 pts at Δobj 0); after a mid-tree `removeIds` the freed nodes reappear in the pool
+   at `pathLength` 1–2; `get_stats` round-trips byte-for-byte. **Remaining work is driver
+   accounting** — the `k`-sweep must count *points* freed (variable per removal), not leaves.
 2. **Any-node repair.** Drop the leaf-only filter; the k-sweep counts *points* freed, not leaves
    (removing one mid-tree node can free several). Regret ranking already scores each removal in
    isolation; the `removeIds` re-spend prologue already threads through every bridge call.

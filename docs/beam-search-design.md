@@ -260,10 +260,12 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
      (`DeallocNode` cascades everything only reachable through the removed node). `bridge.lua`
      `evaluate_dealloc_candidates` already does this and already reports the true `pointsFreed`;
      `optimiseTree.ts:296` just filters to `pointsFreed == 1`. Steps:
-     1. **Cascade-verification spike** (gating, cheap) — drive `evaluate_dealloc_candidates` on
-        real builds with mid-tree nodes; confirm the cascaded off-set + `pointsFreed` match PoB's
-        own points-used display, and that the re-spend candidate pool after a mid-tree `removeIds`
-        prologue still contains the orphaned notables. Result → `docs/gotchas.md`.
+     1. **Cascade-verification spike** — DONE 2026-08-28. `spike/verifyDeallocCascade.ts`
+        (`npm run verify-dealloc-cascade`); write-up in `docs/gotchas.md` (§`DeallocNode` cascade).
+        Verdict: fit for any-node repair — `pointsFreed` trustworthy for interior nodes, ~80 % of
+        allocated nodes are interior, 25–55 % of interior removals are cheap/helpful, freed nodes
+        re-enter the pool at `pathLength` 1–2, `get_stats` round-trips byte-for-byte. Remaining
+        work is driver accounting, not a bridge gap.
      2. **Lift the leaf-only filter** — the `k`-sweep counts *points* freed, not leaves; regret
         ranking already scores each removal in isolation; `removeIds` re-spend prologue unchanged.
      3. **Real `(W, D)` beam** — replace the single greedy walk with a width-`W` beam over depth

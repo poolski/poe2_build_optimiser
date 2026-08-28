@@ -13,6 +13,7 @@
     "fetch-ninja-builds": "ts-node spike/fetchNinjaBuilds.ts",
     "gut-build": "ts-node spike/gutBuild.ts",
     "bench-tree-approaches": "ts-node spike/benchTreeApproaches.ts",
+    "verify-dealloc-cascade": "ts-node spike/verifyDeallocCascade.ts",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run"
   },
