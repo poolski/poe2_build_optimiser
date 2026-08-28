@@ -1,8 +1,9 @@
 import * as path from "node:path";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 
-// Single source-level alias so the workspace packages resolve to their TS entry points
-// without a build step (mirrors the `paths` block in tsconfig.base.json for ts-node).
+// Default suite: fast, fake-PobBridgeClient unit tests only -- no luajit on PATH needed.
+// Real-bridge tests live in *.integration.test.ts and run via `npm run test:integration`
+// (see vitest.integration.config.ts).
 export default defineConfig({
   resolve: {
     alias: {
@@ -11,5 +12,6 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.test.ts", "packages/*/src/**/*.test.ts"],
+    exclude: [...configDefaults.exclude, "**/*.integration.test.ts"],
   },
 });
