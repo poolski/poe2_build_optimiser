@@ -4,7 +4,7 @@
 // over the current candidate pool -- this is the mutation/measurement primitive a future
 // full re-optimization search would reuse, not that search itself.
 
-import { PobBridgeClient } from "./bridge";
+import { PobBridgeClient } from "@poe2/pob-bridge";
 import { Objective } from "./objective";
 import { asNumber, finiteNumber, StatSet } from "./stats";
 

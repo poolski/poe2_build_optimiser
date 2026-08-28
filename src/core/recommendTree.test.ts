@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PobBridgeClient } from "./bridge";
+import { PobBridgeClient } from "@poe2/pob-bridge";
 import { AllocatableNode, filterByProximity, recommendTree, TreeStatus } from "./recommendTree";
 
 // A minimal fake bridge: no real LuaJIT process, just canned responses per RPC method,

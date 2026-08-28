@@ -64,7 +64,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { PobBridge } from "../src/core/bridge";
+import { PobBridge } from "@poe2/pob-bridge";
 import { parseObjective } from "../src/core/objective";
 import { optimiseTree, OptimiseTreeResult } from "../src/core/optimiseTree";
 import { asNumber, StatSet } from "../src/core/stats";

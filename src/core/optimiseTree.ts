@@ -20,7 +20,7 @@
 // Returns whichever is better, the loaded tree or the best repaired one -- so it can always fall
 // back to "change nothing". See the design doc's step 7.
 
-import { PobBridgeClient } from "./bridge";
+import { PobBridgeClient } from "@poe2/pob-bridge";
 import { MemoEvaluator } from "./evaluator";
 import { metricObjective, Objective } from "./objective";
 import {

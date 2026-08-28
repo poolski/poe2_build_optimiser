@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PobBridgeClient } from "./bridge";
+import { PobBridgeClient } from "@poe2/pob-bridge";
 import { optimiseTree } from "./optimiseTree";
 import { TreeStatus } from "./recommendTree";
 

@@ -3,7 +3,7 @@
 // All argument parsing and console output lives here -- core/recommendTree.ts returns
 // plain data so a future web frontend can call the same function directly.
 
-import { PobBridge } from "./core/bridge";
+import { PobBridge } from "@poe2/pob-bridge";
 import { loadBuildFromFile } from "./core/loadBuild";
 import { recommendTree } from "./core/recommendTree";
 import { ELEMENTAL_RESIST_METRICS, parseConstraint } from "./cliShared";

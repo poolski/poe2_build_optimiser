@@ -3,7 +3,7 @@
 //   npm run characterise-build -- "<build.xml>"
 
 import * as fs from "node:fs";
-import { PobBridge } from "../src/core/bridge";
+import { PobBridge } from "@poe2/pob-bridge";
 
 const METRICS = [
 	"TotalDPS",
