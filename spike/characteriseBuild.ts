@@ -1,5 +1,5 @@
 // Prints a one-line corpus-manifest row for a build XML (design step 8). Run it on each build
-// you want in the beam-search benchmark corpus and paste the rows into docs/beam-corpus.md.
+// you want in the beam-search benchmark corpus and paste the rows into docs/beam-search/corpus.md.
 //   npm run characterise-build -- "<build.xml>"
 
 import * as fs from "node:fs";

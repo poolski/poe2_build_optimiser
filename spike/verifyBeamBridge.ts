@@ -1,5 +1,5 @@
 // SCRATCH: verification of the two beam-search bridge changes against a real build.
-// Delete once folded into docs/beam-search-repro.md (design step 8).
+// Delete once folded into docs/beam-search/repro.md (design step 8).
 //   npx ts-node spike/verifyBeamBridge.ts "D:/My Documents/Path of Building (PoE2)/Builds/RampantlyBisexual.xml"
 
 import { PobBridge } from "../src/core/bridge";

@@ -82,7 +82,7 @@ the emit; if false, break out of the loop / short-circuit to `finalising` and se
 
 - **Determinism unchanged.** The callback is fire-and-forget. It must not be `await`ed, must not
   gate a branch, and must run after the state it reports is already committed. The bench harness
-  compares byte-for-byte across runs (`docs/beam-search-repro.md`); a progress call that
+  compares byte-for-byte across runs (`docs/beam-search/repro.md`); a progress call that
   reordered anything would break that.
 - **No throw propagation.** Wrap the user callback: `try { onProgress?.(ev) } catch {}`. A
   broken UI callback must not fail a job.

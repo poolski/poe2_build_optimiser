@@ -2,7 +2,7 @@
 
 Design step 11. The tree planner's **repair mode** (`optimiseTree`, `respecBudget > 0` — free the
 lowest-value allocated leaves and re-spend them at net-zero points) had unit coverage and a
-corpus-wide *cost* benchmark (`docs/beam-bench-*.md`), but its central *quality* claim had never
+corpus-wide *cost* benchmark (`docs/beam-search/bench-*.md`), but its central *quality* claim had never
 been shown end to end:
 
 > Repair **improves a naive build** and returns **≈no change on a hand-tuned one** — provided the
@@ -15,7 +15,7 @@ both halves, end to end through `optimise-tree` and the CORE bench.
 ## The pair
 
 Same character family, two states — the naive build is the hand-tuned one with 15 tree leaves
-gutted (`Builds/Monk/`, both fixed 2026-08-27 so `TotalDPS` computes; see `docs/beam-corpus.md`):
+gutted (`Builds/Monk/`, both fixed 2026-08-27 so `TotalDPS` computes; see `docs/beam-search/corpus.md`):
 
 | | `MA-Shattering` (tuned) | `MA-FlickerStrike` (naive) |
 |---|--:|--:|
@@ -120,7 +120,7 @@ The CORE bench reproduces `99967.82` exactly with only the default `TotalEHP` fl
 `Life/Evasion/EnergyShield` override) — `Glaciation` is pure cold damage, so the result is robust
 to which defensive floor is applied.
 
-## Corpus-wide (CORE bench, `docs/beam-bench-totaldps.md`)
+## Corpus-wide (CORE bench, `docs/beam-search/bench-totaldps.md`)
 
 `npm run bench-tree-approaches -- TotalDPS 8` — 9 builds × {extend +8 fresh pts, repair-r3,
 repair-r6}, `TotalEHP` no-regression floor (+ the `MA-Shattering` override), 54 min at
@@ -169,7 +169,7 @@ neutral-node noise.
 
 The design plan expected `dps-ehp:0.5` (`0.5·log(DPS) + 0.5·log(EHP)`) plus a preserve floor to
 separate tuned from naive. It does not. From the committed 25-build `dps-ehp:0.5` run
-(`docs/beam-bench-dps-ehp-0-5.md`) and a follow-up with the defensive floor applied:
+(`docs/beam-search/bench-dps-ehp-0-5.md`) and a follow-up with the defensive floor applied:
 
 | build | extend +8 | repair-r3 | repair-r6 |
 |---|--:|--:|--:|

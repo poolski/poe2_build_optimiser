@@ -2,7 +2,7 @@
 // (evaluate_candidate_nodes_from, get_stats_from). The beam repair loop revisits the same
 // (allocSet, candidate) pairs constantly -- beam states reconverge via different allocation
 // orders, and BuildOutput() is not incremental -- so caching the measured result is the main way
-// to reclaim repeated work (pruning layer 5 in docs/beam-search-design.md).
+// to reclaim repeated work (pruning layer 5 in docs/beam-search/design.md).
 //
 // The cache key is the sorted allocSet joined on "," (ids are integers, so this is lossless --
 // no hash collisions) plus the candidate id. In repair mode a non-empty `removeIds` set (leaves

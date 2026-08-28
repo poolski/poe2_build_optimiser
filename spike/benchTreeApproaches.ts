@@ -1,7 +1,7 @@
 // Approach benchmark for the tree planner (design step 9). For each (build × approach) it records
 // the objective lift vs the loaded tree, the cost (BuildOutput recomputes -- the machine-independent
 // currency), wall-clock, and whether the plan kept the build feasible, then writes a markdown table
-// + summary to docs/beam-bench-<objective>.md (and stdout).
+// + summary to docs/beam-search/bench-<objective>.md (and stdout).
 //
 //   npm run bench-tree-approaches -- [objective] [extraPoints] [--no-constraints] [--only=substr]
 //                                    [--concurrency=N] [--fresh-bridge] [--preserve=A,B]
@@ -28,7 +28,7 @@
 //                    behaviour. Use only to rule out cross-approach state bleed on a shared bridge
 //                    (every _from RPC restores to the loaded baseline, so this should not matter).
 //
-// NOTE: all runs write the one committed fixture docs/beam-bench-<objective>.md -- do not run two
+// NOTE: all runs write the one committed fixture docs/beam-search/bench-<objective>.md -- do not run two
 // bench processes with the same objective concurrently (different objectives are fine).
 //
 // Approaches compared:
@@ -79,10 +79,10 @@ const BUILDS_DIR = "D:/My Documents/Path of Building (PoE2)/Builds";
 const DEFAULT_PRESERVE = ["TotalEHP"];
 const PRESERVE_RESISTS = ["FireResist", "ColdResist", "LightningResist"];
 
-/** docs/beam-bench-<objective>.md -- one committed fixture per objective. */
+/** docs/beam-search/bench-<objective>.md -- one committed fixture per objective. */
 function outFileFor(objectiveSpec: string): string {
 	const slug = objectiveSpec.replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase();
-	return path.join(__dirname, "..", "docs", `beam-bench-${slug}.md`);
+	return path.join(__dirname, "..", "docs", "beam-search", `bench-${slug}.md`);
 }
 
 interface CorpusBuild {
@@ -112,7 +112,7 @@ const CORE_CORPUS: CorpusBuild[] = [
 		// naive sibling's 1703 / 9050 / 2373). Under raw TotalDPS, without this floor repair frees an
 		// evasion/ES node and allocates Chaos Inoculation (Life->1) for +40% "DPS"; with it, repair
 		// returns exact no-change on this build while still gaining +11% on the naive sibling. This is
-		// the step-11 validation -- see docs/beam-search-repro.md.
+		// the step-11 validation -- see docs/beam-search/repro.md.
 		preserve: ["Life", "Evasion", "EnergyShield"],
 	},
 	{ rel: "ninja/TechnoIceShot-L100-28M.xml", label: "TechnoIceShot", tier: "strong", heldOut: true, note: "evasion; -1 spare; ~1689s" },

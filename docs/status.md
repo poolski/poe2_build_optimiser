@@ -14,7 +14,7 @@ project, which stays out of the tree). Detailed provenance lives in git history 
   filter, `constraints` / `preserveMetrics` / `keepViolating` feasibility filter (live-verified —
   `docs/constraint-rejection-repro.md`). Deterministic: id-sorted pool, id-tie-broken ranking.
 - **Greedy optimiser** — `src/core/optimiseTree.ts`, `npm run optimise-tree`. The beam-search
-  task. **All 11 steps of the plan are complete** (`docs/beam-search-design.md` §Implementation
+  task. **All 11 steps of the plan are complete** (`docs/beam-search/design.md` §Implementation
   status is the live checklist). Working:
   - **extend mode** ("start from here" — add up to `pointBudget` / `--extra-points` within
     proximity `K`)
@@ -26,12 +26,12 @@ project, which stays out of the tree). Detailed provenance lives in git history 
 
 ## Beam-search track — COMPLETE
 
-Full design + step-by-step checklist: `docs/beam-search-design.md`. Summary of the closed work:
+Full design + step-by-step checklist: `docs/beam-search/design.md`. Summary of the closed work:
 
 ### Step 8 — corpus (CLOSED 2026-08-28)
 
 - 6 local builds + 14 pulled off poe.ninja (`npm run fetch-ninja-builds` → `…/Builds/ninja/`;
-  table + caveats in `docs/beam-corpus.md`). The ninja endpoint's `pathOfBuildingExport` is plain
+  table + caveats in `docs/beam-search/corpus.md`). The ninja endpoint's `pathOfBuildingExport` is plain
   `base64(zlib(xml))`. Held-out subset marked (4 ninja builds). Class/tier spread good; 13/14 DPS
   match the ladder. `BlandisThree` (ninja) + `Blood Mage` score 0-DPS headless.
 - Validation pair — the two Monks: `Martial Artist - Shattering Palm + Flicker Strike.xml`
@@ -80,18 +80,18 @@ summary with a repair-monotonicity flag + a cost-by-approach median.
   they didn't regress anyway). `--preserve=A,B` adds corpus-wide; each `CorpusBuild` may carry a
   per-build `preserve` override (`MA-Shattering` → `Life,Evasion,EnergyShield`).
 - **Definitive `dps-ehp:0.5` run** — full 25-build corpus × 3, `--concurrency=8`, 1h20m wall,
-  committed as `docs/beam-bench-dps-ehp-0-5.md` (still uses the historical resist floor).
+  committed as `docs/beam-search/bench-dps-ehp-0-5.md` (still uses the historical resist floor).
   Findings: repair monotonic (r6 ≥ r3) on all 23 usable builds; `res ok` held everywhere; gutted
   recovery as designed (extend 100–158%, repair 19–73%); `R_Thor` a real repair win; layer-5
   cache hit rate 0.00 everywhere (greedy never reconverges — expected).
 - **Corpus split** — `benchTreeApproaches.ts` defaults to `CORE_CORPUS` (9: validation pair + 3
   held-out + `R_Thor` armour + 3 gutted; ~38 min @ `--concurrency=8`); `--full` appends
   `EXTENDED_CORPUS` (16, incl. `HuntressTank` and the 2 dead 0-DPS builds). Per-build cost table
-  in `docs/beam-corpus.md`.
-- `docs/beam-bench-totaldps.md` regenerated as the 9-build CORE `TotalDPS` run (step-11 backing);
+  in `docs/beam-search/corpus.md`.
+- `docs/beam-search/bench-totaldps.md` regenerated as the 9-build CORE `TotalDPS` run (step-11 backing);
   it is a harness regression check, not a result.
 
-### Step 11 — validation (DONE 2026-08-28, `d612057`, `docs/beam-search-repro.md`)
+### Step 11 — validation (DONE 2026-08-28, `d612057`, `docs/beam-search/repro.md`)
 
 Recipe that works: **raw `TotalDPS` + `--preserve` on the tree-sourced defensive layers**
 (`Life,Evasion,EnergyShield` for the Monk pair). Repair returns:
@@ -157,11 +157,11 @@ whether a default `beamWidth > 1` is worth it. Plan, cheapest-gating-first:
    from-scratch mode (zero-delta pathing plateau), still past-v1. +7 tests (88 green).
    Live-verified on `RampantlyBisexual` (`--rollback-to 34015`).
 
-Full sketch: `docs/beam-search-design.md` §7 ("Any-node repair") + §"Open questions".
+Full sketch: `docs/beam-search/design.md` §7 ("Any-node repair") + §"Open questions".
 
 ### Deferred past v1 (only if a real need appears)
 
-- Pruning layers 3 / 4 / 6 (`docs/beam-search-design.md`) — greedy re-spend has been sufficient.
+- Pruning layers 3 / 4 / 6 (`docs/beam-search/design.md`) — greedy re-spend has been sufficient.
 - `--target-level` → point-budget derivation — needs the act→quest-point mapping verified against
   vendored data (the verify-PoE2-vs-PoE1-assumptions discipline, `docs/gotchas.md`).
 - From-scratch mode (∞ budget + bare tree) — stretch goal. Also the blocker for
@@ -252,9 +252,19 @@ own line.
 
 See *Active next track: web UI + bridge service* above.
 
+## `docs/` layout
+
+- `status.md` — this file, the map.
+- `gotchas.md` — PoB-PoE2 leftovers to not trip on. Always relevant.
+- `constraint-rejection-repro.md` — live repro of the recommender's constraint filter.
+- `skill-optimiser-design.md` — shelved track, kept for reference.
+- `beam-search/` — the completed passive-tree optimiser track: `design.md` (+ Implementation
+  status checklist), `repro.md`, `corpus.md`, `bench-totaldps.md`, `bench-dps-ehp-0-5.md`.
+- `web-ui/` — the active track. Start at its `README.md`.
+
 ## How to pick this up
 
 1. This file for the map.
-2. `docs/beam-search-design.md` — design + Implementation status checklist + open questions.
+2. `docs/beam-search/design.md` — design + Implementation status checklist + open questions.
 3. `docs/gotchas.md` — PoB-PoE2 leftovers to not trip on.
 4. `src/core/optimiseTree.ts` + `src/core/recommendTree.ts` and their test files.

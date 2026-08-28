@@ -1,5 +1,5 @@
 // Multi-step passive-tree planner -- the successor to the single-pass greedy `recommendTree`.
-// See docs/beam-search-design.md for the full design (greedy-seed + local beam repair).
+// See docs/beam-search/design.md for the full design (greedy-seed + local beam repair).
 //
 // STATUS: extend mode + any-node (cascading) repair mode.
 //
@@ -84,7 +84,7 @@ export interface OptimiseTreeOptions {
 	 * lowest-value survivors. Selects repair mode on its own (no `respecBudget` needed). Scoped to
 	 * leaf / mid-to-late anchors: an anchor whose cascade would leave too little tree to re-plan
 	 * from is rejected (that case is from-scratch mode -- the add-loop stalls on zero-delta
-	 * pathing; see docs/beam-search-design.md). Ignored in extend mode. */
+	 * pathing; see docs/beam-search/design.md). Ignored in extend mode. */
 	anchorNodeId?: number;
 	/** Max `pathLength` for a node to be considered at each step -- keeps the walk local and caps
 	 * path-node drag-in. Default 3. */

@@ -46,26 +46,26 @@ wall ≈ evals · 0.28 s / effectiveConcurrency
 ```
 
 Measured: strong L100 `repair-r6` runs hit 1900–2700 recomputes → ~15–37 min single-threaded
-(`docs/beam-search-design.md` §Cost). The whole game is cutting `P` before it costs a recompute,
+(`docs/beam-search/design.md` §Cost). The whole game is cutting `P` before it costs a recompute,
 and overlapping the recomputes that remain.
 
 ## The levers
 
 Ordered by leverage for the web-UI track. "Search-side" levers are specified in detail in
-`docs/beam-search-design.md` §"Pruning layers" — not duplicated here, just placed in the
+`docs/beam-search/design.md` §"Pruning layers" — not duplicated here, just placed in the
 bigger picture.
 
 | # | Lever | Effect | Status | Where |
 |---|-------|--------|--------|-------|
 | 1a | **Parallel bridge pool — across jobs** | Overlap independent *jobs* across cores. The bench proved it: 8.3 core-hours → 1h20m at N=8. **But this is a single-user tool — concurrent jobs are rare — so on its own this lever barely moves the wall time the user actually waits on.** It exists so a queued second job isn't blocked, and as the substrate for 1b. | **designed** — `PobBridgePool`, phase 1 (`01`). Bench ref: `runWithConcurrency`, `spike/benchTreeApproaches.ts:277` | `01-bridge-service.md` |
 | 1b | **Parallel candidate batch — within a run** | Evaluate an add-step's `P` surviving candidates across the pool instead of serially on one bridge. This is what turns a 15–37 min run into ~3–5 min on an 8-core box — the only lever that makes a *single* run feel responsive. **Not free:** `beamAddLoop` / `MemoEvaluator` must fan a step's evals across N bridges and recollect them id-sorted (deterministic-regardless-of-N, the way the bench already is across builds). A real `src/core` + `packages/pob-bridge` change — scoped as **phase 1.5**, after v1 ships. | **planned — phase 1.5** (not in v1) | `01-bridge-service.md` §"Phase 1.5" |
-| 2 | **Cross-beam memoisation** | Cache `(sorted allocSet, nodeId) → result`; beam states that reconverge via different order hit it. `BuildOutput` isn't incremental, so this is the main way to reclaim repeated work. Earns its place only at `W > 1`. | **done** — `MemoEvaluator`, `src/core/evaluator.ts` (pruning layer 5) | `beam-search-design.md` |
-| 3 | **Cheap candidate screens** | Objective keyword filter (drop non-matching stat lines) + proximity gating (only nodes within `K` path-points of the frontier; also caps path-node drag-in). Cuts `P` from hundreds to tens at zero recompute cost. | **done** — layers 1 & 2 | `beam-search-design.md` |
-| 4 | **Approx pre-scoring** | Linear / log-linear delta estimate from stat lines vs a cached multiplier snapshot; real-evaluate only the top ~20. This is the honest version of "score without PoB" — a *filter*, not the oracle. Directional only: `15% increased phys` is worthless to a no-phys build and huge to another, and telling them apart needs build context, i.e. a partial calc. Good enough to rank a shortlist into. | **deferred** — layer 4, past v1 | `beam-search-design.md` |
+| 2 | **Cross-beam memoisation** | Cache `(sorted allocSet, nodeId) → result`; beam states that reconverge via different order hit it. `BuildOutput` isn't incremental, so this is the main way to reclaim repeated work. Earns its place only at `W > 1`. | **done** — `MemoEvaluator`, `src/core/evaluator.ts` (pruning layer 5) | `beam-search/design.md` |
+| 3 | **Cheap candidate screens** | Objective keyword filter (drop non-matching stat lines) + proximity gating (only nodes within `K` path-points of the frontier; also caps path-node drag-in). Cuts `P` from hundreds to tens at zero recompute cost. | **done** — layers 1 & 2 | `beam-search/design.md` |
+| 4 | **Approx pre-scoring** | Linear / log-linear delta estimate from stat lines vs a cached multiplier snapshot; real-evaluate only the top ~20. This is the honest version of "score without PoB" — a *filter*, not the oracle. Directional only: `15% increased phys` is worthless to a no-phys build and huge to another, and telling them apart needs build context, i.e. a partial calc. Good enough to rank a shortlist into. | **deferred** — layer 4, past v1 | `beam-search/design.md` |
 | 5 | **Objective-scoped BuildOutput** | Skip calc sections the active objective never reads: the iterative EHP model when scoring raw `TotalDPS`; minion / ailment breakdowns when scoring EHP. Zero accuracy loss *on the scored metric*. Needs profiling `recomputeBuild()` to see what's safely skippable and a bridge-side flag (`recompute_build({ only: "offence" })`). Unmeasured upside — could be a large fraction of the 280 ms, could be little. | **unexplored** — new; bridge change | this file → a spike |
-| 6 | **Corridor collapse** | Many keystones behind one shared damage-notable corridor score identically (Iron Reflexes / Giant's Blood / Blood Magic gotcha). Evaluate the corridor entry once, branch into endpoints only if competitive. | **deferred** — layer 3 | `beam-search-design.md`, `gotchas.md` |
-| 7 | **Progressive widening** | Start tight (`P`, `W` small); widen only where the beam's top scores are within ε (genuine ambiguity) and budget remains. | **deferred** — layer 6 | `beam-search-design.md` |
-| 8 | **Beam-width default sweep** | `W = 1` today (byte-identical to the old greedy walk). A bench sweep to justify a higher default is still open — a wider default trades evals for quality, so it's a cost decision. | **follow-up** — open | `status.md`, `beam-search-design.md` |
+| 6 | **Corridor collapse** | Many keystones behind one shared damage-notable corridor score identically (Iron Reflexes / Giant's Blood / Blood Magic gotcha). Evaluate the corridor entry once, branch into endpoints only if competitive. | **deferred** — layer 3 | `beam-search/design.md`, `gotchas.md` |
+| 7 | **Progressive widening** | Start tight (`P`, `W` small); widen only where the beam's top scores are within ε (genuine ambiguity) and budget remains. | **deferred** — layer 6 | `beam-search/design.md` |
+| 8 | **Beam-width default sweep** | `W = 1` today (byte-identical to the old greedy walk). A bench sweep to justify a higher default is still open — a wider default trades evals for quality, so it's a cost decision. | **follow-up** — open | `status.md`, `beam-search/design.md` |
 | 9 | **Warm the pool on boot** | `pool.warm()` spawns all LuaJIT children up front so the first few jobs don't each eat a cold PoB boot (seconds). Pure latency-hiding, no throughput change. | **optional** — phase 1 | `01-bridge-service.md` |
 | 10 | **Surrogate-assisted search** | Train a fast approximation on PoB outputs, run the inner beam loop on the surrogate, validate the top-N with real PoB evals. Known technique; could genuinely cut wall time. But: a training pipeline, retraining per patch, and a failure mode of confidently mis-ranking a node in some build contexts. Research project, not a shortcut. | **not planned** — past v1 | this file |
 

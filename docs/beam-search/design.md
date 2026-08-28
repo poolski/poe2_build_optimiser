@@ -168,9 +168,9 @@ serially on its one bridge so the wall floor is the most expensive build (`Huntr
 pair, 3 of the 4 held-out, an armour build (`R_Thor`), and 3 gutted (both recovery-fraction
 bases). Inferred CORE wall ≈ 38 min at N=8. `--full` appends `EXTENDED_CORPUS` (16, incl.
 `HuntressTank` and the 2 0-DPS-headless builds) and is what a re-run of the definitive step-9 /
-step-11 numbers should use. Per-build costs and the trim rationale live in `docs/beam-corpus.md`.
+step-11 numbers should use. Per-build costs and the trim rationale live in `docs/beam-search/corpus.md`.
 
-State of the corpus is tracked in Implementation status §8 and `docs/beam-corpus.md`.
+State of the corpus is tracked in Implementation status §8 and `docs/beam-search/corpus.md`.
 
 ### Ablations
 
@@ -189,7 +189,7 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
   harness (now parallel — `--concurrency=N`, one shared bridge per build; per-recompute timing via
   `get_metrics.buildOutputSeconds`), and **the definitive step 9 run** — full 25-build corpus ×
   {extend+8, repair-r3, repair-r6} under `dps-ehp:0.5` + a 3-elem-resist floor, 1h20m wall at
-  `--concurrency=8`, committed as `docs/beam-bench-dps-ehp-0-5.md` (`ba0df4a`).
+  `--concurrency=8`, committed as `docs/beam-search/bench-dps-ehp-0-5.md` (`ba0df4a`).
 - **Step 8 (corpus) — closed 2026-08-28:** 6 local + 14 poe.ninja builds, held-out subset marked,
   synthetic-gutting tool (`npm run gut-build`) for spare-point builds with a ground-truth ceiling.
   Blocker (a) — poe.ninja over-allocation — resolved: `get_tree_status` now applies the
@@ -198,7 +198,7 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
   gutting tool covers it and the corpus proceeds with that. **Corpus split into CORE (9, the
   benchmark default) + EXTENDED (16, `--full`)** after the definitive run showed the full set is
   too slow for a routine check (`ba0df4a`; see §8).
-- **Step 11 (validation write-up) — DONE 2026-08-28.** `docs/beam-search-repro.md`. Repair returns
+- **Step 11 (validation write-up) — DONE 2026-08-28.** `docs/beam-search/repro.md`. Repair returns
   **exact no-change** on the hand-tuned Monk (`185998.36 → 185998.36`, `repair-not-worthwhile`) and
   on a strong *held-out* build (`TechnoIceShot`), **+11.4 %** on the naive Monk sibling, and large
   gains on weak/gutted builds — under raw `TotalDPS` with a no-regression floor on the
@@ -206,7 +206,7 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
   blend does **not** separate tuned from naive (both ≈ +1.3 %), and a preserve floor is inert on
   top of it — the blend already blocks the bad trade but flattens the contrast, and repair still
   reallocates notables the blend cannot price. Backing: CORE bench re-run under `TotalDPS`
-  (`docs/beam-bench-totaldps.md`, 9 builds, 54 min). Harness change: default floor switched from
+  (`docs/beam-search/bench-totaldps.md`, 9 builds, 54 min). Harness change: default floor switched from
   the 3 elemental resists to `TotalEHP` no-regression — resists come from gear, not the tree, so
   flooring them steers the planner wrong (`res ok` = y on all 27 runs confirms nothing traded them
   away regardless). Per-build `preserve` override added for hand-picked defence.
@@ -261,7 +261,7 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
      and ≥1 step, else `stoppedBecause: "repair-not-worthwhile"` / `"nothing-removable"` (renamed
      from `"no-leaves"` in step 2) with `removed` still surfaced. Pre-sweep live numbers (one-shot):
      `RampantlyBisexual` / TotalDPS / respec 3 → +11.9% at net 0 pts; `MA-FlickerStrike` / TotalEHP
-     / respec 5 → +13%. Post-sweep bench numbers in `docs/beam-bench-<objective>.md`.
+     / respec 5 → +13%. Post-sweep bench numbers in `docs/beam-search/bench-<objective>.md`.
    - **Any-node repair — ACTIVE NEXT TRACK (chosen 2026-08-28).** Allow non-leaf removal
      (`DeallocNode` cascades everything only reachable through the removed node). `bridge.lua`
      `evaluate_dealloc_candidates` already does this and already reports the true `pointsFreed`;
@@ -334,7 +334,7 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
         the 29-node `Dexterity` subtree, drops the objective to the anchor, then re-spends).
 8. **Corpus assembly** — DONE (2026-08-28). 6 local + 14 poe.ninja builds + the gutting tool.
    `spike/characteriseBuild.ts` (`npm run characterise-build`) emits a manifest row;
-   `docs/beam-corpus.md` holds the manifest + gap list + the poe.ninja pull table/caveats.
+   `docs/beam-search/corpus.md` holds the manifest + gap list + the poe.ninja pull table/caveats.
    - **Local:** 6 builds. Validation pair (both Monk) is now usable end-to-end —
      `Martial Artist - Shattering Palm + Flicker Strike` (hand-tuned, ~186k DPS) vs
      `MA-FlickerStrike` (naive, user-gutted, ~90k DPS); both fixed 2026-08-27 (stale
@@ -364,7 +364,7 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
      (`npm run gut-build`) fills the gap, though every gutted instance still traces to a L80+ tree.
      Accepted — the corpus proceeds on that basis.
    - **CORE / EXTENDED split (`ba0df4a`).** `benchTreeApproaches.ts` defaults to `CORE_CORPUS`
-     (9 builds); `--full` adds `EXTENDED_CORPUS` (16). See §Corpus above and `docs/beam-corpus.md`
+     (9 builds); `--full` adds `EXTENDED_CORPUS` (16). See §Corpus above and `docs/beam-search/corpus.md`
      for the per-build cost table. HuntressTank moved to EXTENDED (its `repair-r6` alone is ~37 min);
      CORE keeps 3 of the 4 held-out builds.
 9. **Benchmark harness** — DONE, incl. the definitive run.
@@ -380,14 +380,14 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
      worker pool over builds, one shared LuaJIT bridge per build (all 3 approaches, `load_build_xml`
      once). Deterministic regardless of N — rows carry a hidden `(ci, ai)` key and are sorted before
      every render. `--fresh-bridge` = the old spawn-per-approach path.
-   - **Definitive run (`ba0df4a`, `docs/beam-bench-dps-ehp-0-5.md`).** Full 25-build corpus,
+   - **Definitive run (`ba0df4a`, `docs/beam-search/bench-dps-ehp-0-5.md`).** Full 25-build corpus,
      `dps-ehp:0.5`, +8, resist floor, `--concurrency=8`, 1h20m, 69 rows (`Blood Mage` +
      `BlandisThree` skip under the blend). Findings: **repair monotonic (r6 ≥ r3) on all 23 usable
      builds** (the k-sweep fix holds); **`res ok` = y everywhere**; gutted recovery behaves as
      designed (`extend` spends 25 pts back → 100–158%; net-0 `repair` → 19–73%); `R_Thor` is a
      genuine repair win (r3 +3.65% / r6 +4.59% both beat `extend` +2.47%); layer-5 cache hit rate
      0.00 throughout; ~250–310 ms/recompute. The earlier local-only fixtures
-     (`docs/beam-bench-totaldps.md`, and the pre-`ba0df4a` `dps-ehp-0-5.md`) stay as harness
+     (`docs/beam-search/bench-totaldps.md`, and the pre-`ba0df4a` `dps-ehp-0-5.md`) stay as harness
      regression checks. The committed `dps-ehp-0-5.md` is the 25-build run; running the default now
      regenerates it as the 9-build CORE set.
 10. **CLI + spike wiring** — DONE. `src/optimiseCli.ts` (`npm run optimise-tree`), parsing +
@@ -399,7 +399,7 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
     `--constraint Metric=N` / `--preserve A,B`. Shared helpers in `src/cliShared.ts`; `parseArgs`
     unit-tested (12 tests). `--beam-width` / `--beam-depth` / `--target-level` /
     `--freeze-ascendancy` omitted — no backing feature yet.
-11. **Validation** — DONE 2026-08-28. `docs/beam-search-repro.md`.
+11. **Validation** — DONE 2026-08-28. `docs/beam-search/repro.md`.
 
     **What shipped.** The repro doc mirrors `docs/constraint-rejection-repro.md`: the tuned/naive
     Monk pair, the objective + floor recipe, a 2×2 of CLI transcripts, and the CORE bench re-run as
@@ -434,7 +434,7 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
     Default floor switched from the 3 elemental resists to `DEFAULT_PRESERVE = ["TotalEHP"]` — a
     build-agnostic aggregate, and resists come from gear not the tree so flooring them steered the
     planner wrong. `res ok` (now a diagnostic, not an enforced floor) = y on all 27 CORE runs, so
-    nothing traded resist away regardless. Backing fixture: `docs/beam-bench-totaldps.md`
+    nothing traded resist away regardless. Backing fixture: `docs/beam-search/bench-totaldps.md`
     (regenerated as the 9-build CORE `TotalDPS` run, 54 min at `--concurrency=4`).
 
     **"No change" assertion.** Exact equality — `repair-not-worthwhile` lands on `final === base`

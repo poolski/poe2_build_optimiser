@@ -1,7 +1,7 @@
 # Beam-search benchmark corpus
 
 The set of PoB-PoE2 build XMLs the tree-planner approach benchmark (`spike/benchTreeApproaches.ts`,
-design step 9) runs against. The design (`docs/beam-search-design.md` → Corpus) calls for **8–15**
+design step 9) runs against. The design (`docs/beam-search/design.md` → Corpus) calls for **8–15**
 builds spanning defence layers, damage types, and spare-point counts, including ≥1 hand-tuned
 (repair must return ≈no change), ≥1 deliberately naive (repair must improve it), and a held-out
 subset never used while tuning `K` / `W` / `D`.
@@ -138,7 +138,7 @@ untrimmed time) and the two 0-DPS-headless builds (`Blood Mage`, `BlandisThree`)
 any DPS/blend objective anyway. `--full` is what a re-run of the definitive step-9 / step-11
 numbers should use; the 4th held-out build (`HuntressTank`) only comes back with it.
 
-The committed `docs/beam-bench-dps-ehp-0-5.md` fixture is the 25-build `--full` run. Running the
+The committed `docs/beam-search/bench-dps-ehp-0-5.md` fixture is the 25-build `--full` run. Running the
 bench with defaults regenerates it as the 9-build CORE set (auto-generated, git keeps both).
 
 ## Synthetic gutting (`spike/gutBuild.ts`, `npm run gut-build`)

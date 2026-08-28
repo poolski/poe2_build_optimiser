@@ -6,7 +6,7 @@
 //   npm run fetch-ninja-builds
 //
 // After it runs: `npm run characterise-build -- "<xml>"` on each, then paste rows into
-// docs/beam-corpus.md.
+// docs/beam-search/corpus.md.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
