@@ -1,7 +1,12 @@
-# Phase 4 (deferred) — tree canvas
+# Phase 3 — tree canvas (in the v1 release)
 
-**Deferred until there's a real need.** The node-list diff in `05` is the v1 deliverable. This
-file scopes what a visual canvas would cost so the decision is informed.
+**Part of v1**, per the user (2026-08-28). For a *respec* tool a visual tree diff is the point —
+"move these points" reads far better on the tree than as a list of node names. The node-list diff
+in `05` stays as the always-correct fallback view (and the view for a build whose tree version
+doesn't match the shipped one), but the canvas is the headline result.
+
+Scope is deliberately small — a stylised diff render, not a PoB replica. Nothing here is
+architecturally hard; it's ~1 day of porting a tested renderer. What follows is that scope.
 
 ## Target: a stylised representation, not a replica
 
@@ -81,8 +86,9 @@ Zustand is already a candidate dep for `packages/web` (`05`), so their store pat
 - A `packages/api` build step writes `public/tree-0_5.min.json` — geometry + node
   type/name/stat only (drop `sprites`, `imageZoomLevels`, flavour) → well under 500 KB. Pin the
   tree version; surface it on `/health`.
-- `OptimiseResultDTO` gains `allocatedNodeIds: { before: number[]; after: number[] }`, from the
-  same `get_allocated_node_ids` RPC `04` already wants for `updatedPobCode`.
+- `OptimiseResultDTO.allocatedNodeIds { before: number[]; after: number[] }`, read via
+  `list_allocated_nodes` on the still-acquired bridge (`04` does this read anyway for
+  `updatedPobCode`).
 - The canvas is then a pure function of `(minTree, allocatedBefore, allocatedAfter, added,
   removed, anchor)`.
 
@@ -102,10 +108,15 @@ non-affiliation notice in a footer ("not affiliated with or endorsed by Grinding
 game content © GGG, personal non-commercial use), exactly as both PoB and poe2-build-planner
 carry it. Note it here so it isn't a surprise.
 
-## Prereqs when picked up
+## Prereqs (all in v1 phases 2–3)
 
-- `OptimiseResultDTO.allocatedNodeIds { before, after }` + the `get_allocated_node_ids` RPC.
-- The `public/tree-0_5.min.json` build step; tree version pinned + on `/health`.
-- Handling for a build whose `<Spec treeVersion>` ≠ the shipped one (warn + fall back to the
-  list diff).
-- `packages/web/src/render/LICENSE.upstream` with the poe2-build-planner MIT notice.
+- `OptimiseResultDTO.allocatedNodeIds { before, after }` — from `list_allocated_nodes` on the
+  still-acquired bridge, the same read `04` already does for `updatedPobCode`. Put it in the
+  `03` schema, not a canvas-only add-on.
+- The `public/tree-0_5.min.json` build step in `packages/api` (or `packages/web`); tree version
+  pinned + surfaced on `/health`.
+- Handling for a build whose `<Spec treeVersion>` ≠ the shipped one: warn and show the `05`
+  list diff instead of the canvas. This is why `05` stays in v1, not just as "fallback if we run
+  out of time".
+- `packages/web/src/render/LICENSE.upstream` with the poe2-build-planner MIT notice + a
+  one-line provenance comment in each ported file.

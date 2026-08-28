@@ -101,7 +101,11 @@ in `04`, not here.
 
 - `final.stats` kept as `z.record(z.string(), z.number())` (the `StatSet`).
 - an added `updatedPobCode: z.string()` — the re-encoded build with the plan applied (`04`).
-- `addedNodeIds`, `removed[].id`, `steps[].id` preserved so `06` (canvas) can highlight them.
+- an added `allocatedNodeIds: z.object({ before: z.array(z.number().int()), after: z.array(z.number().int()) })`
+  — read off the bridge (`04`); the canvas (`06`, in v1) renders the diff from it.
+- `addedNodeIds`, `removed[].id`, `steps[].id` preserved so the canvas can tint added / dropped /
+  anchor distinctly.
+- `stoppedBecause` union includes `"cancelled"` (the `shouldContinue` early return, `02`).
 
 ### `recommend.ts`
 

@@ -1,8 +1,9 @@
 # Phase 3 — frontend (`packages/web`)
 
 A Vite + React single-page app: paste/upload a build → pick mode + objective + constraints → run
-→ watch progress → read the node-list diff → copy the updated PoB code. No tree canvas (`06` is a
-separate, deferred phase).
+→ watch progress → see the result as a **tree canvas** (`06`) with a node-list diff beside it →
+copy the updated PoB code. The canvas is in v1; this file covers the wizard + the list diff, `06`
+covers the canvas component that mounts in the Results screen.
 
 Depends on phase 2 (API + contract).
 
@@ -24,6 +25,9 @@ packages/web/
       ObjectiveBuilder.tsx
       ConstraintsEditor.tsx
       NodeDiff.tsx
+    render/           # 06 — ported MIT renderer (viewport, spatialIndex, draw, nodeVisual, …)
+      TreeCanvas.tsx  # 06 — mounts in Results
+      LICENSE.upstream
     styles.css        # plain CSS, one file for v1
 ```
 
@@ -96,12 +100,16 @@ The form model is `OptimiseRequest` from the contract, so validation mirrors the
 - On `done` event → store `result`, advance to `results`.
 - Reconnect: if the `EventSource` errors, re-`GET /api/jobs/:id`; if settled, jump to results.
 
-### 4. `Results` (`NodeDiff`)
+### 4. `Results` (`TreeCanvas` + `NodeDiff`)
 
+- **Tree canvas** (`06`): the passive tree with `allocatedNodeIds.before/after` drawn, added /
+  dropped / anchor tinted, pan+zoom, hover → node name + stat lines. Falls back to the list-only
+  view when the build's `<Spec treeVersion>` ≠ the shipped `tree.json`. The list below stays
+  visible either way.
 - **Headline**: `objective baseline → final` with `%` change; `net points` (repair: `freed N /
   re-spent M`); `mode`, `beam width`, `rollback to <id>` when relevant; `stoppedBecause`
   translated to plain text (`repair-not-worthwhile` → "the loaded tree already wins — no change
-  recommended").
+  recommended"; `cancelled` → "stopped early — partial result").
 - **Freed** (repair): list `removed[]` — name (type), `frees P pts` (mark `cascade` /
   `anchor cascade`), `value lost`, `objective … → … without it`.
 - **Added / re-spend steps**: ordered `steps[]` — `name (type, P pt, path L)`, `objective before
@@ -125,7 +133,6 @@ worth standing up for one user.
 
 ## Deferred
 
-- Tree canvas (`06`).
 - Persisting the last-used `RunConfig` in `localStorage`.
 - Side-by-side compare of two result runs.
 - A recommender-only quick view (the API already supports `kind: "recommend"` jobs; wiring a

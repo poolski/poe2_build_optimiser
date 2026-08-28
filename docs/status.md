@@ -192,7 +192,7 @@ cancel that frees the slot within one add-step.
 | `docs/web-ui/03-shared-contract.md` | Phase 2 — `packages/contract`: Zod schemas + inferred DTOs |
 | `docs/web-ui/04-api-server.md` | Phase 2 — `packages/api`: Hono + Zod, builds / jobs / SSE |
 | `docs/web-ui/05-frontend.md` | Phase 3 — `packages/web`: Vite + React wizard, node-list diff |
-| `docs/web-ui/06-tree-canvas.md` | Phase 4 (deferred) — visual diff canvas; overhead scoped |
+| `docs/web-ui/06-tree-canvas.md` | Phase 3 (in v1) — stylised passive-tree diff canvas |
 | `docs/web-ui/07-performance.md` | Cross-cutting — why PoB stays the fitness oracle + the speed-lever table |
 
 **Decisions of record (2026-08-28, with the user):**
@@ -205,11 +205,12 @@ cancel that frees the slot within one add-step.
 4. **Stack — Vite + React SPA + Hono API** (`@hono/node-server`, `streamSSE`, `serveStatic`),
    **Zod** for request validation + shared types, **no job-queue lib** (in-memory registry +
    `EventEmitter`; port the bench harness's `runWithConcurrency` for the pool).
-5. **Result rendering — node-list diff for v1.** Tree canvas is phase 4, deferred. When built:
-   stylised only (shapes not sprites, dot-size by tier, PoE2 colours, no orbit rotation), by
-   porting the **MIT** Canvas2D renderer from `poe2-tools/poe2-build-planner` (same stack) onto
-   our PoB `tree.json` — ~1 day, no GGG art. PoB-faithful render (DDS texture pipeline) stays
-   out of scope.
+5. **Result rendering — tree canvas *and* node-list diff, both in v1** (canvas promoted out of
+   "deferred" 2026-08-28). Canvas is the headline; list diff is the fallback + tree-version-
+   mismatch view. Canvas is stylised only (shapes not sprites, dot-size by tier, PoE2 colours, no
+   orbit rotation), porting the **MIT** Canvas2D renderer from `poe2-tools/poe2-build-planner`
+   (same stack) onto our PoB `tree.json` — ~1 day, no GGG art. PoB-faithful render (DDS texture
+   pipeline) stays out of scope.
 6. **PoB stays the fitness oracle.** Not replaced by a home-grown engine over GGG's data
    exports — the exports are data, not the damage formula. The ~280 ms/recompute cost is a
    speed-lever problem (parallel bridge pool, candidate pruning, objective-scoped `BuildOutput`,
@@ -219,9 +220,10 @@ cancel that frees the slot within one add-step.
    sees. Phase 1.5 (lever 1b) parallelises one run's candidate batch across the pool — the real
    wall-time win, and the first fast-follow after v1 ships.
 
-Sequencing note: **phase 1.5** slots in right after phase 3 (v1 UI), before the deferred phase 4
-canvas. Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay
-below all of it — pick them up only on demand.
+Sequencing: phase 1 (bridge) → phase 2 (API) → phase 3 (UI = wizard + list diff + tree canvas) =
+**v1**. Then **phase 1.5** (parallel candidate eval, the wall-time win) as the first fast-follow.
+Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
+it — pick them up only on demand.
 
 ## Scope
 

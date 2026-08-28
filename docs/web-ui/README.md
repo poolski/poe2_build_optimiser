@@ -14,8 +14,8 @@ This directory is the plan, split by domain so each piece can be picked up on it
 | [`02-core-progress.md`](02-core-progress.md) | The two v1 changes to `src/core/*`: `onProgress` + `shouldContinue` | 1 |
 | [`03-shared-contract.md`](03-shared-contract.md) | Zod schemas + inferred types shared by API and UI | 2 |
 | [`04-api-server.md`](04-api-server.md) | Hono + Zod HTTP server: builds, jobs, SSE progress | 2 |
-| [`05-frontend.md`](05-frontend.md) | Vite + React SPA: input → config → run → diff | 3 |
-| [`06-tree-canvas.md`](06-tree-canvas.md) | Optional follow-up: render the passive tree with the diff highlighted | 4 |
+| [`05-frontend.md`](05-frontend.md) | Vite + React SPA: input → config → run → node-list diff | 3 |
+| [`06-tree-canvas.md`](06-tree-canvas.md) | Stylised passive-tree canvas with the diff highlighted — **in v1** | 3 |
 | [`07-performance.md`](07-performance.md) | Why PoB stays the fitness oracle + the full speed-lever table | cross-cutting |
 
 **On speed:** v1 runs a job as slowly as the CLI does — the pool (phase 1) only overlaps
@@ -51,6 +51,13 @@ Settled with the user before writing this plan:
    person-years, less accurate, and a patch treadmill. The ~280 ms/recompute cost is addressed
    with the speed levers, not by dropping PoB. Full rationale + the lever table:
    `07-performance.md`.
+6. **Result rendering — node-list diff *and* the tree canvas, both in v1.** The canvas (`06`) is
+   the headline result — for a respec tool "move these points" belongs on the tree, not in a
+   list. The `05` list diff stays as the always-correct fallback and the view for a build whose
+   tree version ≠ the shipped one. Canvas is stylised only (shapes not sprites, dot size by tier,
+   PoE2 colours, no orbit rotation), ported from the MIT Canvas2D renderer in
+   `poe2-tools/poe2-build-planner` (same stack) onto our PoB `tree.json` — ~1 day, no GGG art.
+   PoB-faithful render (DDS texture pipeline) stays out of scope.
 
 ## Architecture
 
@@ -125,14 +132,17 @@ import and the shim is deleted.
   - [ ] `packages/api` — Hono server, build decode/encode, job registry, SSE
   - [ ] Cancel wired through `shouldContinue` (frees the bridge within one add-step)
   - [ ] updated-PoB-code output (read allocated ids off the bridge, patch `<Spec nodes>`, re-encode)
-- [ ] **Phase 3 — UI** (`05`)
+- [ ] **Phase 3 — UI** (`05`, `06`)
   - [ ] Vite + React scaffold, dev proxy to the API
-  - [ ] input → summary → run-config form → progress panel → results diff → copy updated code
-- [ ] **Phase 1.5 — parallel candidate eval** (`01` §"Phase 1.5", `07` lever 1b) — first
-      fast-follow after v1. Pool-backed evaluator in `beamAddLoop`, id-sorted recollection,
-      determinism unchanged. This is what makes a single run fast.
-- [ ] **Phase 4 — tree canvas** (`06`) — only on demand. Stylised (shapes, no sprites); port the
-      MIT renderer from `poe2-tools/poe2-build-planner` onto our `tree.json`.
+  - [ ] input → summary → run-config form → progress panel → results
+  - [ ] `05` node-list diff + copy updated PoB code
+  - [ ] `06` tree canvas: `tree-0_5.min.json` build step; port the MIT renderer from
+        `poe2-tools/poe2-build-planner`, re-skin `nodeVisual.ts`, diff overlay; list-diff
+        fallback on a tree-version mismatch
+- [ ] **Phase 4 — parallel candidate eval** (`01` §"Phase 1.5", `07` lever 1b) — first
+      fast-follow after v1 ships. Pool-backed evaluator in `beamAddLoop`, id-sorted recollection,
+      determinism unchanged. This is what makes a single run fast. (Numbered 1.5 in `01`/`07`
+      because it modifies phase-1 code; sequenced here, after the v1 UI.)
 
 ## Running it
 
@@ -164,7 +174,8 @@ Neither is a background service — it's a tool you start when you want it and C
 ## Non-goals for v1
 
 - Hosting / multi-user / persistence of jobs across a server restart.
-- The tree canvas (`06` is deferred).
+- A PoB-faithful tree render (sprites, DDS atlases, orbit rotation) — the v1 canvas is stylised
+  shapes only (`06`).
 - Editing gear, gems, or anything outside the passive tree (permanent project scope).
 - Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below
   this track — pick them up only on demand.
