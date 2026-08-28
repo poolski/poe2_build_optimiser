@@ -19,6 +19,9 @@ const USAGE = `usage: optimise-tree <path-to-build.xml> [options]
     --repair-nodes <n>           alias for --respec-budget
     --freeze <id,id,...>         repair mode: allocated node ids the regret set may never free
                                  (ascendancy nodes are always frozen)
+    --rollback-to <id>           repair mode: force-free this allocated node's whole downstream
+                                 cascade, then re-spend it (+ --respec-budget more survivors).
+                                 Selects repair mode on its own. Mid/late anchors only.
 
   budget (extend mode)
     --point-budget <n>           absolute cap on total regular points the plan may occupy
@@ -72,6 +75,7 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 	let beamWidth: number | undefined;
 	let beamDepth: number | undefined;
 	let freeze: number[] | undefined;
+	let anchorNodeId: number | undefined;
 	const constraints: Record<string, number> = {};
 	let preserveMetrics: string[] | undefined;
 
@@ -109,6 +113,8 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 			beamDepth = parseIntFlag(expectValue(argv, ++i, "--beam-depth"), "--beam-depth");
 		} else if (arg === "--freeze") {
 			freeze = parseList(expectValue(argv, ++i, "--freeze")).map((t) => parseIntFlag(t, "--freeze"));
+		} else if (arg === "--rollback-to") {
+			anchorNodeId = parseIntFlag(expectValue(argv, ++i, "--rollback-to"), "--rollback-to");
 		} else if (arg === "--min-resist") {
 			const floor = Number(expectValue(argv, ++i, "--min-resist"));
 			if (!Number.isFinite(floor)) throw new Error("--min-resist expects a number");
@@ -144,16 +150,20 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 		throw new Error("--beam-depth must be >= 1");
 	}
 
-	// Resolve mode.
+	// Resolve mode. `--rollback-to` selects repair on its own (respec budget then bounds only the
+	// extra survivors freed on top of the anchor cascade).
 	let resolvedRespec: number;
 	if (mode === "repair") {
-		if (!respecBudget || respecBudget <= 0) {
-			throw new Error("--mode repair needs --respec-budget <n> (n > 0)");
+		if ((!respecBudget || respecBudget <= 0) && anchorNodeId === undefined) {
+			throw new Error("--mode repair needs --respec-budget <n> (n > 0) or --rollback-to <id>");
 		}
-		resolvedRespec = respecBudget;
+		resolvedRespec = respecBudget && respecBudget > 0 ? respecBudget : 0;
 	} else if (mode === "extend") {
 		if (respecBudget && respecBudget > 0) {
 			throw new Error("--mode extend conflicts with --respec-budget > 0");
+		}
+		if (anchorNodeId !== undefined) {
+			throw new Error("--mode extend conflicts with --rollback-to");
 		}
 		resolvedRespec = 0;
 	} else {
@@ -168,6 +178,7 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 		constraints: Object.keys(constraints).length > 0 ? constraints : undefined,
 		preserveMetrics,
 		respecBudget: resolvedRespec,
+		anchorNodeId,
 		proximity,
 		maxCandidatesPerStep,
 		beamWidth,
@@ -194,6 +205,7 @@ function report(result: OptimiseTreeResult, wallSeconds: string): void {
 		`mode: ${result.mode}   baseline ${objectiveLabel} ${fmt(result.baseline.objective)}   ` +
 			`points ${result.baseline.pointsUsed}/${result.baseline.pointsMax}` +
 			(result.mode === "repair" ? `   respec budget ${result.respecBudget}` : `   point budget ${result.pointBudget}`) +
+			(result.anchorNodeId !== undefined ? `   rollback to ${result.anchorNodeId}` : "") +
 			(result.beamWidth ? `   beam width ${result.beamWidth}` : ""),
 	);
 	console.log();
@@ -201,6 +213,14 @@ function report(result: OptimiseTreeResult, wallSeconds: string): void {
 	if (result.removed.length > 0) {
 		console.log(`Freed ${result.pointsFreed} point(s) by removing ${result.removed.length} node(s):`);
 		for (const r of result.removed) {
+			if (r.anchorCascade) {
+				console.log(
+					`  - rollback to ${r.name} (${r.type})   frees ${r.pointsFreed} pts (downstream cascade)   ` +
+						`value lost ${fmt(r.valueLost)}   ` +
+						`[${objectiveLabel} ${fmt(result.baseline.objective)} -> ${fmt(r.objectiveAfterRemoval)} at the anchor]`,
+				);
+				continue;
+			}
 			const cascade = r.pointsFreed > 1 ? `   frees ${r.pointsFreed} pts (cascade)` : "";
 			console.log(
 				`  - ${r.name} (${r.type})${cascade}   value lost ${fmt(r.valueLost)}   ` +
@@ -256,7 +276,7 @@ async function main(): Promise<void> {
 			options.pointBudget = status.pointsUsed + extraPoints;
 		}
 
-		const isExtend = (options.respecBudget ?? 0) === 0;
+		const isExtend = (options.respecBudget ?? 0) === 0 && options.anchorNodeId === undefined;
 		if (isExtend && !explicitBudget) {
 			console.error(
 				"extend mode with no --point-budget / --extra-points has nothing to add (budget defaults to points already used).\n" +

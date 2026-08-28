@@ -109,11 +109,12 @@ Key findings:
   Inoculation (`Maximum Life is 1`) — the failure the floor exists for. `--min-resist` alone
   does not stop it (CI touches no resist) → another reason resists are the wrong thing to floor.
 
-### Active next track — any-node (cascading) repair + a real `(W, D)` beam
+### Any-node (cascading) repair + a real `(W, D)` beam — COMPLETE 2026-08-28
 
-Chosen 2026-08-28 as the next work (gem optimisation is out of scope, so the tree optimiser gets
-deepened instead). What shipped as "beam search" is greedy-seed + **leaf-only** repair; this
-lifts both limits. Plan, cheapest-gating-first:
+Chosen 2026-08-28 as the next work (gem optimisation is out of scope, so the tree optimiser got
+deepened instead). What shipped as "beam search" was greedy-seed + **leaf-only** repair; this
+lifted both limits. All 5 steps done and committed. Follow-up still open: a bench sweep to decide
+whether a default `beamWidth > 1` is worth it. Plan, cheapest-gating-first:
 
 1. **Cascade-verification spike** — DONE 2026-08-28 (`spike/verifyDeallocCascade.ts`,
    `npm run verify-dealloc-cascade`; write-up in `docs/gotchas.md`). Verdict: `DeallocNode`
@@ -141,17 +142,20 @@ lifts both limits. Plan, cheapest-gating-first:
    `evaluate_dealloc_candidates` probe, so they cost nothing). Ascendancy nodes stay
    unconditionally frozen — no `freezeAscendancy` toggle, since their point pool can't be
    re-spent anyway. Freezing every removable node yields `nothing-removable`. +3 tests (81 green).
-5. **Rollback-to-node (anchor) option** — SCHEDULED. An extra input to the repair path (not a
-   separate mode) that *composes* with steps 2–4. User names an **anchor node**; the planner
-   force-frees the anchor's downstream subtree (`DeallocNode(anchor)` cascade minus the anchor
-   itself — the anchor stays as the re-spend frontier), unconditionally (not scored/knapsacked).
-   `respecBudget` then still applies to the survivors: `--rollback-to <id>` alone = subtree-only,
-   `+ --respec-budget N` = also free N more lowest-value survivors. Step-3 beam re-spends the lot.
-   Needs `anchorNodeId?: number` on `OptimiseTreeOptions` + cascade resolution from step 1.
-   **Scope: leaf / mid-to-late anchors only.** Anchor-at-start ≈ from-scratch and stalls on the
-   zero-delta pathing plateau (`expandState` filters to Δobjective > 0, so an empty tree stops at
-   depth 0); solving that = from-scratch mode, which stays past-v1. Guard: warn/reject when the
-   cascade covers more than ~a fraction of allocated points.
+5. **Rollback-to-node (anchor) option** — DONE 2026-08-28. An extra input to the repair path (not
+   a separate mode) that *composes* with steps 2–4. `OptimiseTreeOptions.anchorNodeId` /
+   `--rollback-to <id>` (selects repair on its own). The planner force-frees the anchor's whole
+   downstream `DeallocNode` cascade as `dropped[0]` (`anchorCascade: true`), unconditionally —
+   not scored, not knapsacked, not swept. Cascade members recovered by diffing
+   `list_allocated_nodes` vs `list_allocated_nodes({ removeIds: [anchor] })` — a new optional
+   `removeIds` on that bridge method — and held out of the regret pool. `respecBudget` then
+   applies to the survivors: `--rollback-to <id>` alone = subtree-only (k-sweep → k=1);
+   `+ --respec-budget N` = also free ≤ N points of the lowest-value survivors. Step-3 beam
+   re-spends `cascadePoints + swept` via the `[anchor, …survivors]` `removeIds` prologue. Rejects
+   an ascendancy / non-allocated anchor, an id in both `freeze` and `anchorNodeId`, and (scope
+   guard `MIN_ANCHOR_SPINE_POINTS` = 3) an anchor leaving `< 3` surviving points — that case is
+   from-scratch mode (zero-delta pathing plateau), still past-v1. +7 tests (88 green).
+   Live-verified on `RampantlyBisexual` (`--rollback-to 34015`).
 
 Full sketch: `docs/beam-search-design.md` §7 ("Any-node repair") + §"Open questions".
 

@@ -36,6 +36,9 @@ import { StatSet } from "./stats";
 const DEFAULT_TARGET_METRIC = "TotalDPS";
 const DEFAULT_PROXIMITY = 3;
 const DEFAULT_NODE_TYPES = ["Notable", "Keystone"];
+/** Rollback-to-node: minimum regular points that must survive the anchor's cascade. Below this the
+ * add-loop has no spine to grow from and stalls on zero-delta pathing (that is from-scratch mode). */
+const MIN_ANCHOR_SPINE_POINTS = 3;
 
 export interface OptimiseTreeOptions {
 	/** mainOutput key to score on. Ignored when `objectiveFn` is given. Default "TotalDPS". */
@@ -72,6 +75,17 @@ export interface OptimiseTreeOptions {
 	 * removal -- freeze protects a node from being the removal target, not from another node's
 	 * cascade. Ignored in extend mode (nothing is freed there). */
 	freeze?: number[];
+	/** Repair mode: an allocated regular node to "roll back to". The planner force-frees the
+	 * anchor's entire downstream cascade -- the node plus everything only connected to the tree
+	 * through it (`DeallocNode` semantics) -- unconditionally: those nodes are not scored, not
+	 * knapsacked, not part of the k-sweep. The anchor itself stays allocated and seeds the re-spend
+	 * frontier. `respecBudget` then still applies to the *survivors*: 0 = re-spend only what the
+	 * cascade freed ("what if I respecced back to here?"), > 0 = also free that many more of the
+	 * lowest-value survivors. Selects repair mode on its own (no `respecBudget` needed). Scoped to
+	 * leaf / mid-to-late anchors: an anchor whose cascade would leave too little tree to re-plan
+	 * from is rejected (that case is from-scratch mode -- the add-loop stalls on zero-delta
+	 * pathing; see docs/beam-search-design.md). Ignored in extend mode. */
+	anchorNodeId?: number;
 	/** Max `pathLength` for a node to be considered at each step -- keeps the walk local and caps
 	 * path-node drag-in. Default 3. */
 	proximity?: number;
@@ -119,6 +133,9 @@ export interface RemovedNode {
 	/** Points freed by removing this node: 1 for a leaf, more for an interior node whose
 	 * downstream cascades off with it (`DeallocNode` semantics). */
 	pointsFreed: number;
+	/** True on the synthetic entry for a `--rollback-to` anchor: `pointsFreed` is the anchor's
+	 * whole downstream cascade, forced rather than chosen by value. */
+	anchorCascade?: boolean;
 	/** Objective with just this node (and its cascade) removed from the loaded tree. */
 	objectiveAfterRemoval: number;
 	/** baselineObjective - objectiveAfterRemoval. Negative = removing it *helped* the objective. */
@@ -131,6 +148,8 @@ export interface OptimiseTreeResult {
 	pointBudget: number;
 	/** Present in repair mode: the respec budget the caller asked for. */
 	respecBudget?: number;
+	/** Repair mode: echoed when `anchorNodeId` (`--rollback-to`) was used. */
+	anchorNodeId?: number;
 	/** Echoed when a beam wider than 1 was used for the add-loop. */
 	beamWidth?: number;
 	/** Repair mode: the nodes freed, most-expendable first. Empty in extend mode. */
@@ -220,6 +239,8 @@ export async function optimiseTree(
 	const score: Objective = options.objectiveFn ?? metricObjective(options.targetMetric ?? DEFAULT_TARGET_METRIC);
 	const proximity = options.proximity ?? DEFAULT_PROXIMITY;
 	const respecBudget = Math.max(0, Math.trunc(options.respecBudget ?? 0));
+	const anchorNodeId = options.anchorNodeId;
+	const repairMode = respecBudget > 0 || anchorNodeId !== undefined;
 
 	const baseline = await bridge.call<StatSet>("get_stats");
 	const baselineObjective = score(baseline);
@@ -265,7 +286,7 @@ export async function optimiseTree(
 		beamDepth: options.beamDepth !== undefined ? Math.max(1, Math.trunc(options.beamDepth)) : undefined,
 	};
 
-	if (respecBudget === 0) {
+	if (!repairMode) {
 		// ---- extend mode ----
 		if (extendHeadroom <= 0) {
 			return withMetrics(bridge, memo, {
@@ -308,24 +329,88 @@ export async function optimiseTree(
 			...skeleton,
 			mode: "repair",
 			respecBudget,
+			anchorNodeId,
 			removed,
 			final: { objective: baselineObjective, pointsSpent: 0, stats: baseline },
 			stoppedBecause: reason,
 		});
 
 	const { nodes: allocated } = await bridge.call<{ nodes: AllocatedNode[] }>("list_allocated_nodes");
+	const nodeById = new Map(allocated.map((n) => [n.id, n]));
 	// Ascendancy nodes are always frozen (separate point pool, no re-spend payoff); `options.freeze`
 	// adds regular nodes the user wants protected from the regret set.
 	const frozen = new Set(options.freeze ?? []);
-	const regularIds = allocated.filter((n) => !n.ascendancyName && !frozen.has(n.id)).map((n) => n.id);
-	if (regularIds.length === 0) {
+
+	// ---- rollback-to-node: resolve the anchor's forced cascade ------------------------------------
+	// The anchor plus everything only connected to the tree through it (node.depends) is force-freed
+	// unconditionally -- not scored, not knapsacked. We recover the member ids by diffing the
+	// allocated set against "allocated minus the anchor" (evaluate_dealloc_candidates only *counts* a
+	// cascade, never enumerates it); those members are then held out of the regret pool so the
+	// k-sweep can't double-free one.
+	let anchorRemoved: RemovedNode | undefined;
+	const cascadeIds = new Set<number>();
+	if (anchorNodeId !== undefined) {
+		const anchorMeta = nodeById.get(anchorNodeId);
+		if (!anchorMeta) {
+			throw new Error(`optimiseTree: anchorNodeId ${anchorNodeId} is not an allocated regular node`);
+		}
+		if (anchorMeta.ascendancyName) {
+			throw new Error(
+				`optimiseTree: anchorNodeId ${anchorNodeId} is an ascendancy node; ascendancy points are a separate pool`,
+			);
+		}
+		if (frozen.has(anchorNodeId)) {
+			throw new Error(`optimiseTree: node ${anchorNodeId} is in both freeze and anchorNodeId`);
+		}
+		const { nodes: afterAnchor } = await bridge.call<{ nodes: AllocatedNode[] }>("list_allocated_nodes", {
+			removeIds: [anchorNodeId],
+		});
+		const survivorIds = new Set(afterAnchor.map((n) => n.id));
+		for (const n of allocated) {
+			if (!survivorIds.has(n.id)) cascadeIds.add(n.id);
+		}
+		cascadeIds.add(anchorNodeId); // node.depends always includes the node itself; belt & braces
+
+		const anchorDealloc = (
+			await bridge.call<{ results: DeallocResult[] }>("evaluate_dealloc_candidates", { nodeIds: [anchorNodeId] })
+		).results[0];
+		const cascadePoints = anchorDealloc?.pointsFreed ?? cascadeIds.size;
+		// Scope guard: an anchor that frees ~the whole tree leaves no spine for the add-loop to grow
+		// from -- that is from-scratch mode, which stalls on zero-delta pathing. Reject it.
+		if (status.pointsUsed - cascadePoints < MIN_ANCHOR_SPINE_POINTS) {
+			throw new Error(
+				`optimiseTree: anchorNodeId ${anchorNodeId} frees ${cascadePoints} of ${status.pointsUsed} points, ` +
+					`leaving too little tree to re-plan from. Rollback-to-node is for mid/late anchors; a near-total ` +
+					`rollback is from-scratch mode (out of scope).`,
+			);
+		}
+		const objAfter = anchorDealloc ? score(anchorDealloc.stats) : undefined;
+		anchorRemoved = {
+			id: anchorNodeId,
+			name: anchorMeta.name,
+			type: anchorMeta.type,
+			statLines: anchorMeta.statLines,
+			pointsFreed: cascadePoints,
+			objectiveAfterRemoval: objAfter ?? Number.NaN,
+			valueLost: objAfter === undefined ? Number.POSITIVE_INFINITY : baselineObjective - objAfter,
+			anchorCascade: true,
+		};
+		if (!Number.isFinite(anchorRemoved.valueLost)) {
+			return noChange("nothing-removable", [anchorRemoved]); // cascade alone makes the build unscorable
+		}
+	}
+
+	const regularIds = allocated
+		.filter((n) => !n.ascendancyName && !frozen.has(n.id) && !cascadeIds.has(n.id))
+		.map((n) => n.id);
+	if (regularIds.length === 0 && anchorRemoved === undefined) {
 		return noChange("nothing-removable");
 	}
 
-	const { results: deallocs } = await bridge.call<{ results: DeallocResult[] }>("evaluate_dealloc_candidates", {
-		nodeIds: regularIds,
-	});
-	const nodeById = new Map(allocated.map((n) => [n.id, n]));
+	const { results: deallocs } =
+		regularIds.length > 0
+			? await bridge.call<{ results: DeallocResult[] }>("evaluate_dealloc_candidates", { nodeIds: regularIds })
+			: { results: [] as DeallocResult[] };
 
 	// Every removable regular node (leaf or interior). `pointsFreed` is the whole cascade: the node
 	// plus everything only connected to the tree through it (DeallocNode semantics, docs/gotchas.md).
@@ -351,10 +436,12 @@ export async function optimiseTree(
 	// Least value lost first (negative = removing it helps); id tie-break for determinism. Then a
 	// greedy knapsack in that order: take a candidate if its whole cascade still fits under the
 	// `respecBudget` points ceiling, else skip it and keep scanning for a smaller one that fits.
-	// (For an all-leaves tree this is exactly the old "first `respecBudget` leaves".)
+	// (For an all-leaves tree this is exactly the old "first `respecBudget` leaves".) When a
+	// `--rollback-to` anchor is set it is dropped[0], forced; `respecBudget` then bounds only the
+	// *extra* survivors freed on top of the anchor cascade.
 	candidates.sort((a, b) => a.valueLost - b.valueLost || a.id - b.id);
-	const dropped: RemovedNode[] = [];
-	let droppedPoints = 0;
+	const dropped: RemovedNode[] = anchorRemoved ? [anchorRemoved] : [];
+	let droppedPoints = 0; // survivor points only; the anchor cascade is accounted separately
 	for (const c of candidates) {
 		if (!Number.isFinite(c.valueLost)) continue;
 		if (droppedPoints + c.pointsFreed > respecBudget) continue;
@@ -418,6 +505,7 @@ export async function optimiseTree(
 		...skeleton,
 		mode: "repair",
 		respecBudget,
+		anchorNodeId,
 		removed: usedRemovals,
 		steps: bestLoop.steps,
 		addedNodeIds: bestLoop.added,

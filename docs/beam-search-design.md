@@ -302,33 +302,36 @@ per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
         re-spent. Freezing every removable node → `nothing-removable`. +3 tests (81 green).
         Verified live: `--freeze 2334` on `RampantlyBisexual` keeps `Dexterity` and the regret set
         picks other 0-value nodes for the same +11.9%.
-     5. **Rollback-to-node (anchor) option** — SCHEDULED. Not a mode; one extra input to the repair
-        path that *composes* with steps 2–4. The user names one **anchor node** already on their
-        tree; the planner force-frees the anchor's entire downstream subtree — every node whose
-        only path to the class-start runs through the anchor, i.e. the `DeallocNode(anchor)`
-        cascade *minus the anchor itself* (the anchor stays allocated and becomes the re-spend
-        frontier). Those nodes are removed unconditionally: not scored, not knapsacked, not part of
-        the `k`-sweep. Everything steps 2–4 built then runs on top of that seed:
-        - `respecBudget` keeps its meaning but applies to the **survivors**. `--rollback-to <id>`
-          alone → subtree-only. `--rollback-to <id> --respec-budget 6` → "roll back past that node
-          **and** free 6 more of the lowest-value survivors" (this answers the old open
-          sub-question: compose, don't choose).
-        - The step-3 beam re-spends cascade-points + any swept points, frontier seeded at the
-          anchor and any other removal sites.
+     5. **Rollback-to-node (anchor) option** — DONE 2026-08-28. Not a mode; one extra input to the
+        repair path that *composes* with steps 2–4. `OptimiseTreeOptions.anchorNodeId` /
+        `--rollback-to <id>` (selects repair on its own — no `respecBudget` needed). The planner
+        force-frees the anchor's entire downstream cascade (`DeallocNode(anchor)` semantics — the
+        anchor plus every node only connected to the tree through it); the anchor row is
+        `dropped[0]`, `anchorCascade: true`, and its whole cascade is removed unconditionally (not
+        scored, not knapsacked, not swept). Everything steps 2–4 built then runs on top:
+        - **Cascade members** are recovered by diffing `list_allocated_nodes` against
+          `list_allocated_nodes({ removeIds: [anchor] })` — a new optional `removeIds` on that
+          bridge method (mirrors `list_allocatable_nodes_from`), because `evaluate_dealloc_candidates`
+          only *counts* a cascade, never enumerates it. Members are then held out of the regret
+          pool so the `k`-sweep can't double-free one.
+        - `respecBudget` applies to the **survivors**: `--rollback-to <id>` alone → subtree-only
+          (`dropped = [anchor]`, `k`-sweep collapses to `k = 1`); `--rollback-to <id>
+          --respec-budget 6` → also free ≤ 6 points of the lowest-value survivors (`k`-sweep 1..N
+          over `[anchor, …survivors]`). Answers the old open sub-question: compose, don't choose.
+        - The step-3 beam re-spends `cascadePoints + swept points` via the `removeIds` prologue
+          (`[anchor, …survivors]` — bridge `DeallocNode`s the anchor, which cascades, then each
+          survivor).
         - `freeze` interaction: a frozen node inside the anchor's cascade is still collaterally
-          freed — same caveat as step 4 (freeze protects a node from being the removal *target*,
-          not from a cascade).
-        - Needs: `anchorNodeId?: number` on `OptimiseTreeOptions`, resolve → cascade set from
-          step 1's verified `DeallocNode` behaviour, force it into `dropped`, seed the frontier.
-        **Scope constraint — leaf / mid-to-late anchors only.** An anchor near the class-start
-        frees essentially the whole tree, which reduces to from-scratch construction and hits the
-        zero-delta pathing plateau: `expandState` filters to `objective - state.objective > 0`, so
-        with almost nothing allocated every travel-node candidate scores 0 and the loop stops at
-        depth 0. Making anchor-at-start work = solving from-scratch mode (lookahead past the
-        plateau / a pathing heuristic) — that stays **past v1**. This step ships the mid/late-pivot
-        use ("my tree past the mid-game pivot is a mess, re-plan that half without touching the
-        early core"), where a connected spine remains for the beam to grow from. A sensible guard:
-        reject / warn when the cascade covers more than some fraction of allocated points.
+          freed (step-4 caveat). An id in both `freeze` and `anchorNodeId` is rejected; so is an
+          ascendancy anchor or a non-allocated one.
+        - **Scope guard — `MIN_ANCHOR_SPINE_POINTS` (3).** If `pointsUsed − cascadePoints < 3` the
+          anchor is rejected: too little tree survives for the add-loop to grow from. That case is
+          from-scratch construction and hits the zero-delta pathing plateau (`expandState` filters
+          to `objective − state.objective > 0`, so a near-empty tree stops at depth 0). Solving it
+          = from-scratch mode, which stays **past v1**. This step ships the mid/late-pivot use
+          ("re-plan the half of my tree past the mid-game pivot without touching the early core").
+        +7 tests (88 green). Live-verified on `RampantlyBisexual` (`--rollback-to 34015` force-frees
+        the 29-node `Dexterity` subtree, drops the objective to the anchor, then re-spends).
 8. **Corpus assembly** — DONE (2026-08-28). 6 local + 14 poe.ninja builds + the gutting tool.
    `spike/characteriseBuild.ts` (`npm run characterise-build`) emits a manifest row;
    `docs/beam-corpus.md` holds the manifest + gap list + the poe.ninja pull table/caveats.

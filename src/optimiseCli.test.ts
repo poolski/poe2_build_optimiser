@@ -86,4 +86,17 @@ describe("optimise-tree CLI arg parsing", () => {
 		expect(options.freeze).toEqual([123, 456, 789]);
 		expect(() => parseArgs([BUILD, "--freeze", "12x"])).toThrow(/integer/);
 	});
+
+	it("parses --rollback-to and selects repair mode without a respec budget", () => {
+		const { options } = parseArgs([BUILD, "--rollback-to", "4242"]);
+		expect(options.anchorNodeId).toBe(4242);
+		expect(options.respecBudget).toBe(0); // anchor alone drives repair mode
+		// --mode repair is satisfied by --rollback-to alone
+		expect(parseArgs([BUILD, "--mode", "repair", "--rollback-to", "4242"]).options.anchorNodeId).toBe(4242);
+		// composes with a respec budget for the extra survivor sweep
+		expect(parseArgs([BUILD, "--rollback-to", "1", "--respec-budget", "3"]).options.respecBudget).toBe(3);
+		// conflicts with extend
+		expect(() => parseArgs([BUILD, "--mode", "extend", "--rollback-to", "1"])).toThrow(/conflicts with --rollback-to/);
+		expect(() => parseArgs([BUILD, "--rollback-to", "1.5"])).toThrow(/integer/);
+	});
 });

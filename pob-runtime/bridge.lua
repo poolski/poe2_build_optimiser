@@ -984,12 +984,32 @@ end
 -- its point tally. `ascendancyName` is present iff the node is an ascendancy node. This is the
 -- set the repair driver draws removal candidates from (it then calls evaluate_dealloc_candidates
 -- to find which are leaves). Cheap: a filter over spec.allocNodes, no alloc/recompute.
+--
+-- Optional params.removeIds: DeallocNode each id first, so the returned set is "loaded minus
+-- those nodes and their downstream cascades". The rollback-to-node repair option diffs the bare
+-- list against list_allocated_nodes({ removeIds = { anchor } }) to recover the anchor's cascade
+-- members (node.depends) -- which evaluate_dealloc_candidates only counts, never enumerates.
+-- Same rollback discipline as list_allocatable_nodes_from; no recompute (never reads mainOutput).
 methods.list_allocated_nodes = function(params)
 	if not build or not build.spec then
 		error("no build loaded")
 	end
+	local spec = build.spec
+	local undo, buildFlagBefore
+	if params and params.removeIds and #params.removeIds > 0 then
+		buildFlagBefore = build.buildFlag
+		undo = spec:CreateUndoState()
+		for _, removeId in ipairs(params.removeIds) do
+			local removeNode = spec.nodes[removeId]
+			if not removeNode then
+				error("unknown removeIds nodeId: " .. tostring(removeId))
+			end
+			spec:DeallocNode(removeNode)
+		end
+		spec:BuildAllDependsAndPaths()
+	end
 	local out = {}
-	for id, node in pairs(build.spec.allocNodes) do
+	for id, node in pairs(spec.allocNodes) do
 		if node.type ~= "ClassStart" and node.type ~= "AscendClassStart" and node.isFreeAllocate == nil then
 			table.insert(out, {
 				id = id,
@@ -999,6 +1019,11 @@ methods.list_allocated_nodes = function(params)
 				ascendancyName = node.ascendancyName,
 			})
 		end
+	end
+	if undo then
+		spec:RestoreUndoState(undo)
+		spec:BuildAllDependsAndPaths()
+		build.buildFlag = buildFlagBefore
 	end
 	return { nodes = out }
 end

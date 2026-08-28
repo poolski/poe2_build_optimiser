@@ -24,8 +24,11 @@ interface AllocatedFake {
 	statLines?: string[];
 	ascendancyName?: string;
 	/** Points freed by removing it: 1 => leaf, >1 => interior node whose downstream cascades off.
-	 * Default 1. */
+	 * Default 1, or `cascade.length + 1` when `cascade` is set. */
 	pointsFreed?: number;
+	/** ids that also leave the tree when this node is removed (its downstream cascade, excluding
+	 * this node itself). Drives `list_allocated_nodes({ removeIds })` and the derived `pointsFreed`. */
+	cascade?: number[];
 	/** Stats with just this node removed from the loaded tree. */
 	removedStats: Record<string, unknown>;
 }
@@ -93,14 +96,23 @@ class FakeBridge implements PobBridgeClient {
 			} as T;
 		}
 		if (method === "list_allocated_nodes") {
+			const removeIds = (params?.removeIds as number[] | undefined) ?? [];
+			const gone = new Set<number>();
+			for (const rid of removeIds) {
+				gone.add(rid);
+				const meta = this.allocated.find((a) => a.id === rid);
+				for (const c of meta?.cascade ?? []) gone.add(c);
+			}
 			return {
-				nodes: this.allocated.map((a) => ({
-					id: a.id,
-					name: a.name ?? `Alloc ${a.id}`,
-					type: a.type ?? "Notable",
-					statLines: a.statLines ?? [`alloc stat ${a.id}`],
-					ascendancyName: a.ascendancyName,
-				})),
+				nodes: this.allocated
+					.filter((a) => !gone.has(a.id))
+					.map((a) => ({
+						id: a.id,
+						name: a.name ?? `Alloc ${a.id}`,
+						type: a.type ?? "Notable",
+						statLines: a.statLines ?? [`alloc stat ${a.id}`],
+						ascendancyName: a.ascendancyName,
+					})),
 			} as T;
 		}
 		if (method === "evaluate_dealloc_candidates") {
@@ -113,7 +125,7 @@ class FakeBridge implements PobBridgeClient {
 					.filter((a): a is AllocatedFake => a !== undefined)
 					.map((a) => ({
 						nodeId: a.id,
-						pointsFreed: a.pointsFreed ?? 1,
+						pointsFreed: a.pointsFreed ?? (a.cascade ? a.cascade.length + 1 : 1),
 						ascendancyPointsFreed: 0,
 						stats: a.removedStats,
 					})),
@@ -476,6 +488,92 @@ describe("optimiseTree (repair mode)", () => {
 		expect(result.pointsFreed).toBe(2);
 		expect(result.steps.map((s) => s.id)).toEqual([1, 2]);
 		expect(result.final.objective).toBeCloseTo(1000 - 10 + 60); // 1050
+	});
+});
+
+describe("optimiseTree (rollback-to-node)", () => {
+	// Anchor 900 has a downstream cascade [901, 902] -> removing it force-frees 3 points and drops
+	// DPS by 300. Survivors 910 / 911 are elsewhere in the tree (valueLost 20 / 25). Re-spend pool
+	// 1/2/3/4 adds +200 / +150 / +40 / +35 per point, additive.
+	const lost: Record<number, number> = { 900: 300, 910: 20, 911: 25 };
+	const gain: Record<number, number> = { 1: 200, 2: 150, 3: 40, 4: 35 };
+	const makeBridge = (anchorOverride: Partial<AllocatedFake> = {}) =>
+		new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }],
+			(allocSet, id, removeIds) => {
+				const l = (removeIds ?? []).reduce((s, r) => s + (lost[r] ?? 0), 0);
+				const g = [...allocSet, id].reduce((s, n) => s + (gain[n] ?? 0), 0);
+				return { pointsSpent: 1, stats: { TotalDPS: 1000 - l + g } };
+			},
+			{
+				allocated: [
+					{ id: 900, cascade: [901, 902], removedStats: { TotalDPS: 700 }, ...anchorOverride },
+					{ id: 901, removedStats: { TotalDPS: 700 } },
+					{ id: 902, removedStats: { TotalDPS: 700 } },
+					{ id: 910, removedStats: { TotalDPS: 980 } },
+					{ id: 911, removedStats: { TotalDPS: 975 } },
+				],
+				statsFromFn: (_a, removeIds) => ({
+					TotalDPS: 1000 - removeIds.reduce((s, r) => s + (lost[r] ?? 0), 0),
+				}),
+			},
+		);
+
+	it("force-frees the anchor's whole cascade and re-spends it (repair mode, no respec budget)", async () => {
+		const result = await optimiseTree(makeBridge(), { anchorNodeId: 900 });
+
+		expect(result.mode).toBe("repair");
+		expect(result.anchorNodeId).toBe(900);
+		// One synthetic removal entry standing for the whole cascade.
+		expect(result.removed.map((r) => r.id)).toEqual([900]);
+		expect(result.removed[0].anchorCascade).toBe(true);
+		expect(result.removed[0].pointsFreed).toBe(3);
+		expect(result.removed[0].valueLost).toBe(300);
+		// 3 points re-spent into 1/2/3.
+		expect(result.steps.map((s) => s.id)).toEqual([1, 2, 3]);
+		expect(result.pointsFreed).toBe(3);
+		expect(result.pointsRespent).toBe(3);
+		expect(result.final.pointsSpent).toBe(0);
+		expect(result.final.objective).toBeCloseTo(1000 - 300 + (200 + 150 + 40)); // 1090
+	});
+
+	it("composes with respecBudget: also frees the lowest-value survivors on top of the cascade", async () => {
+		const result = await optimiseTree(makeBridge(), { anchorNodeId: 900, respecBudget: 1 });
+
+		// k-sweep: k=1 (anchor only) re-spends 3 -> 1090; k=2 (anchor + survivor 910) re-spends 4
+		// into 1/2/3/4 -> 1000 - 320 + 425 = 1105, the winner.
+		expect(result.removed.map((r) => r.id)).toEqual([900, 910]);
+		expect(result.removed[0].anchorCascade).toBe(true);
+		expect(result.removed[1].anchorCascade).toBeFalsy();
+		expect(result.pointsFreed).toBe(4);
+		expect(result.steps.map((s) => s.id)).toEqual([1, 2, 3, 4]);
+		expect(result.final.objective).toBeCloseTo(1105);
+		expect(result.final.pointsSpent).toBe(0);
+	});
+
+	it("rejects an anchor whose cascade would leave too little tree to re-plan from", async () => {
+		// pointsUsed 50, cascade 48 -> only 2 points survive (< MIN_ANCHOR_SPINE_POINTS).
+		await expect(
+			optimiseTree(makeBridge({ pointsFreed: 48, cascade: undefined }), { anchorNodeId: 900 }),
+		).rejects.toThrow(/too little tree|from-scratch/);
+	});
+
+	it("rejects an ascendancy anchor", async () => {
+		await expect(
+			optimiseTree(makeBridge({ ascendancyName: "Deadeye", cascade: undefined }), { anchorNodeId: 900 }),
+		).rejects.toThrow(/ascendancy/);
+	});
+
+	it("rejects an anchor that is not an allocated regular node", async () => {
+		await expect(optimiseTree(makeBridge(), { anchorNodeId: 424242 })).rejects.toThrow(/not an allocated/);
+	});
+
+	it("rejects a node listed in both freeze and anchorNodeId", async () => {
+		await expect(optimiseTree(makeBridge(), { anchorNodeId: 900, freeze: [900] })).rejects.toThrow(
+			/both freeze and anchorNodeId/,
+		);
 	});
 });
 
