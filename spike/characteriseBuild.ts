@@ -26,9 +26,15 @@ async function main() {
 	try {
 		const xml = fs.readFileSync(buildXmlPath, "utf-8");
 		const loaded = await bridge.call<{ className: string; level: number }>("load_build_xml", { xml });
-		const status = await bridge.call<{ pointsUsed: number; pointsMax: number; ascendancyPointsUsed: number }>(
-			"get_tree_status",
-		);
+		const status = await bridge.call<{
+			pointsUsed: number;
+			pointsMax: number;
+			ascendancyPointsUsed: number;
+			weaponSet1PointsUsed: number;
+			weaponSet2PointsUsed: number;
+			weaponSetPointsMax: number;
+			treeNodesAllocated: number;
+		}>("get_tree_status");
 		const stats = await bridge.call<Record<string, unknown>>("get_stats");
 
 		const name = buildXmlPath.split(/[\\/]/).pop()?.replace(/\.xml$/i, "") ?? buildXmlPath;
@@ -44,6 +50,10 @@ async function main() {
 		);
 		console.log(`  (trailing "? ? ?" columns = defence-layer, hand-tuned|naive, held-out -- fill in by hand)`);
 		console.log(`  raw: ${METRICS.map((k) => `${k}=${num(k)}`).join("  ")}`);
+		console.log(
+			`  weapon-set: ws1=${status.weaponSet1PointsUsed} ws2=${status.weaponSet2PointsUsed} / ${status.weaponSetPointsMax}` +
+				`  (raw tree nodes ${status.treeNodesAllocated}, weapon-set-corrected pointsUsed ${status.pointsUsed})`,
+		);
 	} finally {
 		bridge.dispose();
 	}

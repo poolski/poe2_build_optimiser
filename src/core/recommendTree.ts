@@ -11,12 +11,25 @@ import { asNumber, finiteNumber, StatSet } from "./stats";
 export { asNumber, StatSet };
 
 export interface TreeStatus {
+	/**
+	 * Normal passive points spent, mirroring PoB's own "X / Y" display:
+	 * `treeNodesAllocated - min(weaponSet1PointsUsed, weaponSet2PointsUsed)`. Weapon-set-specific
+	 * nodes draw on a separate budget and are excluded here (see `bridge.lua` get_tree_status).
+	 */
 	pointsUsed: number;
 	pointsMax: number;
 	ascendancyPointsUsed: number;
 	ascendancyPointsMax: number;
 	secondaryAscendancyPointsUsed: number;
 	secondaryAscendancyPointsMax: number;
+	/** Nodes allocated for weapon set 1 (allocMode 1). Drawn from `weaponSetPointsMax`, not `pointsMax`. */
+	weaponSet1PointsUsed: number;
+	/** Nodes allocated for weapon set 2 (allocMode 2). Drawn from `weaponSetPointsMax`, not `pointsMax`. */
+	weaponSet2PointsUsed: number;
+	/** Per-weapon-set point budget: `questPoints + PassivePointsToWeaponSetPoints`. */
+	weaponSetPointsMax: number;
+	/** Raw allocated regular-tree node count before the weapon-set correction (debugging/provenance). */
+	treeNodesAllocated: number;
 }
 
 export interface AllocatableNode {

@@ -159,11 +159,20 @@ drops quality is too aggressive and gets retuned.
 
 ## Implementation status
 
-As of 2026-08-27 — all committed (HEAD `62693d0`), 70 unit tests green. Live-verification runs
+As of 2026-08-28 — all committed (HEAD `d48b8bd`), 71 unit tests green. Live-verification runs
 were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
 
-- **Done:** steps 1–7 (extend mode + leaf-only repair) and step 10 (CLI).
-- **Remaining:** step 8 (corpus), step 9 (benchmark run), step 11 (validation write-up).
+- **Done:** steps 1–7 (extend mode + leaf-only repair), step 10 (CLI), and the step 9 benchmark
+  *harness* + committed regression fixtures (`docs/beam-bench-totaldps.md`,
+  `docs/beam-bench-dps-ehp-0-5.md`).
+- **Step 8 (corpus) — closed 2026-08-28:** 6 local + 14 poe.ninja builds, held-out subset marked,
+  synthetic-gutting tool (`npm run gut-build`) for spare-point builds with a ground-truth ceiling.
+  Blocker (a) — poe.ninja over-allocation — resolved: `get_tree_status` now applies the
+  weapon-set point correction PoB's own display uses (see §8 and the Open-questions note below).
+  Blocker (b) — no 30–60-spare mid build — is not fully closable from the ladder (L80+ only); the
+  gutting tool covers it and the corpus proceeds with that.
+- **Remaining:** the *definitive* step 9 run on the full corpus (the committed fixtures are a
+  harness regression check, not a result), then step 11 (validation write-up).
 - **Deferred past v1:** pruning layers 3 / 4 / 6; any-node (cascading) repair; the real `(W, D)`
   beam (plain greedy re-spend has been enough so far).
 
@@ -220,25 +229,52 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
      an arbitrary-exact-allocation eval RPC and `DeallocNode`-cascade verification. Folds in
      `freeze` / `freezeAscendancy` as a general list, and — if quality is still short — the real
      `(W, D)` beam with per-beam-node constraint baselines instead of the plain greedy re-spend.
-8. **Corpus assembly** — SCAFFOLD DONE, corpus not. `spike/characteriseBuild.ts`
-   (`npm run characterise-build`) emits a manifest row; `docs/beam-corpus.md` holds the manifest
-   + gap list. Only 4 local builds today (one at 23 spare, three at 10; **two report
-   `TotalDPS = 0` headless** → DPS-objective-unusable). Still need mid-level (30–60 spare) builds,
-   a hand-tuned/naive pair, a held-out third. The validation pair is both Monk —
-   `Martial Artist - Shattering Palm + Flicker Strike` (hand-tuned) vs `MA-FlickerStrike` (naive,
-   user-gutted, 31 spare); both need the main skill re-selected + re-saved in PoB before the
-   `TotalDPS` regression can run (EHP objective works today).
-9. **Benchmark harness** — HARNESS DONE, corpus-limited. `spike/benchTreeApproaches.ts`
+8. **Corpus assembly** — DONE (2026-08-28). 6 local + 14 poe.ninja builds + the gutting tool.
+   `spike/characteriseBuild.ts` (`npm run characterise-build`) emits a manifest row;
+   `docs/beam-corpus.md` holds the manifest + gap list + the poe.ninja pull table/caveats.
+   - **Local:** 6 builds. Validation pair (both Monk) is now usable end-to-end —
+     `Martial Artist - Shattering Palm + Flicker Strike` (hand-tuned, ~186k DPS) vs
+     `MA-FlickerStrike` (naive, user-gutted, ~90k DPS); both fixed 2026-08-27 (stale
+     `mainSocketGroup`, empty active weapon set) so the `TotalDPS` regression runs, not just EHP.
+   - **poe.ninja:** 14 builds pulled 2026-08-28 (`npm run fetch-ninja-builds` → `…/Builds/ninja/`).
+     The endpoint's `pathOfBuildingExport` is plain `base64(zlib(xml))`. Class/tier spread good,
+     13/14 DPS match the ladder; held-out subset (4 builds) marked. `BlandisThree` + `Blood Mage`
+     score 0-DPS headless.
+   - **Synthetic gutting:** `spike/gutBuild.ts` (`npm run gut-build`) deallocs N leaf nodes from a
+     strong XML (policy `random|low|high`), writing `<name>-gut<N>-<policy>.xml` + a `.json`
+     sidecar (`removedNodes`, original vs gutted, `gapToRecover`) into `…/Builds/ninja/gutted/`.
+     Gives spare-point builds *with* a ground-truth ceiling → the benchmark can score "fraction of
+     lost objective recovered". Use `random`/`high` (low pulls objective-dead notables first).
+   - **Problem (a) — ninja exports over-allocate — RESOLVED 2026-08-28.** Cause confirmed: ninja
+     `<Spec nodes=>` is the *union* of the base tree and the `<WeaponSet1/2 nodes=>` deviations
+     (~+24–27), and `PassiveSpec:CountAllocNodes()` folds every weapon-set-specific node into its
+     raw `used`. Fix (Option 2 — account for weapon swap): `get_tree_status` now returns
+     `pointsUsed = treeNodesAllocated − min(weaponSet1PointsUsed, weaponSet2PointsUsed)`, exactly
+     PoB's own `EstimatePlayerProgress` display formula — weapon-set nodes draw on a separate
+     per-set budget (`weaponSetPointsMax = questPoints + PassivePointsToWeaponSetPoints`), now also
+     surfaced. Took the 9 offenders from −17…−27 spare to −1/−2. Residual −1/−2 on 8 L100 builds is
+     a separate, minor headless-ExtraPoints undercount (Atlas / item "+N passive points" with no
+     config toggle) — pass `--point-budget` for extend mode on those; repair mode is unaffected.
+     `TreeStatus` (`src/core/recommendTree.ts`) gained `weaponSet1PointsUsed` /
+     `weaponSet2PointsUsed` / `weaponSetPointsMax` / `treeNodesAllocated`.
+   - **Problem (b) — no 30–60-spare mid build.** The ninja ladder is L80+ only; gutting
+     (`npm run gut-build`) fills the gap, though every gutted instance still traces to a L80+ tree.
+     Accepted — the corpus proceeds on that basis.
+9. **Benchmark harness** — HARNESS DONE + first fixtures committed (`4fa6df6`, `889e2c2`),
+   corpus-limited. `spike/benchTreeApproaches.ts`
    (`npm run bench-tree-approaches -- [objective] [extraPoints] [--no-constraints]`) runs the
    corpus × {`extend+N` fresh points, `repair-r3`, `repair-r6`} → per-build table (lift %, net
    pts, respec, `res ok` feasibility recheck, BuildOutputs, cache-hit %, wall s, stop reason) +
-   a per-build summary with a repair-monotonicity flag + a cost-by-approach median. Writes a
-   committed fixture per objective at `docs/beam-bench-<objective>.md`. Runs under a
-   preserve-the-3-elemental-resists floor by default. First run (`TotalDPS`) surfaced the
-   non-monotonic-repair bug (fixed, step 7) and that a pure-DPS objective lets repair cannibalise
-   a tuned build's defensive leaves (→ step 11 must use a blend). **Still corpus-limited** — 5–6
-   usable builds, no held-out subset; treat the fixture as a harness regression check, not a
-   result.
+   a per-build summary with a repair-monotonicity flag + a cost-by-approach median. Runs under a
+   preserve-the-3-elemental-resists floor by default. Committed fixtures:
+   `docs/beam-bench-totaldps.md` (raw `TotalDPS`, +8 pts) and `docs/beam-bench-dps-ehp-0-5.md`
+   (`dps-ehp:0.5`, +8 pts) — both over the 5–6 usable local builds. The `TotalDPS` run surfaced
+   the non-monotonic-repair bug (fixed, step 7) and that a pure-DPS objective lets repair
+   cannibalise a tuned build's defensive leaves (→ step 11 must use the blend). **Still
+   corpus-limited** — no held-out subset, no ninja/gutted builds in the run yet; treat the
+   fixtures as a harness regression check, not a result. The definitive run over the full step 8
+   corpus (with the "fraction of lost objective recovered" score on gutted builds) is what
+   remains.
 10. **CLI + spike wiring** — DONE. `src/optimiseCli.ts` (`npm run optimise-tree`), parsing +
     output only; core returns data. Flags: `--mode extend|repair`, `--respec-budget N`
     (`--repair-nodes N` alias; `>0` implies repair), `--point-budget N` / `--extra-points N`
@@ -254,8 +290,13 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
     (`dps-ehp:0.5`) or a `preserveMetrics` set covering the defences the player hand-picked —
     under raw `TotalDPS` + resist-only floors the first bench run had repair finding +23% on the
     *tuned* build by respeccing its evasion/ES leaves, so "≈ no change" can't hold there. Write up
-    as `docs/beam-search-repro.md`, mirroring `docs/constraint-rejection-repro.md` — the
-    `docs/beam-bench-dps-ehp-0-5.md` fixture is its quantitative backing.
+    as `docs/beam-search-repro.md`, mirroring `docs/constraint-rejection-repro.md` — the committed
+    `docs/beam-bench-dps-ehp-0-5.md` fixture is the quantitative backing. **Caveat from that
+    fixture:** under `dps-ehp:0.5` at +8 headroom the tuned `MA-Shattering` moves +0.57% / +1.33%
+    (repair-r3 / r6) and the naive `MA-FlickerStrike` +0.63% / +1.30% — the blend stops repair
+    cannibalising the tuned defences, but the naive-vs-tuned separation is now thin. Step 11 may
+    need wider headroom or a `preserveMetrics` set rather than the scalar blend to make the
+    contrast legible.
 
 ## Open questions to resolve early
 
@@ -268,8 +309,13 @@ were against `RampantlyBisexual.xml` and `MA-FlickerStrike` unless noted.
   explicit `--point-budget` / `--extra-points`; `--target-level` is a later nicety, and only if
   the act→quest-point mapping reads cleanly from vendored data (verify per
   [[feedback-verify-poe2-vs-poe1-assumptions]]). Also confirm `get_tree_status.pointsMax` is the
-  endgame cap, not current-level — the `99 +` term in `bridge.lua:628` says it is, but check
+  endgame cap, not current-level — the `99 +` term in `bridge.lua` says it is, but check
   against a mid-level sample build before relying on the `pointBudget = pointsUsed` default.
+  Weapon-set points: RESOLVED (§8, problem a). `get_tree_status.pointsUsed` is now the
+  weapon-set-corrected count (`treeNodesAllocated − min(ws1, ws2)`), matching PoB's own display,
+  so `pointBudget = pointsUsed` no longer inherits the `<WeaponSet1/2>` inflation. Weapon-set
+  nodes have their own budget (`weaponSetPointsMax`); a `--target-level` derivation still needs
+  the per-act quest-point total but no longer a weapon-set term on the normal pool.
 - **ε for the "no change" regression test (step 11).** The constraint-rejection repro showed
   exact `0.0` landings with no float dust, so start with exact equality and add a relative ε only
   if a real run shows neutral-node noise (same call the status memory already made for

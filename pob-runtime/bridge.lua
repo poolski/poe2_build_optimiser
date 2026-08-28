@@ -72,22 +72,36 @@ local function parseItemText(itemText)
 	return ok, item
 end
 
--- Count of explicit build.calcsTab:BuildOutput() recomputes this bridge has driven (via
--- recomputeBuild below). A tree search's real cost is one recompute per candidate evaluation, so
--- the approach benchmark reports this as its machine-independent cost currency. reset_metrics
--- zeroes it at the start of a measured run; get_metrics reads it back.
+-- Metrics this bridge accumulates across a measured run, both zeroed by reset_metrics and read
+-- back by get_metrics:
+--   buildOutputCount   -- explicit build.calcsTab:BuildOutput() recomputes driven via recomputeBuild
+--                         below. A tree search's real cost is one recompute per candidate
+--                         evaluation, so the approach benchmark reports this as its
+--                         machine-independent cost currency.
+--   buildOutputSeconds -- cumulative os.clock() time spent inside recomputeBuild (the whole
+--                         apply-pending-changes-and-recompute dance, not just BuildOutput). Machine-
+--                         dependent, so not a currency -- but buildOutputSeconds / buildOutputCount
+--                         is the per-recompute cost a caller needs to reason about wall time, with
+--                         none of the transport / search-overhead noise a Node-side timer picks up.
+--                         os.clock() is process CPU time on POSIX and wall time on Windows; either
+--                         way it is monotonic and ~1ms-resolution, fine for an aggregate over
+--                         hundreds of calls. HeadlessWrapper stubs GetTime() to 0, so it is unusable
+--                         here.
 local buildOutputCount = 0
+local buildOutputSeconds = 0
 
 -- The full "apply pending changes and recompute mainOutput" dance, in one place so every call
 -- site is counted. buildFlag/modFlag + the OnFrame bracketing match what PoB's own GUI does
 -- around a rebuild.
 local function recomputeBuild()
+	local startClock = os.clock()
 	buildOutputCount = buildOutputCount + 1
 	build.buildFlag = true
 	build.modFlag = true
 	runCallback("OnFrame")
 	build.calcsTab:BuildOutput()
 	runCallback("OnFrame")
+	buildOutputSeconds = buildOutputSeconds + (os.clock() - startClock)
 end
 
 local methods = {}
@@ -97,11 +111,12 @@ methods.ping = function(params)
 end
 
 methods.get_metrics = function(params)
-	return { buildOutputCount = buildOutputCount }
+	return { buildOutputCount = buildOutputCount, buildOutputSeconds = buildOutputSeconds }
 end
 
 methods.reset_metrics = function(params)
 	buildOutputCount = 0
+	buildOutputSeconds = 0
 	return { ok = true }
 end
 
@@ -629,8 +644,9 @@ methods.list_candidate_corruption_mods = function(params)
 end
 
 -- Passive tree points used/available, mirroring Build.lua's own EstimatePlayerProgress calc
--- (the exact formula that drives its real "X / Y" points-used display): usedMax = 99 +
--- build.maxWeaponSets + ExtraPoints.
+-- (the exact formula that drives its real "X / Y" points-used display):
+--   normalPassives = CountAllocNodes() - min(weaponSet1Used, weaponSet2Used)
+--   usedMax        = 99 + build.maxWeaponSets + ExtraPoints
 --
 -- build.maxWeaponSets is a misleadingly-named field in this PoB-PoE2 fork -- despite the name,
 -- it holds the *cumulative total of quest-reward passive points* across every act
@@ -639,20 +655,37 @@ end
 -- count. Confirmed live: every one of this project's own sample builds showed pointsUsed
 -- exceeding a naive "99 + ExtraPoints" cap by roughly its quest-point total, until this term
 -- was included. Skipping it looks like "this build is over its point budget" when it isn't.
+--
+-- Weapon-set passives: a PoE2 tree can allocate nodes that are live only for weapon set 1 or 2
+-- (allocMode 1 / 2). CountAllocNodes folds every such node into `used`, but they draw on a
+-- *separate* per-weapon-set budget (`questPoints + PassivePointsToWeaponSetPoints` each), not the
+-- normal pool -- so PoB's displayed "points used" subtracts `min(ws1, ws2)` (the paired
+-- allocations the weapon-set budget covers) before comparing against usedMax. A poe.ninja export
+-- folds the WeaponSet1/2 node deviations into `<Spec nodes=>` (union), so without this
+-- subtraction pointsUsed reads ~24-27 high and the build looks badly over-allocated when it is
+-- not. weaponSet{1,2}PointsUsed / weaponSetPointsMax are surfaced for callers that want the
+-- breakdown (and to spot a genuinely over-spent weapon set).
 methods.get_tree_status = function(params)
 	if not build or not build.spec then
 		error("no build loaded")
 	end
-	local used, ascUsed, secondaryAscUsed = build.spec:CountAllocNodes()
-	local extra = (build.calcsTab and build.calcsTab.mainOutput and build.calcsTab.mainOutput.ExtraPoints) or 0
+	local used, ascUsed, secondaryAscUsed, _sockets, weaponSet1Used, weaponSet2Used = build.spec:CountAllocNodes()
+	local mainOutput = build.calcsTab and build.calcsTab.mainOutput
+	local extra = (mainOutput and mainOutput.ExtraPoints) or 0
+	local extraWeaponSets = (mainOutput and mainOutput.PassivePointsToWeaponSetPoints) or 0
 	local questPoints = build.maxWeaponSets or 0
+	local weaponSetShared = math.min(weaponSet1Used, weaponSet2Used)
 	return {
-		pointsUsed = used,
+		pointsUsed = used - weaponSetShared,
 		pointsMax = 99 + questPoints + extra,
 		ascendancyPointsUsed = ascUsed,
 		ascendancyPointsMax = 8,
 		secondaryAscendancyPointsUsed = secondaryAscUsed,
 		secondaryAscendancyPointsMax = 8,
+		weaponSet1PointsUsed = weaponSet1Used,
+		weaponSet2PointsUsed = weaponSet2Used,
+		weaponSetPointsMax = questPoints + extraWeaponSets,
+		treeNodesAllocated = used,
 	}
 end
 

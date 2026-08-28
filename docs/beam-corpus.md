@@ -21,7 +21,7 @@ Metric columns are the loaded-baseline values (rounded). `spare` = `pointsMax �
 |---|---|--:|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|---|---|
 | Ranger (L37) | Huntress | 37 | 34/123 (89 spare*) | 2 | 662 | 556 | 651 | 67 | 261 | 427 | -60 | -36 | -36 | 18 | evasion/armour | **naive** (nodes deliberately pulled) | no |
 | RampantlyBisexual | Ranger | 80 | 100/123 (23 spare) | 6 | 39525 | 4951 | 1168 | 57 | 81 | 7747 | 63 | 51 | 75 | 24 | evasion | ? | no |
-| Blood Mage | Witch | 88 | 113/123 (10 spare) | 8 | 0 | 10971 | 2386 | 3263 | 0 | 9 | 75 | 58 | 75 | 13 | life/ES | ? | no |
+| Blood Mage | Witch | 88 | 109/123 (14 spare) | 8 | 0 | 10971 | 2386 | 3263 | 0 | 9 | 75 | 58 | 75 | 13 | life/ES | ? | no |
 | Flicker Strike Invoker | Monk | 92 | 113/123 (10 spare) | 8 | 20428 | 25664 | 1462 | 3555 | 814 | 10309 | 79 | 60 | 75 | 39 | evasion/ES hybrid | ? | no |
 | MA-FlickerStrike | Monk | 92 | 98/123 (25 spare) | 8 | 89769 | 17584 | 1703 | 2373 | 814 | 9050 | 77 | 55 | 75 | 25 | evasion/ES hybrid | **naive** (user deliberately gutted the tree) | no |
 | Martial Artist - Shattering Palm + Flicker Strike | Monk | 92 | 113/123 (10 spare) | 8 | 185998 | 24958 | 1462 | 3557 | 814 | 11371 | 77 | 60 | 75 | 25 | evasion/ES hybrid | **hand-tuned** (the strong player's build) | no |
@@ -29,6 +29,12 @@ Metric columns are the loaded-baseline values (rounded). `spare` = `pointsMax �
 \* `pointsMax` 123 is always the L100 endgame cap (`99 + questPoints + extra`), not the character's
 real current budget — for a L37 the in-game budget is ~40-55. Always pass an explicit
 `pointBudget` for this build; the 89 "spare" is not real.
+
+`points` is now the **weapon-set-corrected** `pointsUsed` (2026-08-28) — it mirrors PoB's own
+"X / Y" display: `treeNodesAllocated − min(weaponSet1PointsUsed, weaponSet2PointsUsed)`.
+Weapon-set-specific nodes (allocMode 1/2) draw on a separate per-set budget, not `pointsMax`, so
+they no longer inflate `pointsUsed`. Blood Mage moved 113→109 (ws1 8 / ws2 4). See the poe.ninja
+section for the builds this mattered most on.
 
 Both Monk builds compute real headless DPS now (2026-08-27 s3). Two fixes were needed and are
 described in the note below: (a) a stale `mainSocketGroup` on the hand-tuned build — cleared by a
@@ -51,35 +57,44 @@ naive-build analogue the design wants.
 Rows below are `npm run characterise-build` output (headless, vendored PoB). `class` is the
 ascendancy; base class in parens.
 
-| build (file in `ninja/`) | class | lvl | points | asc | TotalDPS | TotalEHP | Life | ES | Armour | Evasion | Fire | Cold | Light | Chaos | defence layer | tier | held-out |
-|---|---|--:|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|---|---|
-| stillAengus-L100-46M | Pathfinder (Ranger) | 100 | 155/129 (−26) | 8 | 46,035,274 | 26,324 | 1516 | 4427 | 0 | 8596 | 57 | 75 | 75 | 44 | evasion/ES, thin | **strong** | no |
-| TechnoIceShot-L100-28M | Pathfinder (Ranger) | 100 | 154/129 (−25) | 8 | 28,320,252 | 66,053 | 1523 | 4253 | 2079 | 29328 | 75 | 75 | 76 | 65 | evasion | **strong** | yes |
-| Venereable-L100-13M | Gemling Legion. (Merc) | 100 | 124/123 (−1) | 8 | 13,631,739 | 33,864 | 1718 | 0 | 228 | 242 | 75 | 75 | 75 | 35 | life only, thin | **strong** | no |
-| HuntressTank-L100-5.8M | Spirit Walker (Huntress) | 100 | 150/123 (−27) | 8 | 5,753,051 | 156,083 | 1623 | 7263 | 0 | 27350 | 75 | 75 | 75 | 75 | evasion, huge EHP | **strong** | yes |
-| Fimozix-L100-ES | Gemling Legion. (Merc) | 100 | 144/123 (−21) | 8 | 2,477,047 | 103,956 | 1 | 11031 | 1787 | 14868 | 75 | 75 | 75 | 37 | ES/evasion (CI) | **strong** | no |
-| KinkyDommyMommy-L92-glass | Infernalist (Witch) | 92 | 140/123 (−17) | 8 | 1,166,933 | 11,728 | 1504 | 4237 | 768 | 9 | 75 | 71 | 74 | 69 | ES, thin | mid | no |
-| TheTradie-L84-400k | Martial Artist (Monk) | 84 | 108/123 (15) | 8 | 400,862 | 28,030 | 1437 | 4755 | 0 | 13832 | 50 | 43 | 46 | 5 | evasion | mid (decent for lvl) | no |
-| JiduQiuliang-L100-glass | Spirit Walker (Huntress) | 100 | 148/123 (−25) | 8 | 77,651 | 5,218 | 1535 | 2443 | 75 | 114 | 77 | 52 | 77 | 0 | none — pure glass | **weak** | no |
-| QingCum-L100-nodmg | Witchhunter (Merc) | 100 | 128/123 (−5) | 8 | 57,242 | 75,924 | 1741 | 53 | 17313 | 91 | 74 | 74 | 74 | 75 | armour tank | **weak** (no dmg) | no |
-| dosesondoses-L84-ES | Lich (Witch) | 84 | 115/123 (8) | 8 | 36,786 | 26,679 | 1443 | 9940 | 0 | 10 | 75 | 75 | 75 | 29 | ES | mid | yes |
-| furufuru-L100-weak | Titan (Warrior) | 100 | 116/123 (7) | 8 | 5,018 | 22,691 | 2858 | 0 | 20707 | 10 | 75 | 75 | 75 | 75 | armour | **weak** | no |
-| R_Thor-L84-weak | Smith of Kitava (Warrior) | 84 | 121/123 (2) | 6 | 5,514 | 20,947 | 2687 | 0 | 10328 | 444 | 75 | 75 | 75 | 75 | armour | **weak** | no |
-| SnusInMyBlood-L100-weak | Spirit Walker (Huntress) | 100 | 147/123 (−24) | 8 | 4,339 | 8,520 | 1836 | 694 | 172 | 6375 | 70 | 37 | 37 | 36 | evasion, bad res | **weak** | yes |
-| BlandisThree-L92-tank | Spirit Walker (Huntress) | 92 | 115/123 (8) | 8 | **0** | 185,566 | 2461 | 1429 | 309 | 8125 | 75 | 75 | 75 | 73 | evasion, huge EHP | 0-DPS headless | no |
+`points` = weapon-set-corrected `pointsUsed` / `pointsMax` (spare). `ws1/ws2` = weapon-set-1 / -2
+nodes allocated (own budget, `weaponSetPointsMax` ≈ 24 each). `raw` = `treeNodesAllocated` before
+the `− min(ws1, ws2)` correction — i.e. what this column showed before 2026-08-28.
+
+| build (file in `ninja/`) | class | lvl | points | ws1/ws2 | raw | asc | TotalDPS | TotalEHP | Life | ES | Armour | Evasion | Fire | Cold | Light | Chaos | defence layer | tier | held-out |
+|---|---|--:|---|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|--:|---|---|---|
+| stillAengus-L100-46M | Pathfinder (Ranger) | 100 | 131/129 (−2) | 24/24 | 155 | 8 | 46,035,274 | 26,324 | 1516 | 4427 | 0 | 8596 | 57 | 75 | 75 | 44 | evasion/ES, thin | **strong** | no |
+| TechnoIceShot-L100-28M | Pathfinder (Ranger) | 100 | 130/129 (−1) | 24/24 | 154 | 8 | 28,320,252 | 66,053 | 1523 | 4253 | 2079 | 29328 | 75 | 75 | 76 | 65 | evasion | **strong** | yes |
+| Venereable-L100-13M | Gemling Legion. (Merc) | 100 | 124/123 (−1) | 0/0 | 124 | 8 | 13,631,739 | 33,864 | 1718 | 0 | 228 | 242 | 75 | 75 | 75 | 35 | life only, thin | **strong** | no |
+| HuntressTank-L100-5.8M | Spirit Walker (Huntress) | 100 | 125/123 (−2) | 25/25 | 150 | 8 | 5,753,051 | 156,083 | 1623 | 7263 | 0 | 27350 | 75 | 75 | 75 | 75 | evasion, huge EHP | **strong** | yes |
+| Fimozix-L100-ES | Gemling Legion. (Merc) | 100 | 124/123 (−1) | 20/20 | 144 | 8 | 2,477,047 | 103,956 | 1 | 11031 | 1787 | 14868 | 75 | 75 | 75 | 37 | ES/evasion (CI) | **strong** | no |
+| KinkyDommyMommy-L92-glass | Infernalist (Witch) | 92 | 116/123 (7) | 24/24 | 140 | 8 | 1,166,933 | 11,728 | 1504 | 4237 | 768 | 9 | 75 | 71 | 74 | 69 | ES, thin | mid | no |
+| TheTradie-L84-400k | Martial Artist (Monk) | 84 | 108/123 (15) | 0/0 | 108 | 8 | 400,862 | 28,030 | 1437 | 4755 | 0 | 13832 | 50 | 43 | 46 | 5 | evasion | mid (decent for lvl) | no |
+| JiduQiuliang-L100-glass | Spirit Walker (Huntress) | 100 | 124/123 (−1) | 24/24 | 148 | 8 | 77,651 | 5,218 | 1535 | 2443 | 75 | 114 | 77 | 52 | 77 | 0 | none — pure glass | **weak** | no |
+| QingCum-L100-nodmg | Witchhunter (Merc) | 100 | 124/123 (−1) | 4/4 | 128 | 8 | 57,242 | 75,924 | 1741 | 53 | 17313 | 91 | 74 | 74 | 74 | 75 | armour tank | **weak** (no dmg) | no |
+| dosesondoses-L84-ES | Lich (Witch) | 84 | 107/123 (16) | 8/14 | 115 | 8 | 36,786 | 26,679 | 1443 | 9940 | 0 | 10 | 75 | 75 | 75 | 29 | ES | mid | yes |
+| furufuru-L100-weak | Titan (Warrior) | 100 | 116/123 (7) | 2/0 | 116 | 8 | 5,018 | 22,691 | 2858 | 0 | 20707 | 10 | 75 | 75 | 75 | 75 | armour | **weak** | no |
+| R_Thor-L84-weak | Smith of Kitava (Warrior) | 84 | 107/123 (16) | 14/14 | 121 | 6 | 5,514 | 20,947 | 2687 | 0 | 10328 | 444 | 75 | 75 | 75 | 75 | armour | **weak** | no |
+| SnusInMyBlood-L100-weak | Spirit Walker (Huntress) | 100 | 124/123 (−1) | 24/23 | 147 | 8 | 4,339 | 8,520 | 1836 | 694 | 172 | 6375 | 70 | 37 | 37 | 36 | evasion, bad res | **weak** | yes |
+| BlandisThree-L92-tank | Spirit Walker (Huntress) | 92 | 115/123 (8) | 0/0 | 115 | 8 | **0** | 185,566 | 2461 | 1429 | 309 | 8125 | 75 | 75 | 75 | 73 | evasion, huge EHP | 0-DPS headless | no |
 
 ### Caveats before these go into `benchTreeApproaches.ts` CORPUS
 
-- **`pointsUsed` > `pointsMax` on 9 of 14** (e.g. `155/129`, `150/123`). poe.ninja's export
-  allocates more tree nodes than the L100 endgame budget the optimiser assumes, so "spare" comes
-  out negative and extend mode has no room. Likely the two **weapon-set passive trees** (PoE2 has
-  a separate ~20-node tree per weapon set — `passiveSelectionSet1/2` in the ninja JSON) being
-  summed into `pointsUsed`, and/or ascendancy/anoint nodes double-counted; `pointsMax` also
-  wandering (123 vs 129) points the same way. **Must reconcile point accounting before extend-mode
-  numbers on these mean anything.** Repair mode (free N leaves, re-spend) and any run with an
-  explicit `--point-budget` are unaffected. The 5 builds with real positive spare —
-  `TheTradie` (15), `dosesondoses` (8), `BlandisThree` (8), `furufuru` (7), `R_Thor` (2) — are
-  usable as-is but none has the ≥20 spare the constraint-repro needed.
+- **~~`pointsUsed` > `pointsMax` on 9 of 14~~ — RESOLVED 2026-08-28 (weapon-set accounting).**
+  Cause was confirmed: poe.ninja's `<Spec nodes=>` is the *union* of the base tree and the
+  `<WeaponSet1/2 nodes=>` deviations, and `CountAllocNodes()` folds every weapon-set-specific node
+  into its raw `used`. `get_tree_status` now mirrors PoB's own EstimatePlayerProgress display —
+  `pointsUsed = treeNodesAllocated − min(weaponSet1PointsUsed, weaponSet2PointsUsed)` — because
+  weapon-set nodes draw on a *separate* per-set budget (`weaponSetPointsMax`), not `pointsMax`.
+  That took the big offenders from −17…−27 spare to −1/−2 (see table `raw` column for the old
+  values). **Residual −1/−2 on 8 L100 builds** is a different, small effect: the headless calc
+  doesn't credit every ExtraPoint the character has in-game (Atlas / item "you have N passive
+  points" mods with no config toggle set), so `pointsMax` reads a touch low. Harmless for repair
+  mode and for any run with an explicit `--point-budget`; for extend mode on these specific builds,
+  pass `--point-budget` (or accept 0 headroom). `Venereable` (−1, ws 0/0) is purely this residual.
+  Positive-spare builds usable as-is for extend: `dosesondoses` (16), `R_Thor` (16), `TheTradie`
+  (15), `BlandisThree` (8), `furufuru` (7), `KinkyDommyMommy` (7) — still none with the ≥20 spare
+  the constraint-repro wanted, so gutting (below) remains the source for high-spare instances.
 - **`BlandisThree` = 0 DPS headless** (ladder shows 70k). Same class/skill family as the other
   Spirit Walkers here that *do* compute, so likely a stale `mainSocketGroup` or weapon-slot issue
   like the Monk builds had (see note above) — not yet chased down. Skip under a DPS objective.
@@ -112,10 +127,11 @@ npm run gut-build -- "<source.xml>" [--points N] [--policy random|low|high] [--s
   ~unchanged (`gapToRecover ≈ 0`) and the optimiser can legitimately *beat* the original by
   relocating the dead points, so "original" isn't a ceiling. Use `random`/`high` for the
   recovery-fraction framing; `low` is a separate "does it relocate wasted points" case.
-- **On the over-allocated ninja builds, pass a bigger `--points`.** `stillAengus` at `155/129`
-  needs `--points ~45` to reach ~15 spare; `Venereable` at `124/123` only needs ~25. `low` on
-  `TheTradie` already showed it carries ~8 objective-dead notables (a Daze package the calc
-  config doesn't credit) — `low` will happily pull those first on any build.
+- **Ninja builds now report weapon-set-corrected `pointsUsed`** (was over-allocated by the
+  weapon-set node count). `stillAengus` reads `131/129` not `155/129`; to reach ~15 spare for a
+  recovery-fraction run, gut ~17 leaves off it. `Venereable` (`124/123`, no weapon set) still
+  needs ~25. `low` on `TheTradie` already showed it carries ~8 objective-dead notables (a Daze
+  package the calc config doesn't credit) — `low` will happily pull those first on any build.
 
 ### First batch (2026-08-28, `--objective dps-ehp:0.5`)
 
@@ -174,11 +190,12 @@ a `dps-ehp` blend or a `--preserve Evasion` floor would reject it. Good constrai
   class, so step 11 can frame it as "same character, tuned vs gutted". Both now work under a DPS
   or EHP objective.
 - **Spare-point spread is still narrow.** Local builds: one at 23 spare, three at 10. The
-  poe.ninja pull did *not* fix this — its exports over-allocate (negative spare, see that section's
-  caveats), and the 5 with positive spare top out at 15. The constraint-rejection work found the
-  interesting repair behaviour only shows up at ~20+ spare. Still need genuine mid-level builds
-  (30–60 spare); the ladder can't supply them (level 80+ only). Best remaining source is
-  hand-levelled local characters or reconciling the poe.ninja point accounting.
+  poe.ninja pull did *not* fix this either — after the weapon-set point-accounting fix
+  (2026-08-28) its exports read at-or-near their cap (real trees, maxed out); the 6 with positive
+  spare top out at 16 (`dosesondoses`, `R_Thor`). The constraint-rejection work found the
+  interesting repair behaviour only shows up at ~20+ spare. Genuine mid-level builds (30–60 spare)
+  come from synthetic gutting (`npm run gut-build`) or hand-levelled local characters; the ladder
+  can't supply them (level 80+ only).
 - **Hand-tuned vs naive pair exists** — `Martial Artist - Shattering Palm + Flicker Strike`
   (hand-tuned) vs `MA-FlickerStrike` (naive) and, separately, the deliberately-gutted `Ranger
   (L37)`. `MA-FlickerStrike` has 31 spare so it can exercise a real re-spend; the hand-tuned Monk

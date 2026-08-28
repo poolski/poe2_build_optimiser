@@ -133,6 +133,10 @@ export interface OptimiseTreeResult {
 		| "repair-not-worthwhile";
 	/** Populated when the bridge exposes get_metrics (real BuildOutput recomputes this run). */
 	buildOutputCount?: number;
+	/** Cumulative seconds the bridge spent inside recomputeBuild() this run (bridge-side os.clock,
+	 * so free of transport / search-overhead noise). `buildOutputSeconds / buildOutputCount` is the
+	 * per-recompute cost. Undefined against an older bridge without the timer. */
+	buildOutputSeconds?: number;
 	cacheHitRate: number;
 }
 
@@ -481,15 +485,18 @@ function matchesAny(statLines: string[], keywords: string[]): boolean {
 async function withMetrics(
 	bridge: PobBridgeClient,
 	memo: MemoEvaluator,
-	result: Omit<OptimiseTreeResult, "cacheHitRate" | "buildOutputCount"> & { cacheHitRate?: number },
+	result: Omit<OptimiseTreeResult, "cacheHitRate" | "buildOutputCount" | "buildOutputSeconds"> & {
+		cacheHitRate?: number;
+	},
 ): Promise<OptimiseTreeResult> {
 	const out = result as OptimiseTreeResult;
 	out.cacheHitRate = memo.hitRate;
 	try {
-		const metrics = await bridge.call<{ buildOutputCount: number }>("get_metrics");
+		const metrics = await bridge.call<{ buildOutputCount: number; buildOutputSeconds?: number }>("get_metrics");
 		out.buildOutputCount = metrics.buildOutputCount;
+		out.buildOutputSeconds = metrics.buildOutputSeconds;
 	} catch {
-		// older bridge without the counter -- leave buildOutputCount undefined
+		// older bridge without the counter -- leave buildOutputCount / buildOutputSeconds undefined
 	}
 	return out;
 }

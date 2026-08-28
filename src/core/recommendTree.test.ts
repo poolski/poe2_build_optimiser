@@ -33,6 +33,10 @@ const STATUS: TreeStatus = {
 	ascendancyPointsMax: 8,
 	secondaryAscendancyPointsUsed: 0,
 	secondaryAscendancyPointsMax: 8,
+	weaponSet1PointsUsed: 0,
+	weaponSet2PointsUsed: 0,
+	weaponSetPointsMax: 24,
+	treeNodesAllocated: 90,
 };
 
 function node(id: number, name: string, type = "Notable", statLines?: string[]): AllocatableNode {
