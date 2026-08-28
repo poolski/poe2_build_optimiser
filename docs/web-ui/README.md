@@ -17,6 +17,7 @@ This directory is the plan, split by domain so each piece can be picked up on it
 | [`05-frontend.md`](05-frontend.md) | Vite + React SPA: input → config → run → node-list diff | 3 |
 | [`06-tree-canvas.md`](06-tree-canvas.md) | Stylised passive-tree canvas with the diff highlighted — **in v1** | 3 |
 | [`07-performance.md`](07-performance.md) | Why PoB stays the fitness oracle + the full speed-lever table | cross-cutting |
+| [`08-fork-prep.md`](08-fork-prep.md) | The one commit between phase 1 and phase 2 that makes the later phases safe to run in parallel | 1 → 2 |
 
 **On speed:** v1 runs a job as slowly as the CLI does — the pool (phase 1) only overlaps
 *concurrent* jobs, which a single user rarely has. The wall-time win is **phase 1.5** (lever 1b in
@@ -127,6 +128,11 @@ import and the shim is deleted.
   - [ ] `PobBridgePool` — size 2 default, `acquire`/`release`, crash-replace, `dispose`, `warm()`
   - [ ] `onProgress` + `shouldContinue` in `OptimiseTreeOptions`, wired at the beam depths +
         k-sweep; CLIs pass neither; `shouldContinue`-false → `stoppedBecause: "cancelled"`
+- [ ] **Fork-prep** (`08`) — one serial commit before phase 2: install all v1 deps in a single
+      lockfile pass, create the `contract` / `api` / `web` skeletons + aliases, split the web
+      typecheck and vitest environment out of the Node-side ones, and commit the canvas fixtures.
+      After this the remaining phases can run as parallel worktrees without fighting over root
+      files. Skip it only if the whole track is being done serially by one session.
 - [ ] **Phase 2 — API** (`03`, `04`)
   - [ ] `packages/contract` — request/response/event Zod schemas
   - [ ] `packages/api` — Hono server, build decode/encode, job registry, SSE

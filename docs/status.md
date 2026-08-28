@@ -194,6 +194,7 @@ cancel that frees the slot within one add-step.
 | `docs/web-ui/05-frontend.md` | Phase 3 — `packages/web`: Vite + React wizard, node-list diff |
 | `docs/web-ui/06-tree-canvas.md` | Phase 3 (in v1) — stylised passive-tree diff canvas |
 | `docs/web-ui/07-performance.md` | Cross-cutting — why PoB stays the fitness oracle + the speed-lever table |
+| `docs/web-ui/08-fork-prep.md` | Between phases 1 and 2 — the serial commit that makes phases 2–3 safe to run as parallel worktrees |
 
 **Decisions of record (2026-08-28, with the user):**
 
@@ -220,8 +221,15 @@ cancel that frees the slot within one add-step.
    sees. Phase 1.5 (lever 1b) parallelises one run's candidate batch across the pool — the real
    wall-time win, and the first fast-follow after v1 ships.
 
-Sequencing: phase 1 (bridge) → phase 2 (API) → phase 3 (UI = wizard + list diff + tree canvas) =
-**v1**. Then **phase 1.5** (parallel candidate eval, the wall-time win) as the first fast-follow.
+Sequencing: phase 1 (bridge) → **fork-prep** (`08`) → phase 2 (API) → phase 3 (UI = wizard + list
+diff + tree canvas) = **v1**. Then **phase 1.5** (parallel candidate eval, the wall-time win) as
+the first fast-follow.
+
+Phase 1 is 3/4 done as of 2026-08-29: workspaces (`660534d`), the `packages/pob-bridge` move
+(`97cbe27`, `5c24241`), and `PobBridgePool` + a real-bridge integration suite (`2b52cee`).
+`onProgress` + `shouldContinue` (`02`) is the remainder. After that, `08-fork-prep.md` is one
+serial commit that lets `04` / `05`+`06` / phase 1.5 proceed as parallel worktrees — `03` (the
+contract) stays serial and alone in between, since it is what forces rework if it moves.
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.
 
