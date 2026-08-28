@@ -10,6 +10,8 @@
     "recommend-tree-spike": "ts-node spike/recommendTreeSpike.ts",
     "optimise-tree-spike": "ts-node spike/optimiseTreeSpike.ts",
     "characterise-build": "ts-node spike/characteriseBuild.ts",
+    "fetch-ninja-builds": "ts-node spike/fetchNinjaBuilds.ts",
+    "gut-build": "ts-node spike/gutBuild.ts",
     "bench-tree-approaches": "ts-node spike/benchTreeApproaches.ts",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run"
