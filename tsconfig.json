@@ -1,12 +1,11 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src"
+    "noEmit": true
   },
   "ts-node": {
     "require": ["tsconfig-paths/register"]
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "packages", "pob-runtime"]
+  "include": ["src/**/*.ts", "packages/*/src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "**/pob-runtime/**"]
 }

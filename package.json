@@ -27,5 +27,7 @@
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@poe2/pob-bridge": "*"
+  }
 }
