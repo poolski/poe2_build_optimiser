@@ -54,10 +54,15 @@ export const BuildSummary = z.object({
 ### `optimise.ts`
 
 ```ts
+const METRIC = String.raw`[A-Za-z][A-Za-z0-9]*`;
+const W = String.raw`\d+(?:\.\d+)?`;
 export const ObjectiveSpec = z.string().regex(
-  /^(dps-ehp:\d+(\.\d+)?|blend:[A-Za-z]+,[A-Za-z]+,\d+(\.\d+)?|[A-Za-z][A-Za-z0-9]*)$/,
+  new RegExp(`^(?:dps-ehp:${W}|blend:${METRIC},${METRIC},${W}|${METRIC})$`),
   "expected 'dps-ehp:W', 'blend:A,B,W', or a bare metric name",
 );
+// One METRIC char-class for both the bare and blend forms — an earlier draft let bare metrics
+// carry digits (TotalEHP-style) but not blend operands. Still only a shape check; the real
+// grammar parse stays in src/core/objective.ts:parseObjective.
 
 export const OptimiseRequest = z.object({
   buildId: z.string(),

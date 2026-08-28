@@ -10,13 +10,18 @@ This directory is the plan, split by domain so each piece can be picked up on it
 
 | File | Domain | Phase |
 |------|--------|-------|
-| [`01-bridge-service.md`](01-bridge-service.md) | Lift `pob-runtime/` + `src/core/bridge.ts` into a package with a process pool | 1 |
-| [`02-core-progress.md`](02-core-progress.md) | The one change to `src/core/*`: an optional `onProgress` callback | 1 |
+| [`01-bridge-service.md`](01-bridge-service.md) | Lift `pob-runtime/` + `src/core/bridge.ts` into a package with a process pool; §"Phase 1.5" = parallel candidate eval within a run | 1 (+1.5) |
+| [`02-core-progress.md`](02-core-progress.md) | The two v1 changes to `src/core/*`: `onProgress` + `shouldContinue` | 1 |
 | [`03-shared-contract.md`](03-shared-contract.md) | Zod schemas + inferred types shared by API and UI | 2 |
 | [`04-api-server.md`](04-api-server.md) | Hono + Zod HTTP server: builds, jobs, SSE progress | 2 |
 | [`05-frontend.md`](05-frontend.md) | Vite + React SPA: input → config → run → diff | 3 |
 | [`06-tree-canvas.md`](06-tree-canvas.md) | Optional follow-up: render the passive tree with the diff highlighted | 4 |
 | [`07-performance.md`](07-performance.md) | Why PoB stays the fitness oracle + the full speed-lever table | cross-cutting |
+
+**On speed:** v1 runs a job as slowly as the CLI does — the pool (phase 1) only overlaps
+*concurrent* jobs, which a single user rarely has. The wall-time win is **phase 1.5** (lever 1b in
+`07`): parallelise one run's candidate batch across the pool. v1 ships against the serial path;
+1.5 is the first fast-follow. Don't let the pool's existence imply v1 runs are fast.
 
 ## Decisions of record (2026-08-28)
 
@@ -80,8 +85,9 @@ Settled with the user before writing this plan:
 ```
 
 `src/core/*` stays where it is and keeps its "parse in / data out" contract. The API server is
-its third consumer after the two CLIs. The only core change in the whole track is the optional
-progress callback in `02-core-progress.md`.
+its third consumer after the two CLIs. v1 touches core in exactly two places — `onProgress` and
+`shouldContinue` (`02-core-progress.md`); phase 1.5 adds a third (the pool-backed parallel
+evaluator, `01` §"Phase 1.5").
 
 ## Repo layout after the track
 
@@ -107,20 +113,37 @@ import and the shim is deleted.
 ## Sequencing
 
 - [ ] **Phase 1 — bridge service** (`01`, `02`)
-  - [ ] npm workspaces + `tsconfig.base.json`; root scripts still green
+  - [ ] npm workspaces + `tsconfig.base.json`; decide project-references vs ordered build; root
+        `test` script runs `vitest` across *all* packages; root run-scripts still green
   - [ ] move `pob-runtime/` + `src/core/bridge.ts` into `packages/pob-bridge`, submodule path
         updated, `src/core` imports the package, all 88 tests green
-  - [ ] `PobBridgePool` — fixed size, `acquire`/`release`, crash-replace, `dispose`
-  - [ ] `onProgress` in `OptimiseTreeOptions`, wired at the beam depths + k-sweep; CLIs unchanged
+  - [ ] `PobBridgePool` — size 2 default, `acquire`/`release`, crash-replace, `dispose`, `warm()`
+  - [ ] `onProgress` + `shouldContinue` in `OptimiseTreeOptions`, wired at the beam depths +
+        k-sweep; CLIs pass neither; `shouldContinue`-false → `stoppedBecause: "cancelled"`
 - [ ] **Phase 2 — API** (`03`, `04`)
   - [ ] `packages/contract` — request/response/event Zod schemas
   - [ ] `packages/api` — Hono server, build decode/encode, job registry, SSE
-  - [ ] updated-PoB-code output (apply the node diff to `<Spec nodes>` and re-encode)
+  - [ ] Cancel wired through `shouldContinue` (frees the bridge within one add-step)
+  - [ ] updated-PoB-code output (read allocated ids off the bridge, patch `<Spec nodes>`, re-encode)
 - [ ] **Phase 3 — UI** (`05`)
   - [ ] Vite + React scaffold, dev proxy to the API
   - [ ] input → summary → run-config form → progress panel → results diff → copy updated code
+- [ ] **Phase 1.5 — parallel candidate eval** (`01` §"Phase 1.5", `07` lever 1b) — first
+      fast-follow after v1. Pool-backed evaluator in `beamAddLoop`, id-sorted recollection,
+      determinism unchanged. This is what makes a single run fast.
 - [ ] **Phase 4 — tree canvas** (`06`) — only on demand. Stylised (shapes, no sprites); port the
       MIT renderer from `poe2-tools/poe2-build-planner` onto our `tree.json`.
+
+## Running it
+
+One command each way; add both to the root `package.json` during phase 3.
+
+- **Dev:** `npm run dev` — `concurrently` runs the Hono API (`packages/api`, `127.0.0.1:8787`)
+  and the Vite dev server (`packages/web`, `:5173` with `/api` proxied). Open `:5173`.
+- **Prod (local):** `npm run build` (all packages, SPA → `packages/web/dist`) then `npm start`
+  (API only; it `serveStatic`s `dist` at `/`). Open `127.0.0.1:8787`.
+
+Neither is a background service — it's a tool you start when you want it and Ctrl-C when done.
 
 ## Cross-cutting
 

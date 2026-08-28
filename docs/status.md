@@ -176,16 +176,19 @@ The tree optimiser is feature-complete and the CLI surface has settled, so the n
 bridge has to move behind a long-lived service boundary. The two land together.
 
 **Shape:** local-first — a `localhost` app wrapping the local LuaJIT bridge, single user, not
-hosted. A third consumer of `src/core/` after the two CLIs, using the same "parse in / data out"
-contract; the only core change is an optional `onProgress` callback.
+hosted. A third consumer of `src/core/` after the two CLIs, same "parse in / data out" contract.
+v1 touches core in two places (`onProgress` + `shouldContinue` for prompt cancel); a post-v1
+**phase 1.5** (parallel candidate evaluation within one run) adds a third and is what actually
+makes a single run fast — **v1 runs are as slow as the CLI**, just with a progress bar and a
+cancel that frees the slot within one add-step.
 
 **Full plan is now `docs/web-ui/` — one file per domain:**
 
 | File | Domain |
 |------|--------|
 | `docs/web-ui/README.md` | Index, decisions of record, architecture, sequencing |
-| `docs/web-ui/01-bridge-service.md` | Phase 1 — `pob-runtime/` + `bridge.ts` → `packages/pob-bridge` with a `PobBridgePool` |
-| `docs/web-ui/02-core-progress.md` | Phase 1 — `onProgress` in `optimiseTree` / `recommendTree` |
+| `docs/web-ui/01-bridge-service.md` | Phase 1 — `pob-runtime/` + `bridge.ts` → `packages/pob-bridge` with a `PobBridgePool`; §"Phase 1.5" = parallel candidate eval within a run |
+| `docs/web-ui/02-core-progress.md` | Phase 1 — `onProgress` + `shouldContinue` in `optimiseTree` / `recommendTree` |
 | `docs/web-ui/03-shared-contract.md` | Phase 2 — `packages/contract`: Zod schemas + inferred DTOs |
 | `docs/web-ui/04-api-server.md` | Phase 2 — `packages/api`: Hono + Zod, builds / jobs / SSE |
 | `docs/web-ui/05-frontend.md` | Phase 3 — `packages/web`: Vite + React wizard, node-list diff |
@@ -211,9 +214,14 @@ contract; the only core change is an optional `onProgress` callback.
    exports — the exports are data, not the damage formula. The ~280 ms/recompute cost is a
    speed-lever problem (parallel bridge pool, candidate pruning, objective-scoped `BuildOutput`,
    …), not an architecture problem. Rationale + full lever table: `docs/web-ui/07-performance.md`.
+7. **Pool is size 2 for v1; a single run is not parallelised until phase 1.5.** The pool only
+   overlaps concurrent jobs, which a single user rarely has, so it barely moves the wait the user
+   sees. Phase 1.5 (lever 1b) parallelises one run's candidate batch across the pool — the real
+   wall-time win, and the first fast-follow after v1 ships.
 
-Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below this
-— pick them up only on demand.
+Sequencing note: **phase 1.5** slots in right after phase 3 (v1 UI), before the deferred phase 4
+canvas. Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay
+below all of it — pick them up only on demand.
 
 ## Scope
 

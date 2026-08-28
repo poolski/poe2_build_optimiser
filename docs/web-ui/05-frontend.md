@@ -89,8 +89,9 @@ The form model is `OptimiseRequest` from the contract, so validation mirrors the
   - **Best objective so far** with a delta vs baseline, so the user sees it climbing.
   - `k / kTotal` and `depth` when set.
   - Elapsed (from `elapsedMs`), rough rate (`buildOutputs / elapsed`).
-- **Cancel** → `POST /api/jobs/:id/cancel`; UI returns to `config` (v1 cancel is
-  discard-on-completion server-side, see `04`).
+- **Cancel** → `POST /api/jobs/:id/cancel`; UI returns to `config`. Server-side the job stops
+  within one add-step (seconds) via `shouldContinue` and frees its bridge slot (see `04`), so the
+  user can immediately re-submit a corrected config.
 - On `error` event → show `JobError.message`, offer "back to config".
 - On `done` event → store `result`, advance to `results`.
 - Reconnect: if the `EventSource` errors, re-`GET /api/jobs/:id`; if settled, jump to results.

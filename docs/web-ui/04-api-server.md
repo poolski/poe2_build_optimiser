@@ -87,16 +87,14 @@ type JobState = {
 - **Admission.** `MAX_ACTIVE_JOBS` (default = pool size) running at once; extra jobs sit
   `queued`. Since a job holds a bridge for its whole run, `MAX_ACTIVE_JOBS === POOL_SIZE` means
   no job ever waits inside `pool.acquire()`.
-- **Cancellation.** `abort.abort()`; `runner` passes `abort.signal` down and checks it in the
-  `onProgress` callback boundary (between add-loop depths / k-sweep steps — the only safe yield
-  points). Core itself doesn't take an `AbortSignal` in v1; the runner throwing a
-  `CancelledError` from inside `onProgress`… no — `onProgress` must not throw (see `02`). Instead
-  the runner wraps: it can't interrupt a single `BuildOutput`, but it *can* stop the job at the
-  next phase boundary by having `optimiseTree` accept an optional `shouldContinue?: () => boolean`
-  checked at the same points as `onProgress`. Add that alongside `onProgress` in `02` if cancel
-  needs to be prompt; otherwise cancel just marks the job and discards the result when it lands.
-  **Decision for v1: discard-on-completion cancel** (simpler, worst case wastes one job's
-  compute). Revisit if runs get long enough that it matters.
+- **Cancellation.** `abort.abort()` flips `status = "cancelled"`. The runner passes
+  `shouldContinue: () => !abort.signal.aborted` into core (`02`), so `optimiseTree` stops after
+  the current add-step, returns its partial plan with `stoppedBecause: "cancelled"`, and the
+  `finally` releases the bridge. The runner then discards that result (the user cancelled because
+  the config was wrong). **This is not "discard-on-completion" — the job stops within one
+  add-step (seconds), not one full run (minutes).** That matters here: the pool is size 2, so a
+  zombie job would block the user's corrected re-submit. A single `BuildOutput` still can't be
+  interrupted, but that's ≤ ~310 ms.
 - **Retention.** Finished jobs stay in the map until server restart. Fine for one user.
 
 ## Runner (`jobs/runner.ts`)
@@ -112,6 +110,7 @@ type JobState = {
        const pe = { ...ev, jobId, elapsedMs: now - startedAt };
        state.lastProgress = pe; state.emitter.emit("progress", pe);
      }
+     opts.shouldContinue = () => !state.abort.signal.aborted
      const result = await optimiseTree(bridge, opts) // or recommendTree
      state.result = kind === "optimise" ? toResultDTO(result, buildXml) : result
      state.status = "done"
@@ -137,13 +136,15 @@ allocated-node id list. Given `result.removed[].id` (+ their cascades — use
 `result.pointsFreed` cross-check) and `result.addedNodeIds` + the path nodes each step dragged
 in:
 
-- The **authoritative** post-plan allocation is what the bridge holds after the run. Cheapest
-  correct route: add a `get_allocated_node_ids` RPC (or reuse `list_allocated_nodes` → map to
-  ids) **on the still-acquired bridge before `release()`**, then string-replace the `nodes="…"`
-  attribute in the original XML and `encodePobCode`.
+- The **authoritative** post-plan allocation is what the bridge holds after the run. Route:
+  call `list_allocated_nodes` **on the still-acquired bridge before `release()`** and map its
+  entries to ids (it already returns the allocated set — confirm the field name against
+  `pob-runtime/bridge.lua` when picked up; add a thin `get_allocated_node_ids` wrapper only if
+  the existing shape is awkward to consume). Then string-replace the `nodes="…"` attribute in the
+  original XML and `encodePobCode`.
 - Doing the set arithmetic in TS from `removed`/`added` is possible but has to replay AllocNode's
-  path-node drag-in and DeallocNode's cascade exactly — the bridge already knows. **Use the RPC.**
-  This is the only bridge-side addition the API needs, and it's a 5-line read-only method.
+  path-node drag-in and DeallocNode's cascade exactly — the bridge already knows. **Read it from
+  the bridge**, don't recompute.
 
 Weapon-set nodes: PoB stores those in `<WeaponSet1 nodes>` / `<WeaponSet2 nodes>`. The optimiser
 only touches the base spec, so leave those attributes untouched.
@@ -190,7 +191,7 @@ app.get("/api/jobs/:id/events", c => {
 |-----|---------|-------|
 | `PORT` | `8787` | binds `127.0.0.1` only |
 | `POB_LUAJIT_PATH` | (bridge default) | passed to the pool |
-| `POOL_SIZE` | `max(1, min(8, cpus-2))` | LuaJIT children = RAM cost |
+| `POOL_SIZE` | `2` | single-user; one running + one queued/warm. LuaJIT child ≈ one PoB runtime of RAM. Raise it only with phase 1.5 (`01`). |
 | `MAX_ACTIVE_JOBS` | `= POOL_SIZE` | keep ≤ pool so acquire never blocks |
 | `CONTRACT_VERSION` | from `@poe2/contract` | echoed on `/health` |
 

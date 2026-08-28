@@ -1,10 +1,13 @@
-# Phase 1 — `onProgress` in the core
+# Phase 1 — `onProgress` + `shouldContinue` in the core
 
-The **only** change to `src/core/*` in the whole web-UI track. An optimise run is minutes of
-opaque work; the UI needs a progress signal. Keep it optional, side-effect-free, and invisible to
-the CLIs and the bench harness.
+The **two** changes to `src/core/*` in v1 of the web-UI track (phase 1.5 adds a third — the
+parallel evaluator, see `01`). An optimise run is minutes of opaque work: the UI needs a progress
+signal (`onProgress`) and a way to stop a wrong job promptly (`shouldContinue`). Both are
+optional, side-effect-free, checked at the *same* points, and invisible to the CLIs and the bench
+harness.
 
-Lives in phase 1 because the API server (phase 2) needs it to relay SSE.
+Lives in phase 1 because the API server (phase 2) needs `onProgress` to relay SSE and
+`shouldContinue` to make Cancel free a pool slot instead of leaving a 15-minute zombie.
 
 ## The addition
 
@@ -42,8 +45,16 @@ export interface OptimiseTreeOptions {
    *  Must not throw and must not touch its arguments after returning (the object is reused).
    *  Never affects search order or results. Undefined = no callback (CLI default). */
   onProgress?: (ev: OptimiseProgress) => void;
+  /** Checked at the *same* boundaries as onProgress (never mid-BuildOutput). Returning false
+   *  makes optimiseTree stop after the current add-step and return its best plan so far with
+   *  `stoppedBecause: "cancelled"`. Undefined = never cancels (CLI default). Must not throw. */
+  shouldContinue?: () => boolean;
 }
 ```
+
+`shouldContinue` returning false is a clean early return, not an exception: the partial result is
+still valid (best plan found so far), just flagged. The API runner (`04`) discards it anyway on a
+user cancel, but a clean return is what frees the bridge slot immediately.
 
 `recommendTree` gets the same optional `onProgress` with a trimmed event (`phase: "scoring" |
 "finalising"`, `buildOutputs`, `candidatesTotal`, `candidatesScored`). It is a single fast pass,
@@ -58,6 +69,10 @@ so a coarse "scored 120 / 400 candidates" tick per batch is enough.
   and `estimatedTotal` once the depth's pooled candidate count is known.
 - **k-sweep** (repair driver): emit `k-sweep` with `k` / `kTotal` before each re-spend.
 - **`withMetrics`** wrap-up: emit `finalising`.
+
+At each of those `onProgress` sites, also check `shouldContinue?.() ?? true` immediately after
+the emit; if false, break out of the loop / short-circuit to `finalising` and set
+`stoppedBecause: "cancelled"`.
 
 `buildOutputs` comes from the existing `MemoEvaluator` counter (`memo` already tracks it for
 `cacheHitRate`); expose a `memo.buildOutputs` getter if it isn't public yet. No new bridge RPC —
@@ -84,4 +99,8 @@ so a coarse "scored 120 / 400 candidates" tick per batch is enough.
 - `buildOutputs` is monotonic non-decreasing across ticks and its last value equals
   `result.buildOutputCount`.
 - A callback that throws does not change the result vs the same options without it (byte-equal),
-  and does not reject the promise.
+  and does not reject the promise. Same for a `shouldContinue` that throws.
+- `shouldContinue` that returns false after the 2nd `add-loop` tick: result has
+  `stoppedBecause: "cancelled"`, `steps.length` matches what was committed by then, and the
+  result is still internally consistent (`final` reflects exactly those steps).
+- `shouldContinue` always true is byte-identical to not passing it.

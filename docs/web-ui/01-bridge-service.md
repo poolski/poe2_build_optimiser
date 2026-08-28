@@ -65,7 +65,7 @@ lifetime.
 
 ```ts
 export interface PobBridgePoolOptions {
-  size?: number;              // default: max(1, min(8, cpus - 2)) — mirrors the bench default
+  size?: number;              // default: 2 (see "Pool size" below) — NOT the bench's cpus-2
   luajitPath?: string;        // overrides POB_LUAJIT_PATH for this pool
   onChildError?: (slot: number, err: Error) => void;
 }
@@ -106,8 +106,10 @@ export interface PooledBridge extends PobBridgeClient {
   crash the server.
 - **Backpressure.** `acquire()` queues FIFO when `busy === size`. The API layer caps how many
   jobs it starts (`04`), so the queue stays short, but the pool must not reject on "busy".
-- **Determinism.** The pool changes nothing about a single job's execution — one job still runs
-  on one bridge, single-threaded, in the same RPC order. Parallelism is only *across* jobs.
+- **Determinism.** In v1 the pool changes nothing about a single job's execution — one job runs
+  on one bridge, single-threaded, in the same RPC order; parallelism is only *across* jobs. Phase
+  1.5 parallelises *within* a job but keeps the result identical by recollecting each candidate
+  batch id-sorted before the frontier pick (same technique the bench uses across builds).
 
 ### Tests (`pool.test.ts`)
 
@@ -122,14 +124,44 @@ Use the real LuaJIT bridge (the existing tests already do; there is no fake for 
 - Kill a slot's child mid-session (`process.kill` via a test hook or a bridge method that
   `os.exit`s) → next `acquire()` gets a working bridge, `onChildError` fired once.
 
+### Pool size
+
+Default **2**, not `cpus - 2`. This is a single-user tool: the common case is one job running
+while the user watches it. A big pool would leave 6+ idle `luajit.exe` children (≈ one PoB
+runtime of RAM each) for a concurrency level that almost never happens. Size 2 covers "a second
+job queued behind the first" and a `pool.warm()` prespawn. `POOL_SIZE` stays env-configurable for
+anyone who wants more. A large pool only earns its keep once **phase 1.5** (below) uses it to
+parallelise *one* run.
+
+## Phase 1.5 — parallel candidate evaluation within a run (post-v1)
+
+Not in v1. Scoped here because it is what actually cuts a single run's wall time (`07` lever 1b),
+and because it constrains the pool API above.
+
+Today `beamAddLoop` evaluates a step's `P` surviving candidates serially through one
+`MemoEvaluator` on one bridge. Phase 1.5 fans that batch across the pool:
+
+- `optimiseTree` / `recommendTree` take an **evaluator that owns a pool**, not a single bridge —
+  e.g. `createParallelEvaluator(pool)` implementing the same `evaluate(allocSet, nodeIds)` shape
+  the memo already exposes, dispatching each candidate to a free slot and awaiting the batch.
+- **Determinism is preserved the same way the bench is:** collect all `P` results, then sort by
+  node id before the frontier pick. N does not affect the outcome, only the wall time.
+- The memo cache becomes pool-wide (keyed as now; just shared).
+- This is a real `packages/pob-bridge` + `src/core` change — it makes `02`'s "core changes" list
+  three items, not two. Keep it out of v1 so the UI ships against the known-good serial path.
+
+Expected effect: strong-build `repair-r6` from ~15–37 min to ~3–6 min at pool size 8.
+
 ## Open questions
 
-- **Pool size default.** Bench uses 4–8; 8 was "too slow for a routine check" only because it
-  was 25 builds × 3 approaches. For interactive single-user use, `cpus - 2` capped at 8 is fine;
-  make it configurable and move on.
 - **Submodule under a nested path** — confirm `git submodule sync` + a fresh
   `git submodule update --init` works from a clean clone after the move. Do this before touching
   anything else in the phase.
+- **Workspace build + test ordering.** Four interdependent packages (`pob-bridge` ← `src/core` ←
+  `api` → `contract` ← `web`). Decide up front: TS **project references** (`composite: true`,
+  `tsc -b` from the root) vs. a plain ordered `npm run -ws build`. `npm test` must run `vitest`
+  across every package's tests, not just `src/` — wire that into the root `test` script as part of
+  the workspaces move, and the "88 tests green" exit check verifies it.
 - **Warm-all-on-boot vs lazy.** Lazy is simpler and the first few jobs eat the cold starts.
   Offer `pool.warm()` (spawns all slots up front) for the API to call on boot if the first-job
   latency annoys.
