@@ -102,12 +102,11 @@ in `04`, not here.
 - `final.stats` kept as `z.record(z.string(), z.number())` (the `StatSet`).
 - an added `updatedPobCode: z.string()` — the re-encoded build with the plan applied (`04`).
 - an added `allocatedNodeIds: z.object({ before: z.array(z.number().int()), after: z.array(z.number().int()) })`
-  **`after` is BLOCKED as of 2026-08-29** — it cannot be produced from `removed` +
-  `addedNodeIds` (path nodes are unrecorded) and the bridge cannot return it. See the blocker
-  banner in `04-api-server.md` §`updatedPobCode`. Keep the field in the schema, but treat it as
-  unfillable until the `pob-bridge`/`src/core` addition lands; the shipped fixture uses
-  `afterConnected: null` plus `afterPicksOnly`.
-  — read off the bridge (`04`); the canvas (`06`, in v1) renders the diff from it.
+  — mirrors `OptimiseTreeResult.allocatedNodeIds` (**resolved 2026-08-29, `3b7dcf6`**): `after`
+  is the connected post-plan allocation set, id-sorted, same node filter as `list_allocated_nodes`
+  (class/ascendancy-start + item-granted nodes excluded). `optimiseTree` fills it; `04` maps it
+  straight through and uses it for `updatedPobCode`; the canvas (`06`, in v1) renders the diff
+  from it. `after === before` when the plan is "change nothing".
 - `addedNodeIds`, `removed[].id`, `steps[].id` preserved so the canvas can tint added / dropped /
   anchor distinctly.
 - `stoppedBecause` union includes `"cancelled"` (the `shouldContinue` early return, `02`).

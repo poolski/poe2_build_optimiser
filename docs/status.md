@@ -250,34 +250,37 @@ carved out of the commonjs typecheck, jsdom via `environmentMatchGlobs`, and the
 committed (`packages/web/public/tree-0_5.min.json` 407 KB + `packages/web/fixtures/`), so the
 canvas track needs neither LuaJIT nor the submodule. 101 fast tests, integration still 10.
 
-### ⚠ BLOCKER before the fan-out — `allocatedNodeIds.after` is not obtainable
+### ✔ RESOLVED — `allocatedNodeIds.{before,after}` on `OptimiseTreeResult` (`3b7dcf6`)
 
-Found during fork-prep, verified in source. `04`'s `applyPlan.ts` and `06`'s `after` render both
-assume the post-plan allocated set can be recovered. It cannot:
+Fixed 2026-08-29 on `phase1-bridge-service`, as the agreed design said — no deviations.
+`list_allocated_nodes` now takes an optional `allocSet` alongside `removeIds`: it deallocs the
+`removeIds` cascade, `AllocNode`s each `allocSet` id (auto-pathing), one
+`BuildAllDependsAndPaths`, lists `spec.allocNodes`, restores. **No `recomputeBuild()`** — the
+method never reads `mainOutput`, so it adds zero BuildOutputs and cannot move the run's counter.
+The `removeIds`-only and no-arg call paths stay byte-identical (the added per-list dedup is a
+no-op without duplicates); an id in both sets is deallocated then re-allocated, ending allocated
+(what repair does when it re-picks a freed node).
 
-- `optimiseTree.ts:194` — `addedNodeIds` is picks-only; the path nodes `AllocNode` drags in are
-  never recorded.
-- `bridge.lua:993` — `list_allocated_nodes` accepts only `removeIds`, never an `allocSet`.
-- `bridge.lua:1038` — `ImportFromNodeList` cannot express a disconnected tree, and `optimiseTree`
-  is a pure planner (probe-and-restore, `bridge.lua:799`), so the bridge never holds the state.
+`optimiseTree` calls it once inside `finish()` — after the search settles, never during, so it
+can't touch search order or the beam — with `{ removeIds: <dropped ids>, allocSet: <winning
+picks> }`, and exposes `allocatedNodeIds: { before, after }` (both id-sorted; same node filter as
+`list_allocated_nodes`, i.e. class/ascendancy-start + item-granted nodes excluded).
+`after === before` whenever the recommendation is "change nothing" (`steps` empty).
 
-Writing `<Spec nodes>` from `removed` + `addedNodeIds` therefore emits a **disconnected tree** —
-a corrupt PoB export, not a cosmetic gap. **Fix in `packages/pob-bridge` + `src/core` first**
-(teach `list_allocated_nodes` an `allocSet`, or record each step's path ids). It is phase-1
-territory, explicitly off-limits to the three UI tracks, and it blocks two of them. Test case:
-`packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` (`afterConnected: null`,
-`unloggedPathNodeCount: 1`).
+`after` is connected by construction (`spec.allocNodes` after real `AllocNode`/`DeallocNode`).
+Verified: `--rollback-to 34015` on `RampantlyBisexual` is byte-identical either side of the
+change (same 12-step plan, same 692 BuildOutputs, same `47236.738915`; only the new field
+appears). On the R_Thor fixture run `before` 127 → `after` 127, the size invariant
+`after.length === before.length − pointsFreed + Σ step.pointsSpent` holds, the one previously-
+unlogged traversal node (id 11433) is now present, and the integration test prices the
+newly-allocated ids explicitly to confirm `AllocNode` drags in no extra connectors. `04`'s
+`applyPlan.ts` writes `<Spec nodes>` straight from `allocatedNodeIds.after` now.
 
-**Agreed fix (three independent reads converged 2026-08-29):** extend `list_allocated_nodes` to
-also accept `allocSet` — alloc it, `BuildAllDependsAndPaths`, list `spec.allocNodes`, restore.
-It mirrors the existing `removeIds` branch almost line for line. `optimiseTree` then calls it once
-at the end with `{ allocSet: final picks, removeIds: dropped }` and puts the result on
-`allocatedNodeIds`. ~1–2 h with unit tests plus an integration assertion against the fixture.
-**Rejected alternative:** threading path-node ids out through `evaluate_candidate_nodes_from` and
-the beam — more invasive and it touches the hot path. Supporting reads: `list_allocatable_nodes_from`
-(`bridge.lua:752`) allocs a set but returns the *frontier*, not the resulting set; `get_stats_from`
-/ `evaluate_candidate_nodes_from` alloc then `RestoreUndoState`, returning stats only; path nodes
-survive in the result solely as a `pointsSpent` count, never as ids.
+Rejected alternative (threading path ids through `evaluate_candidate_nodes_from` + the beam) was
+not needed. Fixture `packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` regenerated:
+`afterConnected` populated (127 ids), `afterPicksOnly` (126, picks only) kept alongside for
+comparison. Tests: fast suite 101 → 106, integration 10 → 11 (new
+`optimiseTree.integration.test.ts`, a ~2 min tagged repair run).
 
 After that: `03` (the contract) stays serial and alone, since it is what forces rework in two
 tracks if it moves. Then fork into `04` / `05`+`06` / phase 1.5.

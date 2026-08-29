@@ -96,25 +96,25 @@ Zustand is already a candidate dep for `packages/web` (`05`), so their store pat
   nodeFlags }` — `nameIdx`/`statIdx` index into `strings[]` (the tree repeats stat lines
   heavily); `kind` 0=normal 1=notable 2=keystone 3=jewel 4=attribute. Surface `meta.treeVersion`
   on `/health`.
-- `OptimiseResultDTO.allocatedNodeIds { before: number[]; after: number[] }` — **`before` is
-  `list_allocated_nodes` off the bridge; `after` is NOT currently obtainable** (see the
-  correction note below). Until it is, develop against the committed fixture
-  `packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` (real `--respec-budget 3` repair run;
-  carries `before`, `removedCascadeIds`, `addedPickIds`, `afterPicksOnly`, `steps`, `anchor`).
+- `OptimiseResultDTO.allocatedNodeIds { before: number[]; after: number[] }` — both id-sorted,
+  straight from `OptimiseTreeResult` (**resolved 2026-08-29, `3b7dcf6`** — see the note below).
+  `after` is the connected post-plan set, path nodes included. The committed fixture
+  `packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` (real `--respec-budget 3` repair run)
+  now carries `afterConnected` (127 ids) as well as `afterPicksOnly` (126, picks only) for
+  comparison, plus `before`, `removedCascadeIds`, `addedPickIds`, `steps`, `anchor`.
 - The canvas is then a pure function of `(minTree, allocatedBefore, allocatedAfter, added,
   removed, anchor)`.
 
-> **Correction (2026-08-29, fork-prep task 6).** The plan's "read `list_allocated_nodes` on the
-> still-acquired bridge for `after`" does **not** work as written: `optimiseTree` is a pure
-> planner and never leaves the bridge in the post-plan state; `result.addedNodeIds` is
-> picks-only (the path/traversal nodes `AllocNode` drags in are not listed);
-> `PassiveSpec:ImportFromNodeList` allocates exactly the ids given (no auto-pathing); and no
-> bridge RPC returns an allocated set for a given `allocSet` (`list_allocated_nodes` takes only
-> `removeIds`). So `04`'s `applyPlan.ts` string-replace of `<Spec nodes="…">` from
-> `removed`/`added` would emit a **disconnected** tree. A small bridge addition is needed —
-> `list_allocated_nodes` accepting `allocSet` (+`removeIds`) and returning the connected result
-> after `AllocNode`, or `optimiseTree` recording `node.path` ids during the walk. Owned by the
-> `04` / core track; the fixture's `afterConnected` field is `null` until then.
+> **Resolved 2026-08-29 (`3b7dcf6`).** The plan's "read `list_allocated_nodes` on the
+> still-acquired bridge for `after`" was close but incomplete: `optimiseTree` never leaves the
+> bridge in the post-plan state, and a plain `list_allocated_nodes` reads the *loaded* tree.
+> Fixed by teaching `list_allocated_nodes` an optional `allocSet` — allocated on top of the
+> `removeIds` cascade, then `BuildAllDependsAndPaths`, list `spec.allocNodes`, restore; no
+> recompute. `optimiseTree` calls it once at end of run and puts `{ before, after }` on
+> `OptimiseTreeResult.allocatedNodeIds`; `after` is connected by construction. `04`'s
+> `applyPlan.ts` writes `<Spec nodes="…">` straight from it. The rejected alternative
+> (`optimiseTree` recording `node.path` ids through the walk) touched the hot path and was not
+> taken.
 
 ## Estimate
 
@@ -134,9 +134,9 @@ carry it. Note it here so it isn't a surprise.
 
 ## Prereqs (all in v1 phases 2–3)
 
-- `OptimiseResultDTO.allocatedNodeIds { before, after }` — from `list_allocated_nodes` on the
-  still-acquired bridge, the same read `04` already does for `updatedPobCode`. Put it in the
-  `03` schema, not a canvas-only add-on.
+- `OptimiseResultDTO.allocatedNodeIds { before, after }` — mirrored straight from
+  `OptimiseTreeResult` (filled by `optimiseTree` since `3b7dcf6`); in the `03` schema, not a
+  canvas-only add-on.
 - The `public/tree-0_5.min.json` build step in `packages/api` (or `packages/web`); tree version
   pinned + surfaced on `/health`.
 - Handling for a build whose `<Spec treeVersion>` ≠ the shipped one: warn and show the `05`

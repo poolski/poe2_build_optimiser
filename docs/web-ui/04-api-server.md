@@ -131,40 +131,24 @@ extraPoints` needs `get_tree_status` first (same as `optimiseCli.ts:272`).
 
 ## `updatedPobCode` (`pob/applyPlan.ts`)
 
-> **BLOCKER — corrected 2026-08-29 (fork-prep, verified in source).** The approach below does
-> **not work as written**, and implementing it would emit a *corrupt* PoB export rather than an
-> imperfect one. Three independent confirmations:
->
-> - `optimiseTree.ts:194` — `addedNodeIds` is "Anchor node ids of `steps` (path nodes AllocNode
->   adds are not listed individually)". Picks only; traversal nodes are never recorded.
-> - `bridge.lua:993` — `list_allocated_nodes` accepts only `removeIds`. There is no way to ask
->   for the allocated set of an arbitrary `allocSet`.
-> - `bridge.lua:1038` — `ImportFromNodeList` cannot express a disconnected tree, and
->   `optimiseTree` is a pure planner (probe-and-restore, `bridge.lua:799`), so the bridge never
->   holds the post-plan state to read back.
->
-> Net: string-replacing `<Spec nodes="...">` from `removed` + `addedNodeIds` yields a
-> **disconnected** tree. This blocks `updatedPobCode` here and the `after` render in `06`.
->
-> **Fix first, in `packages/pob-bridge` + `src/core`** (NOT in this track): either teach
-> `list_allocated_nodes` to accept an `allocSet`, or have `optimiseTree` record each step's path
-> node ids. Concrete test case: `packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` ships
-> `afterConnected: null` with `unloggedPathNodeCount: 1`.
+> **RESOLVED 2026-08-29 (`3b7dcf6`).** `list_allocated_nodes` now takes an optional `allocSet`
+> alongside `removeIds`, and `optimiseTree` puts `allocatedNodeIds: { before, after }` on
+> `OptimiseTreeResult`. `after` is the **connected** post-plan allocation set — every path node
+> `AllocNode` dragged in included — id-sorted, same node filter as `list_allocated_nodes`
+> (class/ascendancy-start + item-granted nodes excluded). `after === before` when the plan is
+> "change nothing". So `updatedPobCode` is a straight string-replace from
+> `result.allocatedNodeIds.after`; no extra bridge round-trip, no set arithmetic. Mechanism +
+> determinism argument: `docs/status.md`.
 
-No bridge round-trip needed. The `<Spec>` element's `nodes="12,34,56,…"` attribute is the
-allocated-node id list. Given `result.removed[].id` (+ their cascades — use
-`result.pointsFreed` cross-check) and `result.addedNodeIds` + the path nodes each step dragged
-in:
+The `<Spec>` element's `nodes="12,34,56,…"` attribute is the allocated-node id list. `toResultDTO`
+already has the answer on the result:
 
-- The **authoritative** post-plan allocation is what the bridge holds after the run. Route:
-  call `list_allocated_nodes` **on the still-acquired bridge before `release()`** and map its
-  entries to ids (it already returns the allocated set — confirm the field name against
-  `pob-runtime/bridge.lua` when picked up; add a thin `get_allocated_node_ids` wrapper only if
-  the existing shape is awkward to consume). Then string-replace the `nodes="…"` attribute in the
-  original XML and `encodePobCode`.
-- Doing the set arithmetic in TS from `removed`/`added` is possible but has to replay AllocNode's
-  path-node drag-in and DeallocNode's cascade exactly — the bridge already knows. **Read it from
-  the bridge**, don't recompute.
+- Take `result.allocatedNodeIds.after` (already the connected set, ascending), join it with `,`,
+  string-replace the `nodes="…"` attribute in the original XML, `encodePobCode`. Nothing to
+  recompute or reconcile — `optimiseTree` derived it from the bridge with the plan's `removeIds`
+  cascade deallocated and its picks allocated.
+- Do **not** rebuild it in TS from `removed`/`addedNodeIds`: that set is picks-only and would
+  drop the traversal nodes, emitting a disconnected tree.
 
 Weapon-set nodes: PoB stores those in `<WeaponSet1 nodes>` / `<WeaponSet2 nodes>`. The optimiser
 only touches the base spec, so leave those attributes untouched.
