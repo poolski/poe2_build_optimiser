@@ -268,6 +268,17 @@ territory, explicitly off-limits to the three UI tracks, and it blocks two of th
 `packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` (`afterConnected: null`,
 `unloggedPathNodeCount: 1`).
 
+**Agreed fix (three independent reads converged 2026-08-29):** extend `list_allocated_nodes` to
+also accept `allocSet` — alloc it, `BuildAllDependsAndPaths`, list `spec.allocNodes`, restore.
+It mirrors the existing `removeIds` branch almost line for line. `optimiseTree` then calls it once
+at the end with `{ allocSet: final picks, removeIds: dropped }` and puts the result on
+`allocatedNodeIds`. ~1–2 h with unit tests plus an integration assertion against the fixture.
+**Rejected alternative:** threading path-node ids out through `evaluate_candidate_nodes_from` and
+the beam — more invasive and it touches the hot path. Supporting reads: `list_allocatable_nodes_from`
+(`bridge.lua:752`) allocs a set but returns the *frontier*, not the resulting set; `get_stats_from`
+/ `evaluate_candidate_nodes_from` alloc then `RestoreUndoState`, returning stats only; path nodes
+survive in the result solely as a `pointsSpent` count, never as ids.
+
 After that: `03` (the contract) stays serial and alone, since it is what forces rework in two
 tracks if it moves. Then fork into `04` / `05`+`06` / phase 1.5.
 
