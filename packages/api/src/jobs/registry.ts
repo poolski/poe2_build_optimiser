@@ -166,6 +166,13 @@ export class JobRegistry {
 	}
 
 	/** { active, total } for /api/health. */
+	/** Slots a new "optimise" job will actually lease -- the EFFECTIVE value after createApp's
+	 *  clamp to the real pool, which is not necessarily `config.jobParallelism`. /api/health
+	 *  reports this rather than the global config so an operator sees what jobs really get. */
+	get effectiveJobParallelism(): number {
+		return this.jobParallelism;
+	}
+
 	counts(): { active: number; total: number } {
 		let active = 0;
 		for (const j of this.jobs.values()) if (j.status === "running") active++;

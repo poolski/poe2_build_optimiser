@@ -30,7 +30,7 @@ overlaps *concurrent* jobs, which a single user rarely has. The wall-time win is
 `--parallelism <n>` on `optimise-tree`, and `packages/api`'s job runner + `JobRegistry` wired to
 it) but lives on the unmerged `phase1.5-parallel-eval` branch — `main` itself still runs every job
 on one slot until this branch merges. Once merged, the win is opt-in server-side too: `POOL_SIZE`
-stays default 2 and the new `JOB_PARALLELISM` (env, default 1) has to be raised deliberately for
+and the new `JOB_PARALLELISM` both default to half the host's cores, so the win is on by default; set `JOB_PARALLELISM=1` for
 the API to actually lease more than 1 slot per optimise job — see `01` §"Phase 1.5" for why that
 default is conservative (each extra slot committed per job is another ~700 MB-resident child).
 
@@ -162,7 +162,7 @@ carries the detailed narrative.
       runner**: `BridgeSource.acquireParallel(n)`, a `parallelism` field on `JobState` decided at
       admission, and `JobRegistry`'s admission rewritten to be slot-based (not job-count-based —
       the old rule silently allowed a lease-time deadlock once a job could request `N > 1` slots).
-      New env `JOB_PARALLELISM` (default 1 = off). See `01` §"Phase 1.5" for the deadlock argument
+      New env `JOB_PARALLELISM` (defaults to half the host's cores, = `POOL_SIZE`). See `01` §"Phase 1.5" for the deadlock argument
       and the fast admission tests.
 - [ ] **RePoE-fork asset source** (`10`) — **spec only, not started.** Web tree geometry + real node
       art + stat text + gem assets from RePoE-fork; adds icon rendering to the shared `TreeCanvas`.

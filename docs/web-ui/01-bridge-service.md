@@ -271,7 +271,7 @@ that happens to fit, to avoid a large job starving behind an endless stream of s
 `PobBridgePool.lease()` was *also* hardened to be atomically all-or-nothing internally (defence in
 depth for any caller that isn't going through this admission control).
 
-`POOL_SIZE` stays default 2. `JOB_PARALLELISM` (env, default **1** — i.e. off, byte-identical to
+`POOL_SIZE` and `JOB_PARALLELISM` both default to **half the host's `availableParallelism()`** (floor 1; 16 cores → 8), so one optimise job fans across the whole warm pool out of the box. `JOB_PARALLELISM` (env, formerly default **1** — i.e. off, byte-identical to
 pre-phase-1.5 behaviour) is the new conservative knob; raising it trades pool headroom for
 wall-clock, since each additional slot committed per job is another ~700 MB-resident LuaJIT child.
 `GET /api/health` now echoes `jobParallelism` for visibility. **Deliberately not exposed as a

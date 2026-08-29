@@ -3,11 +3,23 @@
 // slot; `lease(n)` (phase 1.5) gives one job exclusive use of `n` slots at once, so a single job
 // can fan work across several children instead of running serially on one.
 
+import * as os from "node:os";
 import { PobBridge, PobBridgeClient } from "./bridge";
+
+/** Default warm children: half the machine's available parallelism, floor 1.
+ *
+ *  Half rather than all because a LuaJIT child is ~700 MB resident and PoB's calc is CPU-bound:
+ *  oversubscribing cores buys nothing and the RAM is real (a 16-core box defaults to 8 children,
+ *  ~5.6 GB). `availableParallelism()` (not `cpus().length`) so cgroup / CPU-affinity limits are
+ *  respected. Override with the POOL_SIZE env var on a RAM-tight machine. */
+export function defaultPoolSize(): number {
+	const cores = typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length;
+	return Math.max(1, Math.floor((Number.isFinite(cores) && cores > 0 ? cores : 2) / 2));
+}
 import { ParallelBridge } from "./parallel";
 
 export interface PobBridgePoolOptions {
-	/** Warm children to keep. Default: POOL_SIZE env, else 2. Min 1. */
+	/** Warm children to keep. Default: POOL_SIZE env, else `defaultPoolSize()`. Min 1. */
 	size?: number;
 	/** Passed to every child (overrides POB_LUAJIT_PATH for this pool). */
 	luajitPath?: string;
@@ -57,7 +69,7 @@ export class PobBridgePool {
 
 	constructor(opts: PobBridgePoolOptions = {}) {
 		const envSize = Number(process.env.POOL_SIZE);
-		this.size = Math.max(1, opts.size ?? (Number.isFinite(envSize) && envSize > 0 ? envSize : 2));
+		this.size = Math.max(1, opts.size ?? (Number.isFinite(envSize) && envSize > 0 ? envSize : defaultPoolSize()));
 		this.luajitPath = opts.luajitPath;
 		this.onChildError = opts.onChildError;
 		this.slots = Array.from({ length: this.size }, (_, index) => ({

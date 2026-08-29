@@ -7,6 +7,7 @@ export {
 } from "./bridge";
 export {
   PobBridgePool,
+  defaultPoolSize,
   type PobBridgePoolOptions,
   type PooledBridge,
   type BridgeLeaseHandle,

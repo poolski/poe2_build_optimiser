@@ -105,6 +105,17 @@ describe("GET /api/health", () => {
 		expect(h).toMatchObject({ ok: true, pool: { size: 2 }, jobs: { active: 0, total: 0 } });
 		expect(typeof h.contractVersion).toBe("string");
 	});
+
+	// JOB_PARALLELISM / config.jobParallelism default to half the HOST's cores, so on most
+	// machines the global default exceeds this 2-slot fake pool. createApp must clamp the
+	// fallback to the pool it was actually handed -- otherwise JobRegistry throws at
+	// construction and every route 500s on a perfectly reasonable embedder config.
+	it("clamps a defaulted jobParallelism to the pool it was given", async () => {
+		const res = await makeApp().request("/api/health");
+		const h = await json(res);
+		expect(h.jobParallelism).toBeLessThanOrEqual(2);
+		expect(h.jobParallelism).toBeGreaterThanOrEqual(1);
+	});
 });
 
 describe("POST /api/builds", () => {

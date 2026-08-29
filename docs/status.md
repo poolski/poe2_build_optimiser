@@ -329,15 +329,25 @@ time.
 **Wired into `packages/api`'s job runner.** `BridgeSource` gained `acquireParallel(n)`
 (`PobBridgePool.acquireParallel` = `lease(n)` + `ParallelBridge`); `JobState` carries a
 `parallelism` decided once at `create()` (1 for "recommend" jobs always, `jobParallelism` — new
-registry option, env `JOB_PARALLELISM`, default 1 = off — for "optimise" jobs); the runner picks
+registry option, env `JOB_PARALLELISM` — for "optimise" jobs); the runner picks
 `acquireParallel`/`acquire` accordingly. **Admission is now slot-based, not job-count-based**:
 `JobRegistry.pump()` admits the FIFO queue's head only when committed slots across every running
 job plus the head's own `parallelism` fit `poolSize`, restoring the invariant the old
 job-count-only rule silently broke once a job could lease `N > 1` slots (two admitted jobs each
 leasing more than what's actually free between them could otherwise block inside
 `PobBridgePool.lease()` — a deadlock). `maxActiveJobs` stays as an independent, additional ceiling
-on running job *count*. `POOL_SIZE` stays default 2; `JOB_PARALLELISM` is the new conservative
-per-job-slot knob (default 1); `/api/health` echoes it. Deliberately not exposed as a per-request
+on running job *count*.
+
+**Defaults are dynamic (2026-08-29):** `POOL_SIZE` and `JOB_PARALLELISM` both default to
+`defaultPoolSize()` — half the host's `os.availableParallelism()`, floor 1 (this machine: 16 → 8).
+Half rather than all because PoB's calc is CPU-bound (oversubscribing cores buys nothing) and each
+LuaJIT child is ~700 MB resident. Defaulting per-job parallelism to the *whole* pool is the point:
+anything less and a single run — the thing the user actually waits on — stays serial. A second
+concurrent optimise job then queues (strict FIFO) instead of both running at half speed, which is
+the right trade for a single-user local tool. `/api/health` reports
+`registry.effectiveJobParallelism` (the value after `createApp`'s clamp to the real pool), NOT
+`config.jobParallelism` — an embedder or test passing its own smaller pool gets the clamped
+fallback rather than a startup throw, and health must not report a number jobs won't get. Deliberately not exposed as a per-request
 `OptimiseRequest` field this pass — server-config-only, to avoid widening `packages/contract` for
 a knob a local single-user operator can already set via env. Fast suite 344 → 354 (`+3` registry
 admission tests against fake bridges: combined-parallelism-over-pool serialises, a 1-slot +
