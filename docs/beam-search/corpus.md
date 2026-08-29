@@ -1,7 +1,7 @@
 # Beam-search benchmark corpus
 
 The set of PoB-PoE2 build XMLs the tree-planner approach benchmark (`spike/benchTreeApproaches.ts`,
-design step 9) runs against. The design (`docs/beam-search/design.md` → Corpus) calls for **8–15**
+design step 9) runs against. The design (`intake/beam-search-design.md` → Corpus) calls for **8–15**
 builds spanning defence layers, damage types, and spare-point counts, including ≥1 hand-tuned
 (repair must return ≈no change), ≥1 deliberately naive (repair must improve it), and a held-out
 subset never used while tuning `K` / `W` / `D`.

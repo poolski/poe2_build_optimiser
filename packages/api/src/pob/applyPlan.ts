@@ -4,7 +4,7 @@
 // The id list to write is `OptimiseTreeResult.allocatedNodeIds.after` -- the CONNECTED
 // post-plan set the bridge read back (every path node AllocNode dragged in included). It is
 // NOT rebuilt here from `removed` + `addedNodeIds`: those are picks-only and would emit a
-// disconnected tree (docs/gotchas.md, mapper obligation #3 in docs/web-ui/04-api-server.md).
+// disconnected tree (docs/gotchas.md, mapper obligation #3 in intake/web-ui/04-api-server.md).
 //
 // Only the first <Spec> element's `nodes` attribute is touched. PoB keeps weapon-set-specific
 // deviations in separate <WeaponSet1 nodes> / <WeaponSet2 nodes> elements; the optimiser never

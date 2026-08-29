@@ -30,7 +30,7 @@ nodes that would free.
    `0_5` and PoB works in its bundled `0_5`, so allocated ids always land in the rendered layout;
    the mismatch guard only bites XML that *declares* a different version.
 5. **No "points freed" count.** The cascade result is node ids only. A true freed-*points* count
-   has weapon-set subtleties (`docs/status.md` "Blocker (a)") not worth faking for a preview; the
+   has weapon-set subtleties (`PLAN.md` "Blocker (a)") not worth faking for a preview; the
    UI shows `freedNodeIds.length` labelled as nodes.
 
 ## Why the XML can't render the tree itself
@@ -80,7 +80,7 @@ const allocatedNodeIds = await bridge.call<number[]>("list_allocated_nodes");
 ```
 
 No `recomputeBuild` — the no-arg `list_allocated_nodes` path adds zero BuildOutputs
-(`docs/status.md` "RESOLVED — allocatedNodeIds.{before,after}"). Feed it into the
+(`PLAN.md` "RESOLVED — allocatedNodeIds.{before,after}"). Feed it into the
 `BuildSummarySchema.parse({...})`.
 
 ### New route `POST /api/builds/:id/cascade`

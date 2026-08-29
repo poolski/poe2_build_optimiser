@@ -60,8 +60,8 @@ Removing a **leaf** is safe (nothing downstream); a general respec needs `Deallo
 start life restricted to leaves.
 
 **`DeallocNode` cascade — verified fit for any-node repair (2026-08-28, `spike/verifyDeallocCascade.ts`,
-`npm run verify-dealloc-cascade`).** The any-node-repair track (`docs/status.md` §Active next
-track) needs to trust non-leaf removal. Confirmed live on 3 corpus builds (`RampantlyBisexual`
+`npm run verify-dealloc-cascade`).** The any-node-repair track (now shipped; see `PLAN.md` §"Shipped on `main`") needs to trust
+non-leaf removal. Confirmed live on 3 corpus builds (`RampantlyBisexual`
 L80, `Fimozix` L100, `MA-FlickerStrike` L92):
 - `evaluate_dealloc_candidates` already reports the true `pointsFreed` for interior nodes (it
   `DeallocNode`s and diffs `CountAllocNodes()`); no `weird` results (never `< 1`, never

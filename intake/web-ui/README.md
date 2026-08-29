@@ -2,9 +2,11 @@
 
 **Current state (per `git log` on `main`):** v1 **shipped** — a **local web UI** over `src/core/`,
 with the LuaJIT bridge extracted into a standalone service package. Phases 1–3, fork-prep, and the
-rollback tree preview (`09`) are all merged. **Two items remain, neither started:** phase 1.5
-(parallel candidate eval — the single-run wall-time win) and the RePoE-fork asset source (`10`,
-spec only). See Sequencing below for the per-phase status and commit refs.
+rollback tree preview (`09`) are all merged. **Phase 1.5** (parallel candidate eval — the
+single-run wall-time win) is **also merged** (2026-08-29, `f117c84`) and on by default — see
+`01-bridge-service.md` §"Phase 1.5". **One item remains, not started:** the RePoE-fork asset
+source (`10`, spec only). See Sequencing below for the per-phase
+status and commit refs.
 
 This directory is one file per domain — a mix of shipped design-of-record and the two open specs:
 
@@ -21,10 +23,19 @@ This directory is one file per domain — a mix of shipped design-of-record and 
 | [`09-rollback-tree-preview.md`](09-rollback-tree-preview.md) | Rollback anchor picker: reuse the canvas in Configure, click-to-select, freed-subtree preview | **shipped** |
 | [`10-repoe-asset-source.md`](10-repoe-asset-source.md) | **Spec, not built.** Proposes moving the web tree (geometry, node art, stat text) + a gem asset layer onto RePoE-fork, adding real node icons — would reverse `06`'s "no art" | not started |
 
-**On speed:** v1 runs a job as slowly as the CLI does — the pool (phase 1) only overlaps
-*concurrent* jobs, which a single user rarely has. The wall-time win is **phase 1.5** (lever 1b in
-`07`): parallelise one run's candidate batch across the pool. v1 runs against the serial path;
-1.5 (not yet built) is the first fast-follow. Don't let the pool's existence imply v1 runs are fast.
+**On speed:** **phase 1.5 has landed on `main`** (merged 2026-08-29, `f117c84`), so a web-UI run
+is no longer as slow as the CLI. The pool from phase 1 only overlapped *concurrent* jobs, which a
+single user rarely has; phase 1.5 (lever 1b in `07`) parallelises **one run's** candidate batch
+across that pool — `PobBridgePool.lease()`/`acquireParallel()` + `ParallelBridge` in
+`packages/pob-bridge`, `--parallelism <n>` on `optimise-tree`, and `packages/api`'s job runner +
+`JobRegistry` wired to it.
+
+It is **on by default**: `POOL_SIZE` and `JOB_PARALLELISM` both default to half the host's
+`availableParallelism()` (floor 1; a 16-core box → 8), so one optimise job fans across the whole
+warm pool. Half rather than all because PoB's calc is CPU-bound and each LuaJIT child is ~700 MB
+resident. Set `JOB_PARALLELISM=1` for pre-1.5 behaviour, or below `POOL_SIZE` to trade single-run
+speed for job concurrency — a second optimise job otherwise queues (strict FIFO) rather than both
+running at half speed. See `01` §"Phase 1.5".
 
 ## Decisions of record (2026-08-28)
 
@@ -123,7 +134,7 @@ then all callers switched to the package import and the shim was dropped (`5c242
 
 ## Sequencing
 
-Status is per `git log` on `main` (the authoritative source); commit refs in parentheses. `status.md`
+Status is per `git log` on `main` (the authoritative source); commit refs in parentheses. `PLAN.md`
 carries the detailed narrative.
 
 - [x] **Phase 1 — bridge service** (`01`, `02`) — npm workspaces + `tsconfig` split (`660534d`),
@@ -141,9 +152,22 @@ carries the detailed narrative.
       off-by-one fix (`29dc76e`).
 - [x] **Rollback tree preview** (`09`) — canvas reused in Configure, click-to-select anchor,
       freed-subtree preview (`740374a`, PR #2 `05563b2`).
-- [ ] **Phase 4 — parallel candidate eval** (`01` §"Phase 1.5", `07` lever 1b) — **not started.**
-      Pool-backed evaluator in `beamAddLoop`, id-sorted recollection, determinism unchanged. The
-      real single-run wall-time win. (Numbered 1.5 in `01`/`07` because it modifies phase-1 code.)
+- [x] **Phase 1.5 — parallel candidate eval** (`01` §"Phase 1.5", `07` lever 1b) — **merged to
+      `main` 2026-08-29** (`c1d31ae`, `9e5a04d`, `5b67cf6`; merge `f117c84`).
+      `PobBridgePool.lease(n)`/`acquireParallel(n)`
+      (new, atomic all-or-nothing) + `ParallelBridge` (new, `packages/pob-bridge/src/parallel.ts`)
+      shard `evaluate_candidate_nodes[_from]` across N leased slots and recombine by chunk index
+      (order-independent, byte-identical plan to N=1 — `buildOutputCount` is NOT identical, by a
+      predictable amount; see `01` for the mechanism and the live numbers); `get_metrics` is
+      summed across slots; `load_build_xml`/`reset_metrics` broadcast to every slot; everything
+      else routes to the primary slot. Zero changes to `src/core` — `ParallelBridge` is a drop-in
+      `PobBridgeClient`, consistent with "core receives a bridge, never constructs one".
+      `optimise-tree --parallelism <n>` wires it into the CLI. **Wired into `packages/api`'s job
+      runner**: `BridgeSource.acquireParallel(n)`, a `parallelism` field on `JobState` decided at
+      admission, and `JobRegistry`'s admission rewritten to be slot-based (not job-count-based —
+      the old rule silently allowed a lease-time deadlock once a job could request `N > 1` slots).
+      New env `JOB_PARALLELISM` (defaults to half the host's cores, = `POOL_SIZE`). See `01` §"Phase 1.5" for the deadlock argument
+      and the fast admission tests.
 - [ ] **RePoE-fork asset source** (`10`) — **spec only, not started.** Web tree geometry + real node
       art + stat text + gem assets from RePoE-fork; adds icon rendering to the shared `TreeCanvas`.
 

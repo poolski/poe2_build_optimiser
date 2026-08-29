@@ -235,4 +235,4 @@ Each phase is independently shippable; the canvas keeps working (dots) until pha
 4. **Gems** — `fetch-gems.mjs` + gem icons as committed assets. No UI.
 
 Docs updated in this track: `README.md` (index row + decisions 6 & the non-goal), `06-tree-canvas.md`
-and `08-fork-prep.md` (superseding pointers), `status.md` (track entry).
+and `08-fork-prep.md` (superseding pointers), `docs/ROADMAP.md` (track entry).

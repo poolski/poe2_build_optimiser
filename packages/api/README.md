@@ -43,4 +43,4 @@ there is no synchronous "optimise now".
 | `POOL_SIZE` | `2` | one LuaJIT child ≈ one PoB runtime of RAM |
 | `MAX_ACTIVE_JOBS` | `= POOL_SIZE` | clamped ≤ pool so a running job never waits in `acquire()` |
 
-Spec: `docs/web-ui/04-api-server.md`.
+Spec: `intake/web-ui/04-api-server.md`.

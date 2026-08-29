@@ -2,7 +2,7 @@
 // Kept: canvas ref + ResizeObserver + rAF-on-dirty loop + pointer pan + hover pick structure.
 // Changed: draws our stylised renderer, renders a result diff (not an editable tree), and
 // replaces upstream's min/max-jumping wheel zoom with a bounded log slider + fixed wheel step
-// + +/-/fit buttons (docs/web-ui/06-tree-canvas.md "Fixes to make on the port").
+// + +/-/fit buttons (intake/web-ui/06-tree-canvas.md "Fixes to make on the port").
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { drawTree } from "./draw";

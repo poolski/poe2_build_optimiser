@@ -1,5 +1,5 @@
 // Loads + parses packages/web/public/tree-0_5.min.json once, for the result canvas. Committed
-// artifact (docs/web-ui/08-fork-prep.md task 6) -- no API round-trip, no submodule.
+// artifact (intake/web-ui/08-fork-prep.md task 6) -- no API round-trip, no submodule.
 
 import { useEffect, useState } from "react";
 import { parseMinTree } from "../render/minTree";

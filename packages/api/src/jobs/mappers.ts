@@ -1,7 +1,7 @@
 // The request/result mappers between the wire contract (@poe2/contract) and core
 // (src/core/optimiseTree + recommendTree). Everything here is pure.
 //
-// docs/web-ui/04-api-server.md §"Mapper obligations" enumerates the 8 things the contract
+// intake/web-ui/04-api-server.md §"Mapper obligations" enumerates the 8 things the contract
 // CANNOT enforce and this file MUST do; each is tagged [obligation N] at its site.
 
 import type {
@@ -203,8 +203,9 @@ export function toRecommendedNodeDTOs(nodes: RecommendedNode[]): RecommendedNode
  * `RecommendProgress` already call the count `buildOutputs` (not the bridge's
  * `buildOutputCount`) -- [obligation 8]. `jobId` and `elapsedMs` are API-added.
  *
- * `RecommendProgress` carries no `bestObjective`; the contract requires the field, so recommend
- * ticks report 0. (Flagged in the handoff notes -- see the report.)
+ * `RecommendProgress` carries no `bestObjective`, and the contract now makes the field optional,
+ * so a recommend tick simply omits it rather than reporting a fabricated `0` (which is a real
+ * objective value for a 0-DPS-headless build).
  */
 export function normalizeProgress(
 	ev: OptimiseProgress | RecommendProgress,
@@ -216,10 +217,11 @@ export function normalizeProgress(
 		jobId,
 		phase: String(ev.phase),
 		buildOutputs: ev.buildOutputs,
-		bestObjective:
-			typeof anyEv.bestObjective === "number" && Number.isFinite(anyEv.bestObjective) ? anyEv.bestObjective : 0,
 		elapsedMs: Math.max(0, Math.round(elapsedMs)),
 	};
+	if (typeof anyEv.bestObjective === "number" && Number.isFinite(anyEv.bestObjective)) {
+		pe.bestObjective = anyEv.bestObjective;
+	}
 	if (anyEv.estimatedTotal !== undefined) pe.estimatedTotal = anyEv.estimatedTotal;
 	if (anyEv.depth !== undefined) pe.depth = anyEv.depth;
 	if (anyEv.k !== undefined) pe.k = anyEv.k;

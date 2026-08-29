@@ -1,6 +1,6 @@
 // Re-skinned from poe2-build-planner src/render/nodeVisual.ts (MIT -- see ./LICENSE.upstream).
 // Upstream returned an allocated/canAllocate/unallocated string; here it is the full stylised
-// style lookup docs/web-ui/06-tree-canvas.md pins to this file: "dot size by tier + PoE2 colour
+// style lookup intake/web-ui/06-tree-canvas.md pins to this file: "dot size by tier + PoE2 colour
 // + minimal decoration", plus the diff overlay tint (allocated / added / dropped / anchor).
 
 import { NODE_WORLD_RADIUS } from "./lod";

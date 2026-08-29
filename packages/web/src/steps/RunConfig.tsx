@@ -1,5 +1,5 @@
 // Step 2: the run-config form. Model is OptimiseRequestInput so validation mirrors the server
-// (docs/web-ui/05-frontend.md screen 2). Emits patches up to the reducer.
+// (intake/web-ui/05-frontend.md screen 2). Emits patches up to the reducer.
 
 import { useState } from "react";
 import { OBJECTIVE_SPEC_RE, type BuildSummary, type OptimiseRequestInput } from "@poe2/contract";

@@ -1,7 +1,7 @@
 # build_optimiser — working guidance
 
 Optimises PoE2 passive-tree allocations using Path of Building's headless LuaJIT calc engine as
-the fitness oracle. Start with `docs/status.md` — it is the authoritative map.
+the fitness oracle. Start with `PLAN.md` — it is the authoritative map.
 
 ## Tests — the split is deliberate
 
@@ -26,6 +26,16 @@ Two corollaries:
   it stays out of the default suite. This split was introduced deliberately (`2b52cee`) after
   end-to-end optimiser runs leaked into the fast suite.
 
+## Verification loop
+
+- After any change, the routine check is `npm test` (fast, fake bridges) **plus** `npx tsc
+  --noEmit`. Nothing else is required to call a change verified.
+- Everything that boots real LuaJIT — `npm run test:integration`, `npm run bench-tree-approaches`,
+  `npm run verify-dealloc-cascade`, the `spike/` scripts — runs **only when explicitly asked**.
+- For changes that affect the calc result (scoring, objectives, the bridge, tree/alloc code),
+  also validate against real PoB output using the recipe in `docs/beam-search/repro.md` before
+  claiming it is done.
+
 ## Dependencies
 
 - **Never run `npm audit fix --force`.** Five dev-toolchain advisories (vite / vitest / esbuild)
@@ -42,3 +52,18 @@ npm workspaces. `src/` holds the core optimiser and the two CLIs; `packages/` ho
 the constructors live at the edges (the CLIs, and `packages/api/src/server.ts`).
 `packages/api/src/core.ts` is the single module that crosses from `packages/` into repo-root
 `src/`, which is why the API package is `noEmit`.
+
+## Working style
+
+- Reproduce a bug with a failing test before fixing it; debug from that repro, not from
+  guesswork. The bridge is deterministic — a `spike/` script or a fixture will reproduce it.
+- Keep diffs small and single-purpose. Clean up what you touched, not the surrounding file.
+- Never invent PoB stats, node data, or mechanics. If the data the calc needs is missing or
+  looks wrong, stop and surface it — `docs/gotchas.md` records the PoE1 leftovers to distrust.
+
+## Git & review
+
+- Branch off `main`. Keep each PR small and about one thing.
+- Run `/code-review` (or `/code-review ultra` for a larger diff) before asking for human review.
+- Commit at logical boundaries with Conventional Commit subjects; don't bundle unrelated work.
+- Squash-merge feature branches so `main` history stays linear.

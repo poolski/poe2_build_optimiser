@@ -1,4 +1,4 @@
-// The always-correct node-list diff (docs/web-ui/05-frontend.md screen 4). Stays visible beside
+// The always-correct node-list diff (intake/web-ui/05-frontend.md screen 4). Stays visible beside
 // the canvas, and is the only result view when the build's tree version != the shipped one.
 // Pure render of OptimiseResultDTO -- no state.
 

@@ -1,0 +1,125 @@
+{
+  "groundrulesVersion": "1.10.0",
+  "adopted": true,
+  "bootstrappedWithVersion": null,
+  "adoptedAt": "2026-08-29",
+  "adoptionMode": "map",
+  "migrations": [],
+  "answers": {
+    "projectName": "poe2-build-optimiser",
+    "adoptionStrategy": "map-in-place",
+    "intentSource": "PLAN.md"
+  },
+  "intent": {
+    "source": "file",
+    "sourceFile": "PLAN.md",
+    "synthesizedTo": "docs/VISION.md"
+  },
+  "appliedPractices": [
+    {
+      "appliedAt": "2026-08-29",
+      "source": "shanraisshan/claude-code-best-practice",
+      "items": [
+        {"category": "claudemd-section", "name": "Verification loop", "status": "applied"},
+        {"category": "claudemd-section", "name": "Working style", "status": "applied"},
+        {"category": "claudemd-section", "name": "Git & review", "status": "applied"},
+        {"category": "settings-permission", "name": ".claude/settings.json routine-loop allowlist", "status": "applied"},
+        {"category": "claude-rule", "name": ".claude/rules/pob-bridge.md", "status": "applied"},
+        {"category": "claude-rule", "name": ".claude/rules/core-engine.md", "status": "applied"},
+        {"category": "claude-rule", "name": ".claude/rules/docs-map.md", "status": "applied"}
+      ]
+    }
+  ],
+  "loop": {
+    "scaffolded": true,
+    "at": "2026-08-29"
+  },
+  "policies": {
+    "noAiAttribution": false
+  },
+  "generatedFiles": [
+    "docs/VISION.md",
+    "docs/decisions/README.md",
+    "docs/LEARNINGS.md",
+    "intake/README.md",
+    "docs/ARCHITECTURE.md",
+    "docs/GLOSSARY.md",
+    "docs/ROADMAP.md",
+    "docs/PROCESS.md",
+    "loop/README.md",
+    "loop/maker.md",
+    "loop/verifier.md",
+    "loop/.gitignore",
+    "loop/run-loop.sh",
+    "loop/run-loop.ps1"
+  ],
+  "adoptedFiles": {
+    "CLAUDE.md": "instructions (project-specific; not tool-managed)",
+    "README.md": "README (real project doc; not boilerplate)",
+    "LICENSE.md": "license",
+    "PLAN.md": "plan & map (living status/roadmap + active worklist; was docs/status.md, moved 2026-08-29)",
+    "docs/gotchas.md": "reference (PoB-PoE2 quirks)",
+    "docs/constraint-rejection-repro.md": "reference (live repro of recommender constraints)",
+    "docs/beam-search/": "reference (completed optimization track: results + validation)",
+    "docs/cli/": "reference (user-facing CLI docs)",
+    "docs/decisions/": "decisions (ADR-001..ADR-011, extracted from prose 2026-08-29)",
+    "intake/beam-search-design.md": "spec (tree-optimiser design + implementation checklist)",
+    "intake/web-ui/": "spec (web UI + bridge-service design track, phases 1-10)",
+    "intake/skill-optimiser-design.md": "spec (shelved track, kept for context)"
+  },
+  "skippedFiles": {
+    "src/": "code (not a doc)",
+    "packages/": "code & workspaces (not docs)",
+    "spike/": "experiments (not docs)",
+    "scripts/": "tooling (not docs)",
+    ".gitignore": "config (not a doc)",
+    ".gitmodules": "config (not a doc)",
+    "tsconfig.*.json": "config (not a doc)",
+    "vitest.*.ts": "config (not a doc)",
+    "package.json": "config (not a doc)",
+    "testBuild.xml": "test artifact (not a doc)"
+  },
+  "detectedStack": {
+    "language": "TypeScript",
+    "runtime": "Node.js",
+    "packageManager": "npm",
+    "monorepo": "npm workspaces",
+    "framework": "ts-node, vitest",
+    "gitRemote": "github.com/poolski/build_optimiser"
+  },
+  "detectedFeatures": {
+    "hasGlobalClaude": false,
+    "hasProjectClaude": true,
+    "hasSuperpowers": false,
+    "hasPlanningFiles": true,
+    "planningFilesSearched": [
+      "plan.md",
+      "todo.md",
+      "todos.md",
+      "tasks.md",
+      "backlog.md"
+    ],
+    "existingDocs": [
+      "README.md",
+      "CLAUDE.md",
+      "LICENSE.md",
+      "PLAN.md",
+      "docs/gotchas.md",
+      "docs/skill-optimiser-design.md",
+      "docs/constraint-rejection-repro.md",
+      "docs/beam-search/",
+      "docs/cli/",
+      "docs/web-ui/"
+    ]
+  },
+  "migratedFiles": {
+    "docs/status.md": "PLAN.md (2026-08-29: full move to repo-root PLAN.md — groundrules active-plan sections on top, the map below; status.md deleted, all references repointed)",
+    "docs/web-ui/": "intake/web-ui/ (2026-08-29 post-adoption reorg: design spec, not curated doc)",
+    "docs/skill-optimiser-design.md": "intake/skill-optimiser-design.md (2026-08-29)",
+    "docs/beam-search/design.md": "intake/beam-search-design.md (2026-08-29; results stay in docs/beam-search/)"
+  },
+  "metadata": {
+    "adoptedBy": "Claude Code groundrules plugin v1.10.0",
+    "adoptionNotes": "Adopted in map mode (no moves). A 2026-08-29 follow-up reorg then split docs by kind: design specs (web-ui/, beam-search design, skill-optimiser-design) moved to intake/; decisions of record extracted from prose into docs/decisions/ as ADR-001..ADR-011. On 2026-08-29 docs/status.md was moved to repo-root PLAN.md (active plan + the map); VISION.md synthesizes it. See migratedFiles."
+  }
+}

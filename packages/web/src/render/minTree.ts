@@ -1,6 +1,6 @@
 // Data-load glue: parse packages/web/public/tree-0_5.min.json into the MinTree the ported
 // renderer consumes. This is the "rewrite the schema-facing part against PoB's tree" work
-// docs/web-ui/06-tree-canvas.md calls for -- upstream's src/tree/ (GGG dev-export schema) is
+// intake/web-ui/06-tree-canvas.md calls for -- upstream's src/tree/ (GGG dev-export schema) is
 // deliberately NOT ported.
 //
 // min-tree node tuple (see meta.nodeFields):

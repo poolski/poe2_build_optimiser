@@ -1,6 +1,6 @@
 // Repeatable `metric = number` constraint rows + a Preserve list (floor each at baseline) + a
 // Min-resist shortcut. Emits { constraints, preserveMetrics, minResist } for the request model
-// (docs/web-ui/05-frontend.md screen 2, ConstraintsEditor).
+// (intake/web-ui/05-frontend.md screen 2, ConstraintsEditor).
 
 import { useState } from "react";
 

@@ -62,7 +62,7 @@ export type BuildSummary = z.infer<typeof BuildSummary>;
 /**
  * Response of `POST /api/builds/:id/cascade` -- the downstream `DeallocNode` cascade that rolling
  * back to `anchorNodeId` would free. Node ids only (no "points freed" count: a true point count
- * has weapon-set subtleties, `docs/status.md` "Blocker (a)", not worth faking for a preview).
+ * has weapon-set subtleties, `PLAN.md` "Blocker (a)", not worth faking for a preview).
  * `freedNodeIds` is ascending and includes the anchor itself. Spec: `09-rollback-tree-preview.md`.
  */
 export const CascadeResult = z.object({

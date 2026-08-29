@@ -3,7 +3,7 @@
 // the API validates every untrusted request body against these, the UI builds its forms and
 // result views against `z.infer` of the same schemas.
 //
-// Spec: docs/web-ui/03-shared-contract.md. Everything the UI consumes is inferable -- no
+// Spec: intake/web-ui/03-shared-contract.md. Everything the UI consumes is inferable -- no
 // hand-written interface that could drift from a schema.
 
 /** Bumped whenever any schema in this package changes. Echoed on the API's `/api/health` so a

@@ -1,4 +1,4 @@
-// Step 3: live progress from the SSE stream (docs/web-ui/05-frontend.md screen 3). Renders from
+// Step 3: live progress from the SSE stream (intake/web-ui/05-frontend.md screen 3). Renders from
 // a single ProgressEvent. `phase` is an open string in the contract (phase 1.5 adds more) -- the
 // label map has a default branch.
 
@@ -45,8 +45,11 @@ export default function RunProgress({ progress, baselineObjective, error, onCanc
     p?.estimatedTotal && p.estimatedTotal > 0
       ? Math.min(100, (p.buildOutputs / p.estimatedTotal) * 100)
       : null;
+  // `bestObjective` is optimise-only -- a recommend tick omits it (contract), and `0` is a real
+  // objective for a 0-DPS-headless build, so this must key off presence, not truthiness.
+  const best = p?.bestObjective;
   const delta =
-    p && baselineObjective != null ? p.bestObjective - baselineObjective : null;
+    best != null && baselineObjective != null ? best - baselineObjective : null;
 
   return (
     <div className="panel">
@@ -67,16 +70,20 @@ export default function RunProgress({ progress, baselineObjective, error, onCanc
             {p.buildOutputs}
             {p.estimatedTotal ? ` / ~${p.estimatedTotal}` : ""}
           </dd>
-          <dt>Best objective</dt>
-          <dd>
-            {fmt(p.bestObjective)}{" "}
-            {delta != null && (
-              <span className={delta >= 0 ? "delta-pos" : "delta-neg"}>
-                ({delta >= 0 ? "+" : ""}
-                {fmt(delta)} vs baseline)
-              </span>
-            )}
-          </dd>
+          {best != null && (
+            <>
+              <dt>Best objective</dt>
+              <dd>
+                {fmt(best)}{" "}
+                {delta != null && (
+                  <span className={delta >= 0 ? "delta-pos" : "delta-neg"}>
+                    ({delta >= 0 ? "+" : ""}
+                    {fmt(delta)} vs baseline)
+                  </span>
+                )}
+              </dd>
+            </>
+          )}
           {p.depth != null && (
             <>
               <dt>Depth</dt>

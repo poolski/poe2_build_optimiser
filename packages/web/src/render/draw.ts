@@ -1,6 +1,6 @@
 // Adapted from poe2-build-planner src/render/draw.ts (MIT -- see ./LICENSE.upstream). Upstream
 // blits sprite atlases + a DDS ascendancy overlay; this is the stylised-shapes rewrite
-// (docs/web-ui/06-tree-canvas.md): plain arcs for nodes, category tint + diff overlay, no art.
+// (intake/web-ui/06-tree-canvas.md): plain arcs for nodes, category tint + diff overlay, no art.
 
 import { edgeGeometry } from "./arc";
 import { lodFor } from "./lod";

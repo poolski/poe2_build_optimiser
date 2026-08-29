@@ -1,4 +1,4 @@
-// Shared 400 shape. Per docs/web-ui/04-api-server.md a Zod / input failure is
+// Shared 400 shape. Per intake/web-ui/04-api-server.md a Zod / input failure is
 // `{ kind: "bad-request", message }` -- note this is NOT a `JobError` (which carries a jobId);
 // it is a pre-job rejection.
 

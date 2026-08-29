@@ -4,7 +4,7 @@
 // the freed points).
 // Argument parsing + console output live here; core/optimiseTree.ts returns plain data.
 
-import { PobBridge } from "@poe2/pob-bridge";
+import { ParallelBridge, PobBridge, PobBridgePool } from "@poe2/pob-bridge";
 import { ELEMENTAL_RESIST_METRICS, expectValue, parseConstraint, parseIntFlag, parseList } from "./cliShared";
 import { loadBuildFromFile } from "./core/loadBuild";
 import { parseObjective } from "./core/objective";
@@ -42,6 +42,10 @@ const USAGE = `usage: optimise-tree <path-to-build.xml> [options]
     --beam-width <n>             partial plans kept in parallel (default 1 = greedy walk); >1
                                  survives a step whose locally best move is a dead end
     --beam-depth <n>             hard cap on add-steps (default: bounded only by the point budget)
+    --parallelism <n>            evaluate each add-step's candidate batch across n warm LuaJIT
+                                 children instead of one (phase 1.5). Wall time only -- the plan
+                                 is byte-identical to --parallelism 1 / omitted. n <= 8 recommended
+                                 (~700 MB resident per child); overridable via POOL_SIZE.
 
   constraints (floors on any mainOutput metric)
     --min-resist <n>             floor Fire/Cold/Lightning resist at n
@@ -56,6 +60,8 @@ export interface OptimiseCliArgs {
 	extraPoints: number | null;
 	/** Present only so main() can warn when extend mode has nothing to do. */
 	explicitBudget: boolean;
+	/** Phase 1.5: candidate-batch evaluation fan-out. 1 / undefined = the plain single-bridge path. */
+	parallelism: number;
 }
 
 export function parseArgs(argv: string[]): OptimiseCliArgs {
@@ -76,6 +82,7 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 	let beamDepth: number | undefined;
 	let freeze: number[] | undefined;
 	let anchorNodeId: number | undefined;
+	let parallelism: number | undefined;
 	const constraints: Record<string, number> = {};
 	let preserveMetrics: string[] | undefined;
 
@@ -115,6 +122,8 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 			freeze = parseList(expectValue(argv, ++i, "--freeze")).map((t) => parseIntFlag(t, "--freeze"));
 		} else if (arg === "--rollback-to") {
 			anchorNodeId = parseIntFlag(expectValue(argv, ++i, "--rollback-to"), "--rollback-to");
+		} else if (arg === "--parallelism") {
+			parallelism = parseIntFlag(expectValue(argv, ++i, "--parallelism"), "--parallelism");
 		} else if (arg === "--min-resist") {
 			const floor = Number(expectValue(argv, ++i, "--min-resist"));
 			if (!Number.isFinite(floor)) throw new Error("--min-resist expects a number");
@@ -148,6 +157,9 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 	}
 	if (beamDepth !== undefined && beamDepth < 1) {
 		throw new Error("--beam-depth must be >= 1");
+	}
+	if (parallelism !== undefined && parallelism < 1) {
+		throw new Error("--parallelism must be >= 1");
 	}
 
 	// Resolve mode. `--rollback-to` selects repair on its own (respec budget then bounds only the
@@ -192,7 +204,13 @@ export function parseArgs(argv: string[]): OptimiseCliArgs {
 	const explicitBudget = pointBudget !== undefined || extraPoints !== undefined;
 	if (pointBudget !== undefined) options.pointBudget = pointBudget;
 
-	return { buildXmlPath: positional[0], options, extraPoints: extraPoints ?? null, explicitBudget };
+	return {
+		buildXmlPath: positional[0],
+		options,
+		extraPoints: extraPoints ?? null,
+		explicitBudget,
+		parallelism: parallelism ?? 1,
+	};
 }
 
 function fmt(n: number): string {
@@ -264,9 +282,14 @@ async function main(): Promise<void> {
 		console.log(USAGE);
 		return;
 	}
-	const { buildXmlPath, options, extraPoints, explicitBudget } = parseArgs(argv);
+	const { buildXmlPath, options, extraPoints, explicitBudget, parallelism } = parseArgs(argv);
 
-	const bridge = new PobBridge();
+	// Phase 1.5: parallelism > 1 leases N warm pool slots and fans each add-step's candidate batch
+	// across them (see @poe2/pob-bridge's ParallelBridge). It is a drop-in PobBridgeClient, so
+	// nothing below this point needs to know which path was taken -- optimiseTree's plan is
+	// byte-identical either way; only wall time changes.
+	const pool = parallelism > 1 ? new PobBridgePool({ size: parallelism }) : undefined;
+	const bridge = pool ? new ParallelBridge((await pool.lease(parallelism)).slots) : new PobBridge();
 	try {
 		await loadBuildFromFile(bridge, buildXmlPath);
 		await bridge.call("reset_metrics");
@@ -289,7 +312,8 @@ async function main(): Promise<void> {
 		const wall = ((Date.now() - t0) / 1000).toFixed(1);
 		report(result, wall);
 	} finally {
-		bridge.dispose();
+		if (pool) await pool.dispose();
+		else (bridge as PobBridge).dispose();
 	}
 }
 

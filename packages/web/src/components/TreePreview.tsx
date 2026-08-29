@@ -1,4 +1,4 @@
-// The Configure-step tree preview (docs/web-ui/09-rollback-tree-preview.md). Draws the loaded
+// The Configure-step tree preview (intake/web-ui/09-rollback-tree-preview.md). Draws the loaded
 // build's current tree in every mode; in rollback mode the allocated nodes are clickable and
 // picking one sets the anchor + previews the downstream subtree that rolling back would free.
 //

@@ -2,7 +2,7 @@
 // PobBridgePool, with an in-memory job registry and an SSE progress stream.
 //
 // Local-first, single-user, binds 127.0.0.1, no auth. Do not deploy this.
-// Spec: docs/web-ui/04-api-server.md. Run it via `npm start` (repo root).
+// Spec: intake/web-ui/04-api-server.md. Run it via `npm start` (repo root).
 
 export const API_PACKAGE = "@poe2/api";
 
