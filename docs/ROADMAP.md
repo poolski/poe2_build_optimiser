@@ -9,6 +9,19 @@ priority order, with the bar each one has to clear.
 
 ## Next up
 
+### Live progress view in the web UI
+
+Make a running optimise job legible: per-shard worker rows, the top-N promising nodes for the
+current add-step, and a `bestObjective` sparkline, instead of only a rising recompute counter.
+
+- **Spec:** [`docs/prd/web-ui-live-progress-view.md`](prd/web-ui-live-progress-view.md) — PRD
+  written (draft), not built.
+- **Blocked on:** the PRD's open questions, chiefly what a "worker" is on screen — parallelism
+  lives entirely inside `ParallelBridge` (batch sharding, zero `src/core` knowledge), so
+  per-worker *current candidate* state is not reachable from `beamAddLoop` as the PRD assumed.
+  Resolve that before step 2.
+- **Effort:** moderate — touches contract, core tick sites, API relay, and `RunProgress.tsx`.
+
 ### Bench sweep for a default `beamWidth > 1`
 
 The optimiser ships with `beamWidth = 1` (pure greedy), proven sufficient on the 25-build corpus.

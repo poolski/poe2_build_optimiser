@@ -43,8 +43,7 @@ Raw ideas, captured before they're lost (e.g. via `/groundrules:idea`). Not yet 
 gets triaged later → a **decision** (ADR), a **build** (PRD), a **milestone** (ROADMAP), or
 dropped.
 
-- [ ] **Live progress view in the web UI** — while a plan runs, show the parallel workers, the
-  most-promising nodes, and real forward progress rather than just a recompute counter. *(build)*
+- [ ] *(nothing to triage)*
 
 ## Waiting / blocked
 
@@ -56,6 +55,9 @@ dropped.
   (2026-08-29)
 - [x] Extracted forward-looking roadmap items to `docs/ROADMAP.md`; PLAN.md keeps the now-work
   and the map (2026-08-29)
+- [x] Triaged the live-progress-view idea into a PRD
+  ([`docs/prd/web-ui-live-progress-view.md`](docs/prd/web-ui-live-progress-view.md)) and a
+  `docs/ROADMAP.md` entry (2026-08-29)
 
 ---
 
