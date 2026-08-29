@@ -1,6 +1,6 @@
 # build_optimiser — status & roadmap
 
-Living status doc. Last updated 2026-08-28.
+Living status doc. Last updated 2026-08-29.
 
 `build_optimiser` recommends / optimises PoE2 passive-tree allocations using PoB-PoE2's own
 headless calc engine as the fitness oracle (same technique as the sibling `poe2_craftsman`
@@ -170,12 +170,12 @@ Full sketch: `docs/beam-search/design.md` §7 ("Any-node repair") + §"Open ques
 
 ## Track: web UI + bridge service (added 2026-08-28; v1 shipped 2026-08-29)
 
-**Current state (per `git log` on `main`):** v1 has **shipped and merged** — phases 1–3, fork-prep,
-and the rollback tree preview (`09`). **Phase 1.5** (parallel candidate eval, the single-run
-wall-time win) is **built on branch `phase1.5-parallel-eval`** (not yet merged to `main`, not yet
-wired into `packages/api`'s job runner — see `docs/web-ui/01-bridge-service.md` §"Phase 1.5"). What
-remains, not started: **`10`** (RePoE-fork asset source, spec only). The detail below is kept as
-the record of how v1 landed; phase 1.5 is summarized further down under "Track: web UI".
+**Current state (per `git log` on `main`):** v1 **and phase 1.5** are both **shipped and merged** —
+phases 1–3, fork-prep, the rollback tree preview (`09`), and parallel candidate evaluation
+(`f117c84`, 2026-08-29), which is wired through `packages/api`'s job runner and on by default. The
+**only** remaining item on this track, not started: **`10`** (RePoE-fork asset source, spec only).
+The detail below is kept as the record of how v1 landed; phase 1.5 is summarized further down
+under "Track: web UI".
 
 A **local web UI** over the same `src/core/` functions. It also pulled the long-deferred
 **bridge → standalone package** work along with it: a browser cannot shell out to LuaJIT, so the
@@ -183,10 +183,11 @@ bridge moved behind a long-lived service boundary. The two landed together.
 
 **Shape:** local-first — a `localhost` app wrapping the local LuaJIT bridge, single user, not
 hosted. A third consumer of `src/core/` after the two CLIs, same "parse in / data out" contract.
-v1 touches core in two places (`onProgress` + `shouldContinue` for prompt cancel); a post-v1
-**phase 1.5** (parallel candidate evaluation within one run) adds a third and is what actually
-makes a single run fast — **v1 runs are as slow as the CLI**, just with a progress bar and a
-cancel that frees the slot within one add-step.
+v1 touched core in two places (`onProgress` + `shouldContinue` for prompt cancel). *Historical
+note:* v1 runs were as slow as the CLI, just with a progress bar and a cancel that frees the slot
+within one add-step. **Phase 1.5 has since removed that limitation** — and did it with *zero*
+further core changes, since `ParallelBridge` is a drop-in `PobBridgeClient` (the plan below
+predicted it would need a third core change; it did not).
 
 **Full plan is now `docs/web-ui/` — one file per domain:**
 
@@ -228,6 +229,9 @@ cancel that frees the slot within one add-step.
    overlaps concurrent jobs, which a single user rarely has, so it barely moves the wait the user
    sees. Phase 1.5 (lever 1b) parallelises one run's candidate batch across the pool — the real
    wall-time win, and the first fast-follow after v1 ships.
+   **SUPERSEDED 2026-08-29:** phase 1.5 shipped, and with it the size-2 default. `POOL_SIZE` and
+   `JOB_PARALLELISM` now both default to half the host's `availableParallelism()` (floor 1), so a
+   single run *is* parallelised, by default, across the whole warm pool.
 
 Sequencing: phase 1 (bridge) → **fork-prep** (`08`) → phase 2 (API) → phase 3 (UI = wizard + list
 diff + tree canvas) = **v1**. Then **phase 1.5** (parallel candidate eval, the wall-time win) as
@@ -293,7 +297,7 @@ comparison. Tests: fast suite 101 → 106, integration 10 → 11 (new
 That ordering played out as planned: `03` (the contract) landed serial and alone (it forces rework
 in two tracks if it moves), then `04` and `05`+`06` forked into parallel worktrees.
 
-### Phase 1.5 — parallel candidate evaluation within a run — BUILT (2026-08-29, `phase1.5-parallel-eval`, unmerged)
+### Phase 1.5 — parallel candidate evaluation within a run — SHIPPED (merged to `main` 2026-08-29, `f117c84`)
 
 Full design record: `docs/web-ui/01-bridge-service.md` §"Phase 1.5". Summary: `PobBridgePool`
 gained `lease(n)` (acquires `n` slots together as one atomic, all-or-nothing unit — a `lease()`

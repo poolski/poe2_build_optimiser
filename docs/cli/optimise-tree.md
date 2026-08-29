@@ -108,6 +108,22 @@ the scoring says about them individually.
 | `--max-candidates <n>` | — | hard cap per step after the screens. A development knob; it can cut off good candidates |
 | `--beam-width <n>` | `1` | how many partial plans to carry in parallel |
 | `--beam-depth <n>` | unbounded | hard cap on the number of add-steps |
+| `--parallelism <n>` | `1` | evaluate each step's candidate batch across `n` warm LuaJIT children instead of one. Wall time only — the plan is identical |
+
+**On `--parallelism`:** this is the single biggest wall-time lever. Each add-step scores hundreds
+of candidates, and at `n > 1` that batch is split across `n` LuaJIT children and recombined in a
+fixed order, so **the plan is byte-identical to `--parallelism 1`** no matter what `n` is. Only
+the waiting changes.
+
+Two caveats worth knowing:
+
+- **RAM.** Each child is roughly 700 MB resident, so `n` is bounded by memory, not cores — 8 is a
+  sane ceiling on a 32 GB machine. Half your core count is a good starting point.
+- **`buildOutputs` goes up slightly.** Sharding a batch into `n` calls costs `n - 1` extra
+  recomputes per add-step, because each call ends with one bookkeeping recompute. It does not
+  affect the result, but it means the recompute counts in `docs/beam-search/repro.md` only
+  reproduce at the default of 1 — which is why the default stays 1 here even though the web UI
+  defaults to using the whole pool.
 
 **On `--beam-width`:** at 1 the search is a greedy walk — it takes the best move at each step and
 never reconsiders. Above 1 it keeps several partial plans alive, which lets it survive a step

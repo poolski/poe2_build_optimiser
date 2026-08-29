@@ -29,10 +29,11 @@ exports with a home-grown engine. **No.** Reasons, recorded so this stays settle
   `poe2-tools/poe2-build-planner` does no DPS calc at all and lists PoB as the data fallback.
 
 The web UI does not change this: a run stays minutes, which is why the whole design is
-submit → progress stream → result (`04`, `05`). For **v1**, interactive feel is *only* the
-progress stream + a prompt cancel — the run itself is as slow as the CLI. The wall-time cut comes
-from **phase 1.5** (lever 1b — parallel candidate evaluation within a run); until that lands, be
-honest in the UI that a big repair job is a 15-minute job.
+submit → progress stream → result (`04`, `05`). In **v1** interactive feel was *only* the progress
+stream + a prompt cancel, and the run itself was as slow as the CLI. **Phase 1.5** (lever 1b —
+parallel candidate evaluation within a run) has since landed on `main` and cuts that wall time by
+roughly the pool size, but a big repair job is still minutes, not seconds — keep the UI honest
+about that.
 
 ## Cost model
 
@@ -58,7 +59,7 @@ bigger picture.
 | # | Lever | Effect | Status | Where |
 |---|-------|--------|--------|-------|
 | 1a | **Parallel bridge pool — across jobs** | Overlap independent *jobs* across cores. The bench proved it: 8.3 core-hours → 1h20m at N=8. **But this is a single-user tool — concurrent jobs are rare — so on its own this lever barely moves the wall time the user actually waits on.** It exists so a queued second job isn't blocked, and as the substrate for 1b. | **designed** — `PobBridgePool`, phase 1 (`01`). Bench ref: `runWithConcurrency`, `spike/benchTreeApproaches.ts:277` | `01-bridge-service.md` |
-| 1b | **Parallel candidate batch — within a run** | Evaluate an add-step's `P` surviving candidates across the pool instead of serially on one bridge. This is what turns a 15–37 min run into ~3–5 min on an 8-core box — the only lever that makes a *single* run feel responsive. Landed as a `packages/pob-bridge` change only (`ParallelBridge` shards `evaluate_candidate_nodes[_from]` and recombines by chunk index, not arrival order) — **zero `src/core` changes needed**, since `ParallelBridge` is a drop-in `PobBridgeClient` and `MemoEvaluator` already funnels every candidate batch through one `bridge.call()`. | **built — `phase1.5-parallel-eval` branch, not merged; not wired into `packages/api`** | `01-bridge-service.md` §"Phase 1.5" |
+| 1b | **Parallel candidate batch — within a run** | Evaluate an add-step's `P` surviving candidates across the pool instead of serially on one bridge. This is what turns a 15–37 min run into ~3–5 min on an 8-core box — the only lever that makes a *single* run feel responsive. Landed as a `packages/pob-bridge` change only (`ParallelBridge` shards `evaluate_candidate_nodes[_from]` and recombines by chunk index, not arrival order) — **zero `src/core` changes needed**, since `ParallelBridge` is a drop-in `PobBridgeClient` and `MemoEvaluator` already funnels every candidate batch through one `bridge.call()`. | **SHIPPED** — merged to `main` 2026-08-29 (`f117c84`); wired into `packages/api`'s job runner + slot-based `JobRegistry` admission, on by default (`JOB_PARALLELISM` = half the host's cores) | `01-bridge-service.md` §"Phase 1.5" |
 | 2 | **Cross-beam memoisation** | Cache `(sorted allocSet, nodeId) → result`; beam states that reconverge via different order hit it. `BuildOutput` isn't incremental, so this is the main way to reclaim repeated work. Earns its place only at `W > 1`. | **done** — `MemoEvaluator`, `src/core/evaluator.ts` (pruning layer 5) | `beam-search/design.md` |
 | 3 | **Cheap candidate screens** | Objective keyword filter (drop non-matching stat lines) + proximity gating (only nodes within `K` path-points of the frontier; also caps path-node drag-in). Cuts `P` from hundreds to tens at zero recompute cost. | **done** — layers 1 & 2 | `beam-search/design.md` |
 | 4 | **Approx pre-scoring** | Linear / log-linear delta estimate from stat lines vs a cached multiplier snapshot; real-evaluate only the top ~20. This is the honest version of "score without PoB" — a *filter*, not the oracle. Directional only: `15% increased phys` is worthless to a no-phys build and huge to another, and telling them apart needs build context, i.e. a partial calc. Good enough to rank a shortlist into. | **deferred** — layer 4, past v1 | `beam-search/design.md` |
@@ -81,8 +82,8 @@ bigger picture.
 
 Do them in this order, stopping when it's fast enough:
 
-1. Ship lever 1b (phase 1.5) — parallelise the per-add-step candidate batch across the pool. This
-   is the big one and the pool from phase 1 is already the substrate.
+1. ~~Ship lever 1b (phase 1.5)~~ — **DONE 2026-08-29** (`f117c84`). Was the big one; the pool from
+   phase 1 was already the substrate.
 2. Spike lever 5 (objective-scoped BuildOutput) — bounded, no accuracy cost, one bridge flag.
 3. Land layer 4 (approx pre-scoring) from the beam-search deferred list.
 4. Only then consider lever 10.

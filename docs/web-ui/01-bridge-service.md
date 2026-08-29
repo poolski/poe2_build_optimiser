@@ -135,8 +135,9 @@ parallelise *one* run.
 
 ## Phase 1.5 — parallel candidate evaluation within a run
 
-**BUILT** (2026-08-29, branch `phase1.5-parallel-eval`, not yet merged to `main`; not yet wired
-into `packages/api`'s job runner — see "Not yet wired" below). Scoped here because it is what
+**SHIPPED** — merged to `main` 2026-08-29 (`c1d31ae`, `9e5a04d`, `5b67cf6`; merge `f117c84`),
+including the `packages/api` job-runner wiring, and **on by default** (`POOL_SIZE` and
+`JOB_PARALLELISM` each default to half the host's cores). Scoped here because it is what
 actually cuts a single run's wall time (`07` lever 1b), and because it constrained the pool API
 above (`PobBridgePool.lease`).
 
@@ -248,7 +249,8 @@ run) knows to treat it as a cost figure, not a timing one, once N > 1.
 implemented by `PobBridgePool.acquireParallel(n)` (`lease(n)` + `ParallelBridge`, wrapped back into
 a single `{call, release}` handle). `JobState` carries a `parallelism` field decided once at
 `create()` — `1` for "recommend" jobs always (their bridge calls aren't the sharded `_from` batch
-form a beam loop step uses), `jobParallelism` (a registry-wide setting, default 1) for "optimise"
+form a beam loop step uses), `jobParallelism` (a registry-wide setting, defaulting to half the
+host's cores) for "optimise"
 jobs. The job runner (`packages/api/src/jobs/runner.ts`) picks `acquireParallel(job.parallelism)`
 when `> 1`, else the plain `acquire()` path (kept untouched for the common `parallelism === 1`
 case).
@@ -271,10 +273,23 @@ that happens to fit, to avoid a large job starving behind an endless stream of s
 `PobBridgePool.lease()` was *also* hardened to be atomically all-or-nothing internally (defence in
 depth for any caller that isn't going through this admission control).
 
-`POOL_SIZE` and `JOB_PARALLELISM` both default to **half the host's `availableParallelism()`** (floor 1; 16 cores → 8), so one optimise job fans across the whole warm pool out of the box. `JOB_PARALLELISM` (env, formerly default **1** — i.e. off, byte-identical to
-pre-phase-1.5 behaviour) is the new conservative knob; raising it trades pool headroom for
-wall-clock, since each additional slot committed per job is another ~700 MB-resident LuaJIT child.
-`GET /api/health` now echoes `jobParallelism` for visibility. **Deliberately not exposed as a
+`POOL_SIZE` and `JOB_PARALLELISM` both default to **half the host's `availableParallelism()`**
+(floor 1; 16 cores → 8), so one optimise job fans across the whole warm pool out of the box.
+Half rather than all because PoB's calc is CPU-bound — oversubscribing cores buys nothing — while
+each child is another ~700 MB resident (8 → ~5.6 GB). `availableParallelism()` rather than
+`cpus().length` so cgroup / CPU-affinity limits are respected.
+
+Defaulting *per-job* parallelism to the whole pool is deliberate: anything less leaves a single
+run — the thing the user waits on — partly serial. A second concurrent optimise job then queues
+(strict FIFO) instead of both running at half speed, the right trade for a single-user local tool.
+Set `JOB_PARALLELISM=1` for pre-phase-1.5 behaviour, or below `POOL_SIZE` to trade single-run speed
+for job concurrency.
+
+`createApp` clamps a *defaulted* `jobParallelism` to the size of the pool it was actually handed
+(`config.jobParallelism` is derived from `config.poolSize`, which an embedder or test need not be
+using) — an explicitly-passed value is left unclamped so a real misconfiguration still throws in
+`JobRegistry`. `GET /api/health` reports `registry.effectiveJobParallelism`, the post-clamp value,
+never `config.jobParallelism` — health must not report a number jobs won't get. **Deliberately not exposed as a
 per-request field on `OptimiseRequest`** in this pass — kept server-config-only to avoid widening
 `packages/contract`'s surface (Zod schema, DTO, mapper, wizard form) for a knob a single local
 operator can already set via env; a per-request override is a reasonable future addition if the
