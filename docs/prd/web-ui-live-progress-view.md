@@ -5,7 +5,7 @@
 > builds the right thing — not a coherent surprise. Validate it (and answer the open questions)
 > before any code. Update it if the scope shifts.
 
-**Date**: 2026-08-29 · **Status**: draft
+**Date**: 2026-08-29 · **Status**: draft — on [`docs/ROADMAP.md`](../ROADMAP.md) § Next up
 
 ## Problem
 
@@ -58,15 +58,15 @@ that looks wrong.
   forwards (progress object is reused).
 - Frontend `RunProgress.tsx`: worker rows, top-N nodes list, `bestObjective` sparkline. Keep the
   existing counter / rate / elapsed / bar.
-- **Canvas if cheap**: if the stylised tree canvas (spec `06`) is already wired into the result
-  view by the time this is built, also highlight the top-N nodes there. Otherwise list-only and
-  leave canvas integration to `06`.
+- **Canvas highlight**: the stylised tree canvas (spec `06`) is shipped and wired into the result
+  view, so highlighting the top-N nodes on it is in scope — additive over the existing
+  before/after diff colouring.
 
 **Out of scope** (explicit)
 
 - **Any change to search order, pruning, or the beam algorithm.** Progress reporting only.
-- A dedicated progress-only tree canvas, or promoting canvas integration to a hard requirement
-  (it's opportunistic — see "canvas if cheap" above).
+- A dedicated progress-only tree canvas. The highlight reuses the shipped `06` canvas as-is; no
+  new renderer, no progress-specific geometry.
 - `recommendTree` parity — recommend keeps its coarse `candidatesScored / candidatesTotal` tick
   for v1. (Not hard-locked; revisit if cheap.)
 - Historical run replay / persisting progress after the run ends.
@@ -110,8 +110,8 @@ Ordered steps, each with a validation point.
    coalesce rendering to tick cadence. *Validation*: `RunProgress.test.tsx` covers render from
    an event with workers + topNodes + a multi-point objective series, and from a bare recommend
    event (no sparkline, no workers).
-6. **Canvas (conditional)** — if spec `06`'s canvas is in the result view, highlight top-N
-   nodes on it. *Validation*: visual check; skip cleanly if `06` isn't landed.
+6. **Canvas highlight** — highlight the top-N nodes on the shipped `06` canvas, additive over the
+   before/after diff colouring. *Validation*: visual check.
 7. **End-to-end check** — run a real optimise job via the web UI against a local bridge, pool
    size 2; confirm worker rows change, top-N re-sorts per add-step, sparkline climbs.
    *Validation*: manual, screenshot in the PR.
@@ -134,9 +134,9 @@ Ordered steps, each with a validation point.
 - **Denominator dishonesty.** A progress bar backed by a `P·W·D·(1+Ksweep)` estimate that jumps
   or exceeds 100% erodes trust more than having no bar. *Mitigation*: keep the existing rule —
   bar only once `estimatedTotal` is known for the depth; clamp to 100; label "estimate".
-- **Scope creep into canvas / tree viz.** "Show promising nodes" quietly grows into building the
-  tree canvas here, colliding with spec `06`. *Mitigation*: list-only is the default; canvas
-  work is strictly "if `06` already wired it", enforced at review.
+- **Scope creep into canvas / tree viz.** "Show promising nodes" quietly grows into reworking the
+  tree renderer. *Mitigation*: the highlight is a layer over the shipped `06` canvas — no renderer
+  changes — enforced at review; the list stays the source of truth if the highlight is cut.
 - **Determinism regression slips through.** A convenience `await` on the new bridge RPC subtly
   reorders evaluation; the fast suite still passes because it uses fake bridges.
   *Mitigation*: step 3's byte-equal test plus an explicit "no `await` gates a branch" review
@@ -146,12 +146,23 @@ Ordered steps, each with a validation point.
 
 <!-- Resolve before building. -->
 
-- **Step 1 outcome**: is a new read-only bridge RPC needed for per-worker candidate state, or is
-  it reachable from `beamAddLoop` / the phase-1.5 evaluator? (Blocks steps 2–4.)
-- **Worker identity**: does the phase-1.5 parallel evaluator have a stable per-worker id to key
-  rows on, or only a pool slot index? Affects whether rows are stable across ticks.
+- **Step 1 outcome** — *partially answered from the code, 2026-08-29, still needs a design call.*
+  Per-worker candidate state is **not** reachable from `beamAddLoop`: phase 1.5 is entirely a
+  `packages/pob-bridge` concern (`ParallelBridge`, `packages/pob-bridge/src/parallel.ts`) that
+  shards one `evaluate_candidate_nodes[_from]` batch across leased pool slots and recombines by
+  chunk index — deliberately *zero* `src/core` changes. Core sees one `bridge.call(...)`, never a
+  worker. So the options are: (a) drop "per-worker" and report per-*shard* progress by
+  instrumenting `ParallelBridge` with an observer callback at dispatch/settle, or (b) a new
+  read-only bridge RPC. (a) is cheaper and keeps core clean; it changes what the row means.
+  (Blocks steps 2–4.)
+- **Worker identity** — a "worker" is a leased pool slot (`PobBridgePool.lease(n)`, index within
+  `ParallelBridge.slots`), stable for the whole run, so slot index keys rows fine. But a slot is
+  not evaluating *a* candidate — it is evaluating a contiguous chunk of the batch's `nodeIds`.
+  Decide whether a row shows "slot 1 · 12/40 candidates" or is dropped in favour of the top-N
+  list alone.
 - **`topNodes` size**: fixed N (e.g. 5) or configurable? Default proposed: 5.
 - **recommendTree**: confirm it stays on the coarse tick for v1, or fold in a trimmed
   `topNodes` if step 2 makes it near-free.
-- **Canvas trigger**: has spec `06` landed in the result view by build time? Determines whether
-  step 6 runs.
+- **Canvas trigger** — *answered*: spec `06`'s stylised diff canvas is shipped on `main` and
+  wired into the web result view (see `PLAN.md` § Shipped, `packages/web`), so step 6 is live, not
+  conditional. Confirm the highlight is additive over the existing before/after diff colouring.
