@@ -225,11 +225,29 @@ Sequencing: phase 1 (bridge) → **fork-prep** (`08`) → phase 2 (API) → phas
 diff + tree canvas) = **v1**. Then **phase 1.5** (parallel candidate eval, the wall-time win) as
 the first fast-follow.
 
-Phase 1 is 3/4 done as of 2026-08-29: workspaces (`660534d`), the `packages/pob-bridge` move
-(`97cbe27`, `5c24241`), and `PobBridgePool` + a real-bridge integration suite (`2b52cee`).
-`onProgress` + `shouldContinue` (`02`) is the remainder. After that, `08-fork-prep.md` is one
-serial commit that lets `04` / `05`+`06` / phase 1.5 proceed as parallel worktrees — `03` (the
-contract) stays serial and alone in between, since it is what forces rework if it moves.
+**Phase 1 is COMPLETE as of 2026-08-29**, on branch `phase1-bridge-service` (not yet merged to
+`main`):
+
+- `660534d` npm workspaces + `tsconfig` split. Cross-package resolution is **source-level aliases**
+  (`tsconfig` `paths` + a vitest alias) — no build step, no TS project references.
+- `97cbe27` + `5c24241` `pob-runtime/` and `bridge.ts` → `packages/pob-bridge`, submodule path
+  updated, shim added then dropped.
+- `2b52cee` `PobBridgePool` (size 2, FIFO, crash-respawn, `dispose`, `warm`) **plus a test-suite
+  split**: `npm test` = fake-bridge units only (fast, no LuaJIT on PATH); `npm run test:integration`
+  = real-bridge suite (`*.integration.test.ts`, `fileParallelism: false`). Keep new real-bridge
+  tests out of the default suite.
+- `a7b358c` `onProgress` + `shouldContinue` in `optimiseTree` / `recommendTree`. `shouldContinue`
+  false → clean early return with `stoppedBecause: "cancelled"`. `beamAddLoop` gained an `onDepth`
+  hook; all returns funnel through one `finish()` that emits the terminal event.
+
+Verified: 98 default tests green, integration suite 10/10, `tsc` clean, and the phase-1 gate
+(`optimise-tree --respec-budget 3` vs the `main` baseline) byte-identical — same 432 BuildOutputs,
+same plan.
+
+Next is **`08-fork-prep.md`** — one serial commit that lets `04` / `05`+`06` / phase 1.5 proceed as
+parallel worktrees. `03` (the contract) stays serial and alone after it, since it is what forces
+rework in two tracks if it moves.
+
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.
 
