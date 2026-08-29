@@ -17,15 +17,13 @@ export const ProgressEvent = z.object({
    * `buildOutputs` when it reads the bridge directly rather than the core progress object. */
   buildOutputs: z.number().int(),
   estimatedTotal: z.number().int().optional(),
-  /**
-   * FOLLOW-UP (logged 2026-08-29, `docs/status.md`): this should be `.optional()`. It is an
-   * OPTIMISE field -- `RecommendProgress` has no objective -- so it breaks the "kind-specific
-   * fields are optional" rule this file states above, and forces the `04` mapper to invent `0`.
-   * `0` is a legitimate objective (0-DPS-headless builds are a real error surface), so the
-   * sentinel is indistinguishable from a genuine value. Deferred only because the UI cannot
-   * submit a recommend job yet. Fix this before wiring the recommender screen.
-   */
-  bestObjective: z.number(),
+  /** OPTIMISE-only -- `RecommendProgress` has no objective (it scores each candidate against a
+   * fixed baseline, so there is no "best so far"; its `candidatesScored`/`candidatesTotal` is
+   * the better signal). Optional so the `04` mapper never has to invent a value: `0` is a
+   * LEGITIMATE objective here -- builds that score 0 DPS headless are a first-class error
+   * surface -- so a `0` sentinel would be indistinguishable from a real reading. Consumers must
+   * treat `undefined` as "not applicable" and render nothing. */
+  bestObjective: z.number().optional(),
   // optimise add-loop / k-sweep
   depth: z.number().int().optional(),
   k: z.number().int().optional(),

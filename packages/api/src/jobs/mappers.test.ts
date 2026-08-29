@@ -156,14 +156,25 @@ describe("normalizeProgress", () => {
 		expect(pe).toMatchObject({ jobId: "j_1", phase: "add-loop", buildOutputs: 128, depth: 3, elapsedMs: 21001 });
 	});
 
-	it("supplies bestObjective 0 for a recommend tick (no such field on RecommendProgress)", () => {
+	it("omits bestObjective for a recommend tick (no such field on RecommendProgress)", () => {
 		const pe = normalizeProgress(
 			{ phase: "scoring", buildOutputs: 50, candidatesScored: 50, candidatesTotal: 220 } as never,
 			"j_2",
 			8000,
 		);
-		expect(pe.bestObjective).toBe(0);
+		// Must be absent, not 0 -- 0 is a legitimate objective for a 0-DPS-headless build.
+		expect(pe.bestObjective).toBeUndefined();
+		expect("bestObjective" in pe).toBe(false);
 		expect(pe.candidatesTotal).toBe(220);
+	});
+
+	it("passes through a genuine bestObjective of 0 (0-DPS-headless build)", () => {
+		const pe = normalizeProgress(
+			{ phase: "add-loop", buildOutputs: 12, bestObjective: 0 } as never,
+			"j_3",
+			1000,
+		);
+		expect(pe.bestObjective).toBe(0);
 	});
 });
 
