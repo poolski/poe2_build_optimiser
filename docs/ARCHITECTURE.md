@@ -93,17 +93,20 @@ Vite + React SPA for interactive optimization.
 
 ## Key design decisions
 
-| Decision | Why | Consequence |
-|----------|-----|-------------|
-| **PoB stays the oracle** | Accurate damage math; standard in the community | ~280ms per recompute; mitigated by parallelism + objective scoping |
-| **No build step** | Keep iteration fast; catch errors at TS check time | Source-level aliases (`tsconfig` paths + vitest aliases) instead |
-| **Core is agnostic** | Reuse across CLI + web + future interfaces | Bridge injection; no server/UI code in core |
-| **Pool over queue** | Parallelism within a run, not just across runs | Needs slot-based (not job-count-based) admission |
-| **Parallel is transparent** | No core changes needed | Bridge client interface abstractly enough that `ParallelBridge` works |
+Full rationale for each is in `docs/decisions/`.
+
+| Decision | Why | Consequence | ADR |
+|----------|-----|-------------|-----|
+| **PoB stays the oracle** | Accurate damage math; standard in the community | ~280ms per recompute; mitigated by parallelism + objective scoping | 001 |
+| **No build step** | Keep iteration fast; catch errors at TS check time | Source-level aliases (`tsconfig` paths + vitest aliases) instead | 006 |
+| **Core is agnostic** | Reuse across CLI + web + future interfaces | Bridge injection; no server/UI code in core | 005 |
+| **Pool over queue** | Parallelism within a run, not just across runs | Needs slot-based (not job-count-based) admission | 011 |
+| **Parallel is transparent** | No core changes needed | Bridge client interface abstract enough that `ParallelBridge` works | 011 |
 
 ## See also
 
-- **`docs/web-ui/`** — phase-by-phase development records (01–10)
+- **`docs/decisions/`** — ADR-001 … ADR-011, the decisions of record
+- **`intake/web-ui/`** — phase-by-phase development specs (01–10)
 - **`docs/gotchas.md`** — PoB-PoE2 quirks to watch
 - **`CLAUDE.md`** — test strategy, dependencies, layout
 

@@ -3,7 +3,7 @@ import * as path from "node:path";
 import { describe, expect, it } from "vitest";
 import { nodePosition, parseMinTree } from "./minTree";
 
-// The real committed artifact (docs/web-ui/08-fork-prep.md task 6). Loaded from disk rather
+// The real committed artifact (intake/web-ui/08-fork-prep.md task 6). Loaded from disk rather
 // than imported so tsc (rootDir: src) doesn't choke on a JSON module outside src -- same
 // pattern the contract's optimise.test.ts uses for its fixture.
 const raw = JSON.parse(

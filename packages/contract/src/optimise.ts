@@ -1,6 +1,6 @@
 // The optimise job: request body, and the result DTO mirroring core's `OptimiseTreeResult`.
 //
-// See src/core/optimiseTree.ts for the shapes this mirrors and docs/web-ui/03-shared-contract.md
+// See src/core/optimiseTree.ts for the shapes this mirrors and intake/web-ui/03-shared-contract.md
 // for the spec. `04` maps `OptimiseRequest` -> `OptimiseTreeOptions` 1:1 (the mapper lives in the
 // API, not here) and adds `updatedPobCode` + passes `allocatedNodeIds` straight through.
 

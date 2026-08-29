@@ -1,6 +1,6 @@
 // Fixture-backed stand-in for the Hono API. The real server is built in parallel against the
 // same @poe2/contract; this lets `packages/web` run (and be demoed) with no API process, no
-// LuaJIT and no pob-runtime submodule -- the same decoupling docs/web-ui/08-fork-prep.md set up
+// LuaJIT and no pob-runtime submodule -- the same decoupling intake/web-ui/08-fork-prep.md set up
 // for the canvas.
 //
 // Opt-in via VITE_USE_MOCK=1; dev otherwise hits the real API. Never used in tests (they inject

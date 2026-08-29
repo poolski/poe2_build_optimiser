@@ -1,5 +1,5 @@
 // Step 1: paste a PoB import code, or upload a .xml. Builds the BuildInput discriminated union
-// and hands it up; the parent does the POST /api/builds (docs/web-ui/05-frontend.md screen 1).
+// and hands it up; the parent does the POST /api/builds (intake/web-ui/05-frontend.md screen 1).
 
 import { useRef, useState } from "react";
 import type { BuildInput as BuildInputDTO } from "@poe2/contract";

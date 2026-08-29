@@ -1,5 +1,5 @@
 // Fast unit tests against fake slots (no LuaJIT) -- proves ParallelBridge's routing/sharding/
-// aggregation contract before ever touching a real bridge. See docs/web-ui/01-bridge-service.md
+// aggregation contract before ever touching a real bridge. See intake/web-ui/01-bridge-service.md
 // "Phase 1.5" for the design this implements.
 
 import { describe, expect, it, vi } from "vitest";

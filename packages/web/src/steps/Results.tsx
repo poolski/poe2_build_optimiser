@@ -1,5 +1,5 @@
 // Step 4: the headline + tree canvas + node-list diff + updated PoB code
-// (docs/web-ui/05-frontend.md screen 4, 06-tree-canvas.md). The canvas is the headline; the
+// (intake/web-ui/05-frontend.md screen 4, 06-tree-canvas.md). The canvas is the headline; the
 // list stays visible beside it and is the sole view when the tree can't be rendered (build tree
 // version != the shipped min tree, i.e. too many ids unknown to it).
 

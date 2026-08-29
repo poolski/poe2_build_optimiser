@@ -1,65 +1,64 @@
 # Roadmap
 
-Future work and long-term vision.
+Future-looking only. What exists today and the completed milestones live in
+[`docs/status.md`](status.md) — this file does not repeat them.
 
-## Currently shipped (2026-08-29)
+Nothing below is in progress. These are the candidates for the next piece of work, in rough
+priority order, with the bar each one has to clear.
 
-✅ **Phases 1–3 + 1.5 + 09 (all main features):**
-- Greedy recommender (`recommend-tree`)
-- Full-featured optimiser (extend / repair / rollback modes, beam search, constraints, freeze lists)
-- Web UI + API + tree canvas
-- Parallel candidate evaluation within a run (phase 1.5)
-- Rollback tree preview in UI (phase 09)
+## Next up
 
-## Planned / Next-priority
+### Bench sweep for a default `beamWidth > 1`
 
-### Phase 10 — RePoE-fork asset source (spec only, not built)
+The optimiser ships with `beamWidth = 1` (pure greedy), proven sufficient on the 25-build corpus.
+Open question: does a wider beam improve solution quality enough on larger builds to justify the
+extra runtime?
 
-Bring in passive tree geometry, node art, and stat text directly from a RePoE-fork, enabling:
-- Real node artwork (circles, textures, PoE2 colours)
-- Gem icons in sockets
-- Raw stat text for each node
+- **Do:** run `npm run bench-tree-approaches` across a range of widths, compare lift % vs wall time.
+- **Effort:** moderate — it is a measurement task, the beam already supports `W > 1`.
+- **Blocked on:** nothing.
 
-**Status:** Spec written in `docs/web-ui/10-repoe-asset-source.md`. Icon rendering would reverse the current "stylised only" design.
+### RePoE-fork asset source
 
-**Gating:** Design decision — do we want GGG art or keep the current clean stylised look? No blocker.
+Bring passive-tree geometry, node art, and stat text in from a RePoE fork so the web canvas can
+render real node artwork, gem icons in sockets, and per-node stat text.
 
-### Beam-width default tuning
+- **Spec:** [`intake/web-ui/10-repoe-asset-source.md`](../intake/web-ui/10-repoe-asset-source.md) — written, not built.
+- **Decision needed first:** this reverses ADR-010 ("stylised only, no GGG art"). Confirm we want
+  that before starting; if adopted, supersede ADR-010 with a new ADR.
+- **Blocked on:** nothing technical; the calc engine stays on PoB either way.
 
-Earlier work set `beamWidth=1` (greedy) as the proven optimum on a 25-build corpus. A bench sweep remains open:
-- Does `beamWidth > 1` improve solution quality for larger builds?
-- Is the runtime cost worth it?
+## Deferred — pick up only on demand
 
-**Effort:** Moderate (run `npm run bench-tree-approaches` with various widths, analyze results).
+### Candidate-pruning layers 3 / 4 / 6
 
-## Deferred / lower-priority
+The beam-search design sketched three pruning layers to contain candidate explosion. Greedy
+re-spend has been fast enough without them. Revisit only if a real run gets too slow.
 
-### Pruning layers 3, 4, 6
+### `--target-level` — derive the point budget from a character level
 
-The beam-search design originally sketched three pruning layers to reduce candidate explosion. Greedy re-spend has been sufficient; these remain unbuilt.
+Let the user pass a level instead of `--extra-points`, and compute the available passive points.
 
-### `--target-level` (point budget from character level)
+- **Blocked on:** a verified quest→passive-point mapping, checked against vendored PoE2 data (the
+  same discipline as [`docs/gotchas.md`](gotchas.md)).
 
-Auto-derive the available passive point budget from a character level, without manual `--extra-points` entry.
+### From-scratch mode — infinite budget, bare tree
 
-**Blocker:** Requires verified quest→passive-point mapping against vendored PoE2 data (the `verify-PoE2-vs-PoE1-assumptions` discipline). Worth doing before shipping; not blocking current work.
+Optimise a completely empty tree. Needs the add-loop to spend zero-delta pathing steps toward a
+distant payoff — a generalisation of the current greedy add. Also the blocker for rollback with an
+anchor near the class start.
 
-### From-scratch mode (infinite budget + bare tree)
+- **Value:** theory-crafting. Not needed for the core respec use case.
 
-Optimize a completely empty tree (all points available, no fixed allocations). Requires the add-loop to spend zero-delta "pathing" steps toward distant payoff — a generalization of current greedy add that the beam framework could support but hasn't needed yet.
+## Out of scope
 
-**Stretch goal:** useful for theory-crafting, not needed for the main respec use case.
+### Skill / support-gem optimisation
 
-## Out of scope (decided 2026-08-28)
-
-### Skill / Support gem optimisation
-
-Skill and support gems are **immutable inputs**. The optimiser never edits gem links, levels, or qualities.
-
-**Why:** Scope focus. Gems have different balance mechanics than passives (drop rates, level gates, family uniqueness, socket colours, etc.). Optimizing gems is a separate problem. Decided with the user 2026-08-28; kept in `docs/skill-optimiser-design.md` for reference if scope reopens.
+Skill and support gems are immutable calculation inputs. The optimiser never edits gem links,
+levels, or qualities (ADR-002). Gems have their own balance mechanics (drop rates, level gates,
+family uniqueness, socket colours) and are a separate problem. The design sketch is kept in
+[`intake/skill-optimiser-design.md`](../intake/skill-optimiser-design.md) in case scope reopens.
 
 ---
-
-**Tracking:** The authoritative status and completed milestones live in `docs/status.md`. This roadmap focuses on future-looking decisions.
 
 **Last updated:** 2026-08-29

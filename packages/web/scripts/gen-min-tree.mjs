@@ -1,6 +1,6 @@
 // Generate packages/web/public/tree-0_5.min.json from PoB's vendored tree.json.
 //
-// COMMITTED artifact, NOT a build step. Rationale (docs/web-ui/08-fork-prep.md task 6): a
+// COMMITTED artifact, NOT a build step. Rationale (intake/web-ui/08-fork-prep.md task 6): a
 // build step would re-couple the canvas track (06) to the pob-runtime submodule, which is
 // exactly what fork-prep removes. Re-run only when the tree version bumps:
 //
@@ -97,7 +97,7 @@ const min = {
   meta: {
     treeVersion: TREE_VERSION,
     source: "packages/pob-bridge/pob-runtime/PathOfBuilding-PoE2/src/TreeData/0_5/tree.json",
-    generatedBy: "packages/web/scripts/gen-min-tree.mjs (docs/web-ui/08-fork-prep.md task 6)",
+    generatedBy: "packages/web/scripts/gen-min-tree.mjs (intake/web-ui/08-fork-prep.md task 6)",
     nodeFields: ["group", "orbit", "orbitIndex", "nameIdx", "kind", "conns", "statIdx?", "ascNameIdx?"],
     kinds: ["normal", "notable", "keystone", "jewel", "attribute"],
     angleFormula: "2*PI * orbitIndex / skillsPerOrbit[orbit]",

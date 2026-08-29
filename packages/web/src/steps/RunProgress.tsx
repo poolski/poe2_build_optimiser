@@ -1,4 +1,4 @@
-// Step 3: live progress from the SSE stream (docs/web-ui/05-frontend.md screen 3). Renders from
+// Step 3: live progress from the SSE stream (intake/web-ui/05-frontend.md screen 3). Renders from
 // a single ProgressEvent. `phase` is an open string in the contract (phase 1.5 adds more) -- the
 // label map has a default branch.
 

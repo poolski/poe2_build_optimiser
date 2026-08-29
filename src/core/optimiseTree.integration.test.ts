@@ -1,6 +1,6 @@
 // Real-LuaJIT proof that optimiseTree.allocatedNodeIds.after is the CONNECTED post-plan
 // allocation set -- the thing a correct <Spec nodes="..."> export needs, and the blocker that
-// held up docs/web-ui/04 + 06 (see docs/status.md). Needs luajit + the pob-runtime submodule;
+// held up intake/web-ui/04 + 06 (see docs/status.md). Needs luajit + the pob-runtime submodule;
 // runs via `npm run test:integration` only.
 //
 // The committed fixture packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json captured this same

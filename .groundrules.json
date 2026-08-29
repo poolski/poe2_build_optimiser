@@ -45,11 +45,13 @@
     "LICENSE.md": "license",
     "docs/status.md": "intent-source (living status & roadmap)",
     "docs/gotchas.md": "reference (PoB-PoE2 quirks)",
-    "docs/skill-optimiser-design.md": "reference (shelved track, kept for context)",
     "docs/constraint-rejection-repro.md": "reference (live repro of recommender constraints)",
-    "docs/beam-search/": "reference (completed optimization track)",
+    "docs/beam-search/": "reference (completed optimization track: results + validation)",
     "docs/cli/": "reference (user-facing CLI docs)",
-    "docs/web-ui/": "reference (development track phases 1-10)"
+    "docs/decisions/": "decisions (ADR-001..ADR-011, extracted from prose 2026-08-29)",
+    "intake/beam-search-design.md": "spec (tree-optimiser design + implementation checklist)",
+    "intake/web-ui/": "spec (web UI + bridge-service design track, phases 1-10)",
+    "intake/skill-optimiser-design.md": "spec (shelved track, kept for context)"
   },
   "skippedFiles": {
     "src/": "code (not a doc)",
@@ -96,9 +98,13 @@
       "docs/web-ui/"
     ]
   },
-  "migratedFiles": {},
+  "migratedFiles": {
+    "docs/web-ui/": "intake/web-ui/ (2026-08-29 post-adoption reorg: design spec, not curated doc)",
+    "docs/skill-optimiser-design.md": "intake/skill-optimiser-design.md (2026-08-29)",
+    "docs/beam-search/design.md": "intake/beam-search-design.md (2026-08-29; results stay in docs/beam-search/)"
+  },
   "metadata": {
     "adoptedBy": "Claude Code groundrules plugin v1.10.0",
-    "adoptionNotes": "Mapped in place — no file moves. CLAUDE.md is project-specific and was left untouched. docs/status.md is the authoritative map; VISION.md synthesizes it. Loop scaffolding supports future maker/verifier tasks. All docs are content-aware and project-contextualized (not boilerplate)."
+    "adoptionNotes": "Adopted in map mode (no moves). A 2026-08-29 follow-up reorg then split docs by kind: design specs (web-ui/, beam-search design, skill-optimiser-design) moved to intake/; decisions of record extracted from prose into docs/decisions/ as ADR-001..ADR-011. docs/status.md stays the authoritative map; VISION.md synthesizes it. See migratedFiles."
   }
 }

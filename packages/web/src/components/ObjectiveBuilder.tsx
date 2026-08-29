@@ -2,7 +2,7 @@
 //   single metric -> "TotalDPS"
 //   DPS/EHP blend -> "dps-ehp:0.5"
 //   custom blend  -> "blend:TotalDPS,TotalEHP,0.5"
-// (docs/web-ui/05-frontend.md screen 2, ObjectiveBuilder.)
+// (intake/web-ui/05-frontend.md screen 2, ObjectiveBuilder.)
 
 import { useState } from "react";
 

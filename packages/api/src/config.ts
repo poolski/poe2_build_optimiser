@@ -1,5 +1,5 @@
 // Runtime configuration, all env-overridable. Local-first: the server binds 127.0.0.1 only and
-// is never meant to be exposed (no auth, single user). See docs/web-ui/04-api-server.md §Config.
+// is never meant to be exposed (no auth, single user). See intake/web-ui/04-api-server.md §Config.
 
 import { CONTRACT_VERSION } from "@poe2/contract";
 import { defaultPoolSize } from "@poe2/pob-bridge";
@@ -41,7 +41,7 @@ export interface ApiConfig {
 	 * error, not a per-job condition).
 	 *
 	 * Note this changes `buildOutputCount` for a given run: sharding a candidate batch across N
-	 * slots costs N-1 extra tail recomputes per add-step (see docs/web-ui/01-bridge-service.md
+	 * slots costs N-1 extra tail recomputes per add-step (see intake/web-ui/01-bridge-service.md
 	 * "Phase 1.5"). The PLAN is unaffected -- byte-identical at any N.
 	 */
 	jobParallelism: number;

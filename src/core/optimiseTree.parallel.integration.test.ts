@@ -1,6 +1,6 @@
 // Phase 1.5 acceptance gate: optimiseTree(bridge, options) must produce the SAME PLAN whether
 // `bridge` is a single PobBridge or a ParallelBridge over N leased pool slots -- N changes wall
-// time only, never the plan (docs/web-ui/01-bridge-service.md "Phase 1.5", requirement 1 in the
+// time only, never the plan (intake/web-ui/01-bridge-service.md "Phase 1.5", requirement 1 in the
 // task brief).
 //
 // buildOutputCount is the one field that is NOT expected to match exactly, and it isn't a bug:

@@ -132,10 +132,15 @@ The API serves the built web bundle at `/` if `packages/web/dist` exists; otherw
 ## Documentation
 
 - **`docs/status.md`** — authoritative roadmap and status. Keep current.
-- **`docs/beam-search/design.md`** — full optimization algorithm design + implementation checklist.
-- **`docs/web-ui/`** — phase-by-phase development records.
+- **`docs/decisions/`** — ADRs. When you make a load-bearing decision, add one and trim the prose
+  that carried it elsewhere to a pointer.
+- **`intake/beam-search-design.md`** — full optimisation algorithm design + implementation checklist.
+- **`intake/web-ui/`** — phase-by-phase development specs.
 - **`docs/gotchas.md`** — PoB-PoE2 quirks and traps.
 - **User-facing:** `docs/cli/` for CLI docs, `README.md` for the web UI.
+
+`docs/` is curated and kept current as code changes; `intake/` holds the design specs those docs
+were synthesised from and changes only when a design changes.
 
 ---
 

@@ -1,7 +1,7 @@
 // New on the port. Upstream's wheel zoom (viewport.ts had none; TreeView.tsx did
 // `vp.zoom * (deltaY<0 ? 1.15 : 1/1.15)` clamped to a *fixed* [0.01, 3]) jumped between the
 // effective min and max in one detent because the fixed clamp bore no relation to the tree's
-// fit-to-bounds scale. docs/web-ui/06-tree-canvas.md "Fixes to make on the port" asks for:
+// fit-to-bounds scale. intake/web-ui/06-tree-canvas.md "Fixes to make on the port" asks for:
 //   (a) a log-scale zoom slider spanning [minScale, maxScale] derived from the tree bounds
 //   (b) wheel zoom as a small fixed multiplicative step per detent, cursor-anchored
 //   (c) +/-/fit buttons

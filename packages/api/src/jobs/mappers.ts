@@ -1,7 +1,7 @@
 // The request/result mappers between the wire contract (@poe2/contract) and core
 // (src/core/optimiseTree + recommendTree). Everything here is pure.
 //
-// docs/web-ui/04-api-server.md §"Mapper obligations" enumerates the 8 things the contract
+// intake/web-ui/04-api-server.md §"Mapper obligations" enumerates the 8 things the contract
 // CANNOT enforce and this file MUST do; each is tagged [obligation N] at its site.
 
 import type {

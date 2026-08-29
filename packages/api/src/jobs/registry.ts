@@ -2,7 +2,7 @@
 // FIFO queue, cancellation, and retention (finished jobs stay until restart). No job-queue lib
 // -- single user, the only scheduling concern is not oversubscribing the LuaJIT pool.
 //
-// Admission (phase 1.5 rewrite -- see docs/web-ui/01-bridge-service.md "Phase 1.5" for the design
+// Admission (phase 1.5 rewrite -- see intake/web-ui/01-bridge-service.md "Phase 1.5" for the design
 // history): SLOT-based, not job-count-based. Each job is assigned a `parallelism` (how many pool
 // slots it will lease) once, at creation, before it is ever queued. A queued job is admitted only
 // when `(slots committed by every currently-running job) + job.parallelism <= poolSize`. That is

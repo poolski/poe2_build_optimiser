@@ -1,7 +1,7 @@
 // Runs one job on an acquired bridge: load -> map request -> call core with an onProgress relay
 // and a shouldContinue tied to the job's AbortController -> map the result -> release.
 //
-// Cancellation contract (docs/web-ui/04-api-server.md §Job model): abort flips the job to
+// Cancellation contract (intake/web-ui/04-api-server.md §Job model): abort flips the job to
 // "cancelled"; `shouldContinue` makes `optimiseTree` stop after the current add-step (seconds,
 // not the whole run) and return a partial plan with `stoppedBecause: "cancelled"`, which the
 // runner then DISCARDS -- the user cancelled because the config was wrong. The `finally` frees

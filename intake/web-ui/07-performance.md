@@ -47,13 +47,13 @@ wall ≈ evals · 0.28 s / effectiveConcurrency
 ```
 
 Measured: strong L100 `repair-r6` runs hit 1900–2700 recomputes → ~15–37 min single-threaded
-(`docs/beam-search/design.md` §Cost). The whole game is cutting `P` before it costs a recompute,
+(`intake/beam-search-design.md` §Cost). The whole game is cutting `P` before it costs a recompute,
 and overlapping the recomputes that remain.
 
 ## The levers
 
 Ordered by leverage for the web-UI track. "Search-side" levers are specified in detail in
-`docs/beam-search/design.md` §"Pruning layers" — not duplicated here, just placed in the
+`intake/beam-search-design.md` §"Pruning layers" — not duplicated here, just placed in the
 bigger picture.
 
 | # | Lever | Effect | Status | Where |

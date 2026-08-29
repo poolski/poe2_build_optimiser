@@ -1,4 +1,4 @@
-// Thin typed wrappers around the Hono API (docs/web-ui/04-api-server.md). Every payload type
+// Thin typed wrappers around the Hono API (intake/web-ui/04-api-server.md). Every payload type
 // comes from @poe2/contract; nothing is redeclared here. The real server is built in parallel
 // against the same contract -- see ./mock/mockClient.ts for the fixture-backed stand-in used for
 // local dev and tests.

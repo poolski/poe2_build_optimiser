@@ -33,8 +33,9 @@ Non-obvious insights, patterns, and gotchas discovered during development. A liv
 ## Documentation
 
 - Living status is in `docs/status.md` — it's the authoritative map. Keep it current.
-- Design + implementation checklist lives in `docs/beam-search/design.md`.
-- Phase-by-phase development records are in `docs/web-ui/` (01 through 10).
+- Design + implementation checklist lives in `intake/beam-search-design.md`.
+- Phase-by-phase development specs are in `intake/web-ui/` (01 through 10).
+- Decisions of record are in `docs/decisions/` (ADR-001 … ADR-011).
 
 ---
 

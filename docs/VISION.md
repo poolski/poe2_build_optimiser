@@ -36,11 +36,13 @@ Three layers:
 - **Accurate** — uses PoB's real calc engine as the oracle
 - **Fast** — parallel candidate evaluation within a single run; defaults scale to your machine
 - **Flexible** — composite objectives, freeze lists, constraint filters, beam-search width/depth tuning
-- **Open** — all 11 optimization phases designed, tested, and documented in `docs/beam-search/`
+- **Open** — the optimiser design and its implementation checklist are in
+  `intake/beam-search-design.md`; results and validation in `docs/beam-search/`
 
 ## See also
 
 - **`docs/status.md`** — the authoritative status and roadmap
-- **`docs/web-ui/README.md`** — the active development track (phases 1–3 shipped, phase 1.5 parallel eval shipped)
-- **`docs/beam-search/design.md`** — full design and implementation checklist
+- **`docs/decisions/`** — ADR-001 … ADR-011, the decisions of record
+- **`intake/web-ui/README.md`** — the web UI + bridge-service design track
+- **`intake/beam-search-design.md`** — full design and implementation checklist
 - **`CLAUDE.md`** — working guidance on tests, dependencies, and the repo layout

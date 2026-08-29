@@ -1,5 +1,5 @@
 // Pure decision for "was this pointer-up a click on a pickable node?", split out of TreeCanvas so
-// it is unit-testable without a canvas/jsdom mount (docs/web-ui/09-rollback-tree-preview.md).
+// it is unit-testable without a canvas/jsdom mount (intake/web-ui/09-rollback-tree-preview.md).
 
 /**
  * Resolve a click selection. Returns the node id to pick, or null when this gesture is not a

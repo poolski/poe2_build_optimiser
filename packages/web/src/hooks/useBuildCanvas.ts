@@ -1,7 +1,7 @@
 // Shared "can the shipped canvas render this build?" decision, so RunConfig (for the rollback
 // enable/disable gate) and TreePreview (for what to draw) agree on one source of truth. Reuses
 // Results' isVersionMismatch -- the exact check 05/06 specified -- against the build's current
-// allocated set. Spec: docs/web-ui/09-rollback-tree-preview.md.
+// allocated set. Spec: intake/web-ui/09-rollback-tree-preview.md.
 
 import { useMemo } from "react";
 import type { BuildSummary } from "@poe2/contract";

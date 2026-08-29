@@ -1,6 +1,6 @@
 // The whole app is a 4-step wizard on one page; no router. One useReducer, small shape.
 // Form state is OptimiseRequestInput (z.input) -- defaulted contract fields stay optional while
-// the user is filling them in (docs/web-ui/05-frontend.md "Typing against the contract").
+// the user is filling them in (intake/web-ui/05-frontend.md "Typing against the contract").
 
 import type {
   BuildSummary,
