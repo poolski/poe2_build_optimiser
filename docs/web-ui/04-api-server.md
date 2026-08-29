@@ -153,6 +153,36 @@ already has the answer on the result:
 Weapon-set nodes: PoB stores those in `<WeaponSet1 nodes>` / `<WeaponSet2 nodes>`. The optimiser
 only touches the base spec, so leave those attributes untouched.
 
+## Mapper obligations — non-negotiable (from the contract, `564c15b`)
+
+These are things the contract **cannot** enforce and the result mapper **must** do. Each was found
+by validating real optimiser output against the schemas; skipping one produces a runtime
+validation rejection, not a type error.
+
+1. **Coerce non-finite → `null`** on `RemovedNodeDTO.objectiveAfterRemoval` and `valueLost`.
+   Core assigns `Number.NaN` / `Number.POSITIVE_INFINITY` when a removal makes the build
+   unscorable (`optimiseTree.ts:556-557`, `:586`, `:593`), and a `nothing-removable` return
+   *ships that entry*. Both fields are `z.number().nullable()` for this reason — "mirror
+   field-for-field" as originally written would have rejected valid output.
+2. **Strip non-finite keys from every `StatSet`** before validating — both
+   `BuildSummary.baseline` *and* `OptimiseResultDTO.final.stats`. `bridge.lua`'s
+   `sanitizeForJson` passes `inf`/`nan` through untouched. The original doc flagged this hazard
+   for `baseline` only; `final.stats` has exactly the same shape and the same problem.
+3. **Build `updatedPobCode` from `allocatedNodeIds.after`** — never rebuild it from `removed` +
+   `addedNodeIds`, which are picks-only and would emit a disconnected tree. See `gotchas.md`.
+4. **Map a `parseObjective` throw to a `JobError.kind`.** `ObjectiveSpec` is deliberately looser
+   than core: it does not range-check the weight (`dps-ehp:5` passes the regex, core throws) and
+   it is case-sensitive where core matches `/i`. Do not assume a 400 already caught it.
+5. **`extraPoints` has no core equivalent** — compute `pointBudget = pointsUsed + extraPoints`,
+   so the optimise handler needs the stored build's `pointsUsed`.
+6. **`minResist` is sugar** — expand to Fire/Cold/Lightning `constraints` in the mapper.
+7. **`mode` cardinality is intentional:** the request has `extend|repair|rollback`, the result has
+   `extend|repair`. `rollback` means "pass `anchorNodeId`"; core has no `mode` option.
+8. **Progress naming:** core's `OptimiseProgress` / `RecommendProgress` already call the count
+   `buildOutputs`, matching `ProgressEvent`. Only the *bridge's* `get_metrics` says
+   `buildOutputCount` — bridge that name only if you read the bridge directly. `jobId` and
+   `elapsedMs` are API-added; they are not on the core progress objects.
+
 ## SSE stream (`GET /jobs/:id/events`)
 
 Hono's `streamSSE`:
