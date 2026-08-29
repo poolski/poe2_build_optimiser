@@ -6,7 +6,10 @@
   "main": "src/index.ts",
   "types": "src/index.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit"
+    "dev": "vite",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "build:app": "vite build",
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^19.2.8",
