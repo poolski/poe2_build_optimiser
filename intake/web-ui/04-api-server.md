@@ -61,7 +61,7 @@ export function encodePobCode(xml: string): string {
 `load_build_xml`, `reset_metrics`, `get_stats` + `get_tree_status`, `release()`. Store
 `{ buildId, xml, summary }` in a `Map`. `notes` is assembled here: 0-DPS (`TotalDPS` absent or
 0), over-allocation (`pointsUsed > pointsMax`, the `--point-budget` case from
-`docs/status.md`), missing active weapon set.
+`PLAN.md`), missing active weapon set.
 
 Builds are kept in memory, no expiry for v1 (single user, restart clears them). A stored build is
 independent of any job — one build, many jobs.
@@ -142,7 +142,7 @@ extraPoints` needs `get_tree_status` first (same as `optimiseCli.ts:272`).
 > (class/ascendancy-start + item-granted nodes excluded). `after === before` when the plan is
 > "change nothing". So `updatedPobCode` is a straight string-replace from
 > `result.allocatedNodeIds.after`; no extra bridge round-trip, no set arithmetic. Mechanism +
-> determinism argument: `docs/status.md`.
+> determinism argument: `PLAN.md`.
 
 The `<Spec>` element's `nodes="12,34,56,…"` attribute is the allocated-node id list. `toResultDTO`
 already has the answer on the result:

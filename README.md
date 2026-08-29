@@ -147,4 +147,4 @@ Read **[CLAUDE.md](CLAUDE.md)** first — it covers the test split (`npm test` i
 run constantly; the integration suite boots real LuaJIT children and is run deliberately), the
 dependency rules, and how cross-package imports resolve.
 
-`docs/status.md` is the authoritative map of what is built and what is planned.
+`PLAN.md` is the authoritative map of what is built and what is planned.

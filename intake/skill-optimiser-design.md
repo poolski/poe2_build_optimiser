@@ -3,7 +3,7 @@
 > **SHELVED 2026-08-28 — out of scope.** The project is passive-skill-tree only; skill gems and
 > support gems are immutable calculation inputs. This document (design sketch + the completed
 > PoE1-vs-PoE2 assumption audit below) is kept for reference in case scope ever reopens. Nothing
-> here is on the roadmap. See `docs/status.md` §Scope.
+> here is on the roadmap. See `PLAN.md` §"Out of scope".
 
 Design sketch for a second recommender: given a loaded build and an objective (e.g. "maximise
 defences and physical damage"), choose which **active skills**, **support gems**, and

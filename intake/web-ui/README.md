@@ -134,7 +134,7 @@ then all callers switched to the package import and the shim was dropped (`5c242
 
 ## Sequencing
 
-Status is per `git log` on `main` (the authoritative source); commit refs in parentheses. `status.md`
+Status is per `git log` on `main` (the authoritative source); commit refs in parentheses. `PLAN.md`
 carries the detailed narrative.
 
 - [x] **Phase 1 — bridge service** (`01`, `02`) — npm workspaces + `tsconfig` split (`660534d`),

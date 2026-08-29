@@ -181,7 +181,7 @@ drops quality is too aggressive and gets retuned.
 ## Implementation status
 
 As of 2026-08-28 — **steps 1–11 all complete and committed** (step 11 = `d612057`), 71 unit
-tests green. The living project status/roadmap is `docs/status.md`; this section is the
+tests green. The living project status/roadmap is `PLAN.md`; this section is the
 per-step detail. Live-verification runs were against `RampantlyBisexual.xml` and
 `MA-FlickerStrike` unless noted.
 

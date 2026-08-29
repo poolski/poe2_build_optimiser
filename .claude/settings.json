@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm test)",
+      "Bash(npm test -- *)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npm run recommend-tree*)",
+      "Bash(npm run optimise-tree*)",
+      "Bash(git diff*)",
+      "Bash(git status*)",
+      "Bash(git log*)"
+    ]
+  }
+}

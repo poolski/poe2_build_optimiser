@@ -1,4 +1,4 @@
-// Cascade-verification spike for the any-node-repair track (docs/status.md §Active next track,
+// Cascade-verification spike for the any-node-repair track (PLAN.md §Active next track,
 // step 1). The leaf-only repair pass filters `evaluate_dealloc_candidates` to pointsFreed == 1;
 // before trusting non-leaf removal we need to know:
 //

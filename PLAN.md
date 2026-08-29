@@ -1,25 +1,63 @@
----
-title: build_optimiser — project status
-purpose: The map. A concise record of what exists, what is open, and what is out of scope. Read first.
-maintenance: |
-  - This is a MAP, not a changelog. Blow-by-blow history (dates, commit hashes, test counts,
-    "step N done") belongs in git and the detail docs — not here.
-  - Four sections, in order: Shipped, Open follow-ups, Deferred, Out of scope. One line per item;
-    if an item needs a paragraph, it belongs in a `docs/` or `intake/` sub-file — link it instead.
-  - Do NOT reintroduce "phase" / "step" numbering. Describe a capability by what it does, not by
-    the plan that produced it. Numbered plans live in `intake/`; decisions live in
-    `docs/decisions/`.
-  - When a capability lands, move it to Shipped. When an open item closes, delete it — don't
-    annotate it as done.
-  - Absolute dates only (YYYY-MM-DD).
----
+<!-- generated-by: groundrules v1.10.0 -->
+# PLAN — poe2-build-optimiser
 
-# build_optimiser — status
+**Active plan/todo _and_ the map.** Read this first. It records what is happening now (In
+progress / Up next / Ideas / Waiting), then what exists and what is out of scope (Shipped /
+Out of scope). Forward-looking candidate work lives in [`docs/ROADMAP.md`](docs/ROADMAP.md).
+Maintained by Claude during work.
 
-Recommends and optimises PoE2 passive-tree allocations, using PoB-PoE2's own headless calc engine
-as the fitness oracle (same technique as the sibling `poe2_craftsman` project, which stays out of
-the tree). Provenance and design rationale live in git history and the other `docs/` files; this
-file is just the map.
+Recommends and optimises PoE2 passive-tree allocations, using PoB-PoE2's own headless calc
+engine as the fitness oracle (same technique as the sibling `poe2_craftsman` project, which
+stays out of the tree). Provenance and design rationale live in git history and the other
+`docs/` files; this file is just the map.
+
+**Maintenance:**
+
+- This is a MAP, not a changelog. Blow-by-blow history (dates, commit hashes, test counts,
+  "step N done") belongs in git and the detail docs — not here.
+- One line per item. If an item needs a paragraph, it belongs in a `docs/` or `intake/`
+  sub-file — link it instead.
+- Do NOT reintroduce "phase" / "step" numbering. Describe a capability by what it does, not by
+  the plan that produced it. Numbered plans live in `intake/`; decisions live in
+  `docs/decisions/`.
+- When a capability lands, move it to Shipped. When an open item closes, delete it — don't
+  annotate it as done.
+- Absolute dates only (YYYY-MM-DD).
+- Status vocabulary: `[ ]` to do · `[~]` delivered, in review / awaiting validation · `[x]`
+  done & validated.
+
+## In progress
+
+- [ ] *(nothing active)*
+
+## Up next
+
+- [ ] *(nothing queued)*
+
+Candidates and deferred work live in [`docs/ROADMAP.md`](docs/ROADMAP.md) — an item moves up
+here when it is actively picked up.
+
+## Ideas — to triage
+
+Raw ideas, captured before they're lost (e.g. via `/groundrules:idea`). Not yet vetted. Each
+gets triaged later → a **decision** (ADR), a **build** (PRD), a **milestone** (ROADMAP), or
+dropped.
+
+- [ ] **Live progress view in the web UI** — while a plan runs, show the parallel workers, the
+  most-promising nodes, and real forward progress rather than just a recompute counter. *(build)*
+
+## Waiting / blocked
+
+- [ ] ...
+
+## Recently done
+
+- [x] Migrated `docs/status.md` into this file; `status.md` deleted, references repointed here
+  (2026-08-29)
+- [x] Extracted forward-looking roadmap items to `docs/ROADMAP.md`; PLAN.md keeps the now-work
+  and the map (2026-08-29)
+
+---
 
 ## Shipped on `main`
 
@@ -76,26 +114,6 @@ file is just the map.
 - **PoB-PoE2 gotchas** — `docs/gotchas.md`. Read before touching `bridge.lua` tree/alloc code or
   relying on any mechanic that might be a PoE1 leftover.
 
-## Open follow-ups (non-blocking)
-
-- **Bench sweep for a default `beamWidth > 1`.** `W = 1` ships as the default; no data yet on
-  whether a wider beam is worth the cost. Open since the beam-search track.
-- **`10` — RePoE-fork asset source.** Spec only, not built (`intake/web-ui/10-repoe-asset-source.md`).
-  Would add real node art / stat text / gem data to the web tree; calc engine stays on PoB.
-- **`spike/genCanvasFixture.ts` writes only a trimmed canvas projection.** Contract tests
-  reconstitute a full `OptimiseResultDTO` before parsing, so the fixture test never exercises the
-  nullable `objectiveAfterRemoval` branch (a dedicated unit test does). Worth dumping an untrimmed
-  `OptimiseTreeResult` blob alongside the projection.
-
-## Deferred (only if a real need appears)
-
-- Pruning layers 3 / 4 / 6 from the beam-search design — greedy re-spend has been sufficient.
-- `--target-level` → point-budget derivation — needs the act→quest-point mapping verified against
-  vendored data first (`docs/gotchas.md` discipline).
-- From-scratch mode (∞ budget + bare tree) — also the blocker for rollback with an anchor near
-  the class start; both need the add-loop to spend zero-delta pathing steps toward a distant
-  payoff.
-
 ## Out of scope
 
 - **Passive tree only.** Skill gems and their support gems are immutable calc inputs — the
@@ -117,7 +135,7 @@ Curated docs live in `docs/`; the design specs that fed them live in `intake/`.
 - `../CLAUDE.md` — working guidance loaded every session: the fast/integration test split
   (integration runs only on request), the `npm audit fix` prohibition, cross-package import
   resolution.
-- `status.md` — this file, the map.
+- `../PLAN.md` — this file, the plan and the map.
 - `VISION.md` / `ARCHITECTURE.md` / `ROADMAP.md` / `PROCESS.md` / `LEARNINGS.md` / `GLOSSARY.md` —
   groundrules-managed synthesis docs.
 - `decisions/` — ADR-001 … ADR-011, the decisions of record.
@@ -136,8 +154,13 @@ Curated docs live in `docs/`; the design specs that fed them live in `intake/`.
 
 ## How to pick this up
 
-1. This file for the map.
+1. This file for the plan and the map.
 2. `intake/beam-search-design.md` — design, implementation-status checklist, open questions.
 3. `docs/decisions/` — why the load-bearing choices were made.
 4. `docs/gotchas.md` — PoB-PoE2 leftovers.
 5. `src/core/optimiseTree.ts` + `src/core/recommendTree.ts` and their test files.
+
+---
+
+**Convention**: Claude updates this file at the start/end of each session. Completed tasks stay
+in "Recently done" for ~1 week then are archived (deleted or moved to git history).

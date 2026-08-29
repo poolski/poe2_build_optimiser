@@ -8,14 +8,28 @@
   "answers": {
     "projectName": "poe2-build-optimiser",
     "adoptionStrategy": "map-in-place",
-    "intentSource": "docs/status.md"
+    "intentSource": "PLAN.md"
   },
   "intent": {
     "source": "file",
-    "sourceFile": "docs/status.md",
+    "sourceFile": "PLAN.md",
     "synthesizedTo": "docs/VISION.md"
   },
-  "appliedPractices": [],
+  "appliedPractices": [
+    {
+      "appliedAt": "2026-08-29",
+      "source": "shanraisshan/claude-code-best-practice",
+      "items": [
+        {"category": "claudemd-section", "name": "Verification loop", "status": "applied"},
+        {"category": "claudemd-section", "name": "Working style", "status": "applied"},
+        {"category": "claudemd-section", "name": "Git & review", "status": "applied"},
+        {"category": "settings-permission", "name": ".claude/settings.json routine-loop allowlist", "status": "applied"},
+        {"category": "claude-rule", "name": ".claude/rules/pob-bridge.md", "status": "applied"},
+        {"category": "claude-rule", "name": ".claude/rules/core-engine.md", "status": "applied"},
+        {"category": "claude-rule", "name": ".claude/rules/docs-map.md", "status": "applied"}
+      ]
+    }
+  ],
   "loop": {
     "scaffolded": true,
     "at": "2026-08-29"
@@ -43,7 +57,7 @@
     "CLAUDE.md": "instructions (project-specific; not tool-managed)",
     "README.md": "README (real project doc; not boilerplate)",
     "LICENSE.md": "license",
-    "docs/status.md": "intent-source (living status & roadmap)",
+    "PLAN.md": "plan & map (living status/roadmap + active worklist; was docs/status.md, moved 2026-08-29)",
     "docs/gotchas.md": "reference (PoB-PoE2 quirks)",
     "docs/constraint-rejection-repro.md": "reference (live repro of recommender constraints)",
     "docs/beam-search/": "reference (completed optimization track: results + validation)",
@@ -77,7 +91,7 @@
     "hasGlobalClaude": false,
     "hasProjectClaude": true,
     "hasSuperpowers": false,
-    "hasPlanningFiles": false,
+    "hasPlanningFiles": true,
     "planningFilesSearched": [
       "plan.md",
       "todo.md",
@@ -89,7 +103,7 @@
       "README.md",
       "CLAUDE.md",
       "LICENSE.md",
-      "docs/status.md",
+      "PLAN.md",
       "docs/gotchas.md",
       "docs/skill-optimiser-design.md",
       "docs/constraint-rejection-repro.md",
@@ -99,12 +113,13 @@
     ]
   },
   "migratedFiles": {
+    "docs/status.md": "PLAN.md (2026-08-29: full move to repo-root PLAN.md — groundrules active-plan sections on top, the map below; status.md deleted, all references repointed)",
     "docs/web-ui/": "intake/web-ui/ (2026-08-29 post-adoption reorg: design spec, not curated doc)",
     "docs/skill-optimiser-design.md": "intake/skill-optimiser-design.md (2026-08-29)",
     "docs/beam-search/design.md": "intake/beam-search-design.md (2026-08-29; results stay in docs/beam-search/)"
   },
   "metadata": {
     "adoptedBy": "Claude Code groundrules plugin v1.10.0",
-    "adoptionNotes": "Adopted in map mode (no moves). A 2026-08-29 follow-up reorg then split docs by kind: design specs (web-ui/, beam-search design, skill-optimiser-design) moved to intake/; decisions of record extracted from prose into docs/decisions/ as ADR-001..ADR-011. docs/status.md stays the authoritative map; VISION.md synthesizes it. See migratedFiles."
+    "adoptionNotes": "Adopted in map mode (no moves). A 2026-08-29 follow-up reorg then split docs by kind: design specs (web-ui/, beam-search design, skill-optimiser-design) moved to intake/; decisions of record extracted from prose into docs/decisions/ as ADR-001..ADR-011. On 2026-08-29 docs/status.md was moved to repo-root PLAN.md (active plan + the map); VISION.md synthesizes it. See migratedFiles."
   }
 }

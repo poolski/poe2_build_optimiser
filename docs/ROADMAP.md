@@ -1,7 +1,7 @@
 # Roadmap
 
 Future-looking only. What exists today and the completed milestones live in
-[`docs/status.md`](status.md) — this file does not repeat them.
+[`PLAN.md`](../PLAN.md) — this file does not repeat them.
 
 Nothing below is in progress. These are the candidates for the next piece of work, in rough
 priority order, with the bar each one has to clear.
@@ -49,6 +49,17 @@ distant payoff — a generalisation of the current greedy add. Also the blocker 
 anchor near the class start.
 
 - **Value:** theory-crafting. Not needed for the core respec use case.
+
+### Untrimmed `OptimiseTreeResult` fixture for the canvas contract test
+
+`spike/genCanvasFixture.ts` writes only a trimmed canvas projection. The contract tests
+reconstitute a full `OptimiseResultDTO` before parsing, so the fixture test never exercises the
+nullable `objectiveAfterRemoval` branch (a dedicated unit test does).
+
+- **Do:** dump an untrimmed `OptimiseTreeResult` blob alongside the projection so the fixture
+  test covers the nullable branch end-to-end.
+- **Effort:** small — spike script plus fixture regen.
+- **Blocked on:** nothing.
 
 ## Out of scope
 

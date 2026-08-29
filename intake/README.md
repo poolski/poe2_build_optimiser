@@ -3,7 +3,7 @@
 Design specs and source documents that the curated `docs/` were synthesised from.
 
 Files here change only when a *design* changes — not on every code change. The curated,
-kept-current view of the project lives in `docs/` (`status.md` is the map).
+kept-current view of the project lives in `docs/`; `PLAN.md` (repo root) is the plan and the map.
 
 ## What's here
 

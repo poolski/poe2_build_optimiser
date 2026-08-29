@@ -12,7 +12,7 @@ Each ADR is a markdown file named `ADR-NNN-title.md` with:
 - **Decision** — the choice and why it matters
 - **Consequences** — what follows; trade-offs
 
-Keep them short. Detail and the running implementation state live in `docs/status.md`,
+Keep them short. Detail and the running implementation state live in `PLAN.md`,
 `intake/beam-search-design.md`, and `intake/web-ui/`.
 
 ## To add a decision
