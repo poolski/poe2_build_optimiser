@@ -21,6 +21,13 @@ export interface ApiConfig {
 	/** Kept <= poolSize so a running job never blocks inside pool.acquire(). */
 	maxActiveJobs: number;
 	contractVersion: string;
+	/**
+	 * Root of the built SPA, relative to the process cwd (the repo root -- `npm start` runs
+	 * from there). Absent until `npm run build:web` has emitted it; the server then just
+	 * serves the API. Dev doesn't use this at all: Vite serves the SPA on :5173 and proxies
+	 * /api here.
+	 */
+	webDist: string;
 }
 
 export const config: ApiConfig = {
@@ -30,4 +37,5 @@ export const config: ApiConfig = {
 	poolSize,
 	maxActiveJobs: Math.min(poolSize, envInt("MAX_ACTIVE_JOBS", poolSize)),
 	contractVersion: CONTRACT_VERSION,
+	webDist: process.env.WEB_DIST || "packages/web/dist",
 };

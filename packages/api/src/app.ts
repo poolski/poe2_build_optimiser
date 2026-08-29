@@ -2,6 +2,8 @@
 // (a PobBridgePool in production, a fake in the fast suite). No process bootstrap here -- that
 // is server.ts, so tests can `createApp(...)` without binding a port.
 
+import { serveStatic } from "@hono/node-server/serve-static";
+import { existsSync } from "node:fs";
 import { Hono } from "hono";
 import type { BridgeSource } from "./builds/store";
 import { BuildStore } from "./builds/store";
@@ -18,6 +20,8 @@ export interface CreateAppDeps {
 	maxActiveJobs?: number;
 	/** Injectable core entry points for the fast suite. */
 	core?: CoreFns;
+	/** Built-SPA root; false disables static serving outright (the fast suite). */
+	webDist?: string | false;
 }
 
 export interface CreatedApp {
@@ -43,8 +47,18 @@ export function createApp(deps: CreateAppDeps): CreatedApp {
 	const app = new Hono();
 	app.route("/api", api);
 
-	// In production the same server also serveStatic()s packages/web/dist at "/". The SPA does
-	// not exist yet (phase 3); wiring it here is that phase's one-liner.
+	// In production the same server serves the built SPA at "/". Mounted only when the bundle
+	// is actually on disk: `packages/web/dist` appears after `npm run build:web`, and an
+	// API-only run (or the fast suite) must not start 404ing every request through a static
+	// handler that has no root. Dev never gets here -- Vite serves the SPA on :5173 and
+	// proxies /api to this server.
+	const webDist = deps.webDist === undefined ? config.webDist : deps.webDist;
+	if (webDist !== false && existsSync(webDist)) {
+		app.use("/*", serveStatic({ root: webDist }));
+		// SPA fallback. The wizard has no router today, but a reload on any path (or a future
+		// hash-free deep link) must return index.html rather than a 404.
+		app.get("*", serveStatic({ path: `${webDist}/index.html` }));
+	}
 
 	return { app, builds, registry };
 }
