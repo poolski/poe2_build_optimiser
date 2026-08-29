@@ -13,6 +13,7 @@ const BUILD: StoredBuild = {
 		buildId: "b_1",
 		className: "Warrior",
 		ascendancy: null,
+		treeVersion: "0_5",
 		level: 84,
 		pointsUsed: 100,
 		pointsMax: 123,

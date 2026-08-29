@@ -25,6 +25,26 @@ const STOPPED_TEXT: Record<string, string> = {
   cancelled: "stopped early — partial result",
 };
 
+/** Fraction of allocated ids the shipped tree must know before we trust the id-overlap guess. */
+export const MIN_ID_COVERAGE = 0.5;
+
+/**
+ * Can the shipped canvas render this build's tree?
+ *
+ * Prefers the *declared* version -- exact, and the check 05/06 actually specified. That only
+ * became implementable once `treeVersion` was added to BuildSummary at integration; before it,
+ * the id-overlap heuristic was all there was. It survives as the fallback for XML carrying no
+ * treeVersion attribute (the API's parseTreeVersion returns null there).
+ */
+export function isVersionMismatch(
+  declared: string | null,
+  shipped: string | null,
+  coverage: number,
+): boolean {
+  if (declared !== null && shipped !== null) return declared !== shipped;
+  return coverage < MIN_ID_COVERAGE;
+}
+
 export default function Results({ result, build, onRestart }: Props) {
   const mt = useMinTree();
   const [showListOnly, setShowListOnly] = useState(false);
@@ -41,8 +61,11 @@ export default function Results({ result, build, onRestart }: Props) {
     return known / after.length;
   }, [mt, after]);
 
-  const canRenderCanvas = mt.status === "ready" && coverage >= 0.5 && !showListOnly;
-  const versionMismatch = mt.status === "ready" && coverage < 0.5;
+  const shippedVersion = mt.status === "ready" ? mt.tree.treeVersion : null;
+  const declaredVersion = build?.treeVersion ?? null;
+  const versionMismatch =
+    mt.status === "ready" && isVersionMismatch(declaredVersion, shippedVersion, coverage);
+  const canRenderCanvas = mt.status === "ready" && !versionMismatch && !showListOnly;
 
   const b = result.baseline.objective;
   const f = result.final.objective;
@@ -99,8 +122,10 @@ export default function Results({ result, build, onRestart }: Props) {
       {versionMismatch && (
         <div className="warn">
           The shipped tree render doesn&rsquo;t match this build&rsquo;s tree version
-          (only {Math.round(coverage * 100)}% of allocated nodes are known to it). Showing the
-          node-list diff only.
+          {declaredVersion !== null
+            ? ` (build is ${declaredVersion}, the render ships ${shippedVersion}).`
+            : ` (only ${Math.round(coverage * 100)}% of allocated nodes are known to it).`}{" "}
+          Showing the node-list diff only.
         </div>
       )}
 

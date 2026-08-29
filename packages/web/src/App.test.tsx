@@ -12,6 +12,7 @@ function fakeClient(): OptimiserClient {
         buildId: "b1",
         className: "Monk",
         ascendancy: "Invoker",
+        treeVersion: "0_5",
         level: 90,
         pointsUsed: 100,
         pointsMax: 112,

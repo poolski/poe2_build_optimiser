@@ -40,6 +40,20 @@ export function parseAscendancy(xml: string): string | null {
 	return NO_ASCENDANCY.has(v.toLowerCase()) ? null : v;
 }
 
+/**
+ * `<Spec treeVersion="0_5">` -> `"0_5"`, or null when absent.
+ *
+ * Reads the FIRST <Spec>, deliberately matching `applyPlan`'s target -- the version we report
+ * must describe the spec we actually edit, not some other weapon-set spec. `get_tree_status`
+ * does not expose this, so it comes off the XML.
+ */
+export function parseTreeVersion(xml: string): string | null {
+	const m = xml.match(/<Spec\b[^>]*\btreeVersion="([^"]*)"/);
+	if (!m) return null;
+	const v = m[1].trim();
+	return v === "" ? null : v;
+}
+
 /** Assemble the human-facing `notes` list: the error surfaces 04 wants kept first-class. */
 export function buildNotes(stats: StatSet, status: TreeStatus, weaponSlots: Record<string, string> | null): string[] {
 	const notes: string[] = [];
@@ -86,6 +100,7 @@ export class BuildStore {
 				buildId,
 				className: loaded.className,
 				ascendancy: parseAscendancy(xml),
+				treeVersion: parseTreeVersion(xml),
 				level: loaded.level,
 				pointsUsed: status.pointsUsed,
 				pointsMax: status.pointsMax,

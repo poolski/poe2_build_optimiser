@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BuildStore, buildNotes, parseAscendancy } from "./store";
+import { BuildStore, buildNotes, parseAscendancy, parseTreeVersion } from "./store";
 import { encodePobCode } from "../pob/code";
 import { fakeBridgeSource, SAMPLE_XML } from "../testkit";
 import type { TreeStatus } from "../core";
@@ -33,6 +33,25 @@ describe("parseAscendancy", () => {
 		expect(parseAscendancy('<Build className="Warrior" ascendClassName=""/>')).toBeNull();
 		expect(parseAscendancy('<Build className="Warrior" ascendClassName="None"/>')).toBeNull();
 		expect(parseAscendancy('<Build className="Warrior"/>')).toBeNull();
+	});
+});
+
+describe("parseTreeVersion", () => {
+	it("reads treeVersion off the first <Spec>", () => {
+		expect(parseTreeVersion(SAMPLE_XML)).toBe("0_5");
+	});
+	it("is null when the attribute is absent or empty", () => {
+		expect(parseTreeVersion('<Tree><Spec classId="1" nodes=""/></Tree>')).toBeNull();
+		expect(parseTreeVersion('<Tree><Spec treeVersion="" nodes=""/></Tree>')).toBeNull();
+		expect(parseTreeVersion("<Build/>")).toBeNull();
+	});
+	it("takes the FIRST spec, matching the one applyPlan edits", () => {
+		const xml =
+			'<Tree activeSpec="1">' +
+			'<Spec treeVersion="0_5" nodes="1"/>' +
+			'<Spec treeVersion="0_2" nodes="2"/>' +
+			"</Tree>";
+		expect(parseTreeVersion(xml)).toBe("0_5");
 	});
 });
 

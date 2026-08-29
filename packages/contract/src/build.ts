@@ -38,6 +38,15 @@ export const BuildSummary = z.object({
   pointsMax: z.number().int(),
   weaponSet1PointsUsed: z.number().int(),
   weaponSet2PointsUsed: z.number().int(),
+  /**
+   * The `<Spec treeVersion>` of the build's active spec, e.g. "0_5". `null` when the XML
+   * carries no such attribute. Read straight off the XML by the API -- `get_tree_status`
+   * does NOT return it. `05`/`06` compare this against the shipped `tree-*.min.json` to
+   * decide whether the canvas can render the build, falling back to the list diff when it
+   * cannot. Added at integration (2026-08-29): both frontend docs specified that fallback,
+   * but no field existed to implement it against.
+   */
+  treeVersion: z.string().nullable(),
   baseline: z.record(z.string(), z.number()), // the StatSet, finite numbers only
   notes: z.array(z.string()), // e.g. "scores 0 DPS headless", "over-allocated by 2"
 });

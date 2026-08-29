@@ -41,6 +41,7 @@ describe("BuildSummary", () => {
     buildId: "b_01",
     className: "Monk",
     ascendancy: null,
+    treeVersion: "0_5",
     level: 84,
     pointsUsed: 107,
     pointsMax: 123,
@@ -53,6 +54,9 @@ describe("BuildSummary", () => {
   it("accepts a well-formed summary (nullable ascendancy)", () => {
     expect(BuildSummary.parse(ok)).toEqual(ok);
     expect(BuildSummary.parse({ ...ok, ascendancy: "Invoker" }).ascendancy).toBe("Invoker");
+    // treeVersion is nullable for the same reason ascendancy is: the XML may not carry it.
+    expect(BuildSummary.parse({ ...ok, treeVersion: null }).treeVersion).toBeNull();
+    expect(BuildSummary.safeParse({ ...ok, treeVersion: undefined }).success).toBe(false);
   });
 
   it("rejects a non-finite value in baseline with a number-type reason", () => {

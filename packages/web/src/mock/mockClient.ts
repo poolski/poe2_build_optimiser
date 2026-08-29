@@ -59,6 +59,8 @@ const MOCK_BUILD: BuildSummary = {
   buildId: "mock-R_Thor-L84",
   className: "Warrior",
   ascendancy: "Titan",
+  // matches the shipped tree-0_5.min.json so mock mode exercises the canvas, not the fallback
+  treeVersion: "0_5",
   level: 84,
   pointsUsed: fx.baseline.pointsUsed,
   pointsMax: fx.baseline.pointsMax,

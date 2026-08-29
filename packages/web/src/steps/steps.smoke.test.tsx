@@ -12,6 +12,7 @@ const build: BuildSummary = {
   buildId: "b1",
   className: "Ranger",
   ascendancy: "Deadeye",
+  treeVersion: "0_5",
   level: 92,
   pointsUsed: 110,
   pointsMax: 118,
