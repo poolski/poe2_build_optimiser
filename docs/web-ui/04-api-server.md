@@ -131,23 +131,66 @@ extraPoints` needs `get_tree_status` first (same as `optimiseCli.ts:272`).
 
 ## `updatedPobCode` (`pob/applyPlan.ts`)
 
-No bridge round-trip needed. The `<Spec>` element's `nodes="12,34,56,…"` attribute is the
-allocated-node id list. Given `result.removed[].id` (+ their cascades — use
-`result.pointsFreed` cross-check) and `result.addedNodeIds` + the path nodes each step dragged
-in:
+> **RESOLVED 2026-08-29 (`3b7dcf6`).** `list_allocated_nodes` now takes an optional `allocSet`
+> alongside `removeIds`, and `optimiseTree` puts `allocatedNodeIds: { before, after }` on
+> `OptimiseTreeResult`. `after` is the **connected** post-plan allocation set — every path node
+> `AllocNode` dragged in included — id-sorted, same node filter as `list_allocated_nodes`
+> (class/ascendancy-start + item-granted nodes excluded). `after === before` when the plan is
+> "change nothing". So `updatedPobCode` is a straight string-replace from
+> `result.allocatedNodeIds.after`; no extra bridge round-trip, no set arithmetic. Mechanism +
+> determinism argument: `docs/status.md`.
 
-- The **authoritative** post-plan allocation is what the bridge holds after the run. Route:
-  call `list_allocated_nodes` **on the still-acquired bridge before `release()`** and map its
-  entries to ids (it already returns the allocated set — confirm the field name against
-  `pob-runtime/bridge.lua` when picked up; add a thin `get_allocated_node_ids` wrapper only if
-  the existing shape is awkward to consume). Then string-replace the `nodes="…"` attribute in the
-  original XML and `encodePobCode`.
-- Doing the set arithmetic in TS from `removed`/`added` is possible but has to replay AllocNode's
-  path-node drag-in and DeallocNode's cascade exactly — the bridge already knows. **Read it from
-  the bridge**, don't recompute.
+The `<Spec>` element's `nodes="12,34,56,…"` attribute is the allocated-node id list. `toResultDTO`
+already has the answer on the result:
+
+- Take `result.allocatedNodeIds.after` (already the connected set, ascending), join it with `,`,
+  string-replace the `nodes="…"` attribute in the original XML, `encodePobCode`. Nothing to
+  recompute or reconcile — `optimiseTree` derived it from the bridge with the plan's `removeIds`
+  cascade deallocated and its picks allocated.
+- Do **not** rebuild it in TS from `removed`/`addedNodeIds`: that set is picks-only and would
+  drop the traversal nodes, emitting a disconnected tree.
 
 Weapon-set nodes: PoB stores those in `<WeaponSet1 nodes>` / `<WeaponSet2 nodes>`. The optimiser
 only touches the base spec, so leave those attributes untouched.
+
+## Mapper obligations — non-negotiable (from the contract, `564c15b`)
+
+These are things the contract **cannot** enforce and the result mapper **must** do. Each was found
+by validating real optimiser output against the schemas; skipping one produces a runtime
+validation rejection, not a type error.
+
+1. **Coerce non-finite → `null`** on `RemovedNodeDTO.objectiveAfterRemoval` and `valueLost`.
+   Core assigns `Number.NaN` / `Number.POSITIVE_INFINITY` when a removal makes the build
+   unscorable (`optimiseTree.ts:556-557`, `:586`, `:593`), and a `nothing-removable` return
+   *ships that entry*. Both fields are `z.number().nullable()` for this reason — "mirror
+   field-for-field" as originally written would have rejected valid output.
+2. **Strip non-finite keys from every `StatSet`** before validating — both
+   `BuildSummary.baseline` *and* `OptimiseResultDTO.final.stats`. `bridge.lua`'s
+   `sanitizeForJson` passes `inf`/`nan` through untouched. The original doc flagged this hazard
+   for `baseline` only; `final.stats` has exactly the same shape and the same problem.
+3. **Build `updatedPobCode` from `allocatedNodeIds.after`** — never rebuild it from `removed` +
+   `addedNodeIds`, which are picks-only and would emit a disconnected tree. See `gotchas.md`.
+4. **Map a `parseObjective` throw to a `JobError.kind`.** `ObjectiveSpec` is deliberately looser
+   than core: it does not range-check the weight (`dps-ehp:5` passes the regex, core throws) and
+   it is case-sensitive where core matches `/i`. Do not assume a 400 already caught it.
+5. **`extraPoints` has no core equivalent** — compute `pointBudget = pointsUsed + extraPoints`,
+   so the optimise handler needs the stored build's `pointsUsed`.
+6. **`minResist` is sugar** — expand to Fire/Cold/Lightning `constraints` in the mapper.
+7. **`mode` cardinality is intentional:** the request has `extend|repair|rollback`, the result has
+   `extend|repair`. `rollback` means "pass `anchorNodeId`"; core has no `mode` option.
+8. **Progress naming:** core's `OptimiseProgress` / `RecommendProgress` already call the count
+   `buildOutputs`, matching `ProgressEvent`. Only the *bridge's* `get_metrics` says
+   `buildOutputCount` — bridge that name only if you read the bridge directly. **The two names
+   coexist deliberately: `OptimiseResultDTO.buildOutputCount` (the *result* field) keeps core's
+   name, while only the *progress event* normalises to `buildOutputs`. Do not "harmonise" them —
+   both are correct and both are commented in the contract.** `jobId` and
+   `elapsedMs` are API-added; they are not on the core progress objects.
+
+9. **Populate `BuildSummary.treeVersion` from the XML** (added at integration 2026-08-29).
+   `get_tree_status` does not return it, so read `<Spec treeVersion>` directly — the **first**
+   `<Spec>`, deliberately the same one `applyPlan` edits, so the version reported describes the
+   spec that actually gets rewritten. `null` when the attribute is absent. `05`/`06` need this to
+   decide canvas vs list-diff; without it their specified fallback cannot be built.
 
 ## SSE stream (`GET /jobs/:id/events`)
 

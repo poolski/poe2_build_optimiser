@@ -119,6 +119,32 @@ The form model is `OptimiseRequest` from the contract, so validation mirrors the
 - **Raw JSON** toggle for the whole `OptimiseResultDTO`.
 - **Recompute stats** footer: `buildOutputCount`, `cacheHitRate`, wall.
 
+> **Resolved at integration 2026-08-29.** This fallback was unimplementable as specified:
+> `BuildSummary` carried no `treeVersion`, nor did `OptimiseResultDTO`, and `get_tree_status`
+> does not return one — the field simply did not exist anywhere in the contract, core, or the
+> bridge. `treeVersion: z.string().nullable()` was added to `BuildSummary`; the API fills it by
+> reading `<Spec treeVersion>` off the XML (`parseTreeVersion`, the *first* `<Spec>`, matching
+> the spec `applyPlan` edits). `Results.tsx` prefers the declared version and falls back to the
+> id-overlap heuristic only when the XML declares none (`isVersionMismatch`).
+
+## Typing against the contract (`564c15b`)
+
+- **Import every type from `@poe2/contract` via `z.infer`. Hand-write nothing** — a local
+  interface that drifts from the schema is the failure mode this package exists to prevent.
+- **Request bodies use the `*Input` types, not the inferred ones.** `OptimiseRequest` and
+  `RecommendRequest` carry `.default()`s, so `z.infer` is the *output* type (defaults already
+  applied, fields required) — wrong for form state or a fetch body. Use `OptimiseRequestInput` /
+  `RecommendRequestInput` (`z.input`) for anything the user is still filling in; the API uses the
+  parsed type on its side.
+- **`ProgressEvent.phase` is an open `z.string()`**, deliberately — phase 1.5 adds phases. Build
+  any exhaustive `switch` against a local union and keep a default branch. Known values are
+  listed in the contract's file comment.
+- **`RemovedNodeDTO.valueLost` can be `null`** (removal made the build unscorable) **or
+  negative** (removing it *helped*). Tooltips and sort orders must handle both.
+- Canvas diff renders from `allocatedNodeIds.before` / `.after` — connected, path nodes included,
+  id-sorted, and `after === before` whenever `steps` is empty. `addedNodeIds`, `removed[].id`
+  (plus `anchorCascade`) and `steps[].id` are picks-only, for tinting added / dropped / anchor.
+
 ## `api.ts`
 
 Thin typed wrappers — `createBuild(input)`, `getBuild(id)`, `submitJob(req)`, `getJob(id)`,

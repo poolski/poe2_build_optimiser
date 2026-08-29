@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { PobBridgeClient } from "./bridge";
-import { AllocatableNode, filterByProximity, recommendTree, TreeStatus } from "./recommendTree";
+import { PobBridgeClient } from "@poe2/pob-bridge";
+import { AllocatableNode, filterByProximity, recommendTree, RecommendProgress, TreeStatus } from "./recommendTree";
 
 // A minimal fake bridge: no real LuaJIT process, just canned responses per RPC method,
 // good enough to exercise recommendTree's batching/filtering/ranking logic in isolation.
@@ -477,6 +477,38 @@ describe("recommendTree", () => {
 	it("throws when objectiveFn cannot score the baseline", async () => {
 		const bridge = new FakeBridge({ TotalDPS: 1000 }, STATUS, [node(1, "A")], passthroughEvaluate);
 		await expect(recommendTree(bridge, { objectiveFn: () => undefined })).rejects.toThrow(/baseline/);
+	});
+});
+
+describe("recommendTree progress", () => {
+	const nodes = Array.from({ length: 120 }, (_, i) => node(i + 1, `N${i + 1}`));
+	const bridge = () =>
+		new FakeBridge({ TotalDPS: 1000 }, STATUS, nodes, (nodeIds) => ({
+			results: nodeIds.map((id) => ({ nodeId: id, pointsSpent: 1, ascendancyPointsSpent: 0, stats: { TotalDPS: 1000 + id } })),
+		}));
+
+	it("emits scoring* then finalising, with candidatesScored rising to candidatesTotal", async () => {
+		const events: RecommendProgress[] = [];
+		await recommendTree(bridge(), { includeAllNodeTypes: true, batchSize: 25, onProgress: (ev) => events.push({ ...ev }) });
+
+		expect(events.length).toBeGreaterThan(1);
+		expect(events.at(-1)!.phase).toBe("finalising");
+		expect(events.slice(0, -1).every((e) => e.phase === "scoring")).toBe(true);
+		const scored = events.map((e) => e.candidatesScored);
+		for (let i = 1; i < scored.length; i++) expect(scored[i]).toBeGreaterThanOrEqual(scored[i - 1]);
+		expect(events.at(-1)!.candidatesScored).toBe(events.at(-1)!.candidatesTotal);
+		expect(events.at(-1)!.candidatesTotal).toBe(120);
+	});
+
+	it("a throwing onProgress does not change the ranking and does not reject", async () => {
+		const clean = await recommendTree(bridge(), { includeAllNodeTypes: true });
+		const withThrower = await recommendTree(bridge(), {
+			includeAllNodeTypes: true,
+			onProgress: () => {
+				throw new Error("boom");
+			},
+		});
+		expect(withThrower).toEqual(clean);
 	});
 });
 

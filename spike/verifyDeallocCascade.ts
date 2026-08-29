@@ -17,7 +17,7 @@
 //   npm run verify-dealloc-cascade -- "<build.xml>" [objectiveKey=TotalDPS]
 
 import * as fs from "node:fs";
-import { PobBridge } from "../src/core/bridge";
+import { PobBridge } from "@poe2/pob-bridge";
 import type { AllocatableNode } from "../src/core/recommendTree";
 
 interface AllocatedNode {

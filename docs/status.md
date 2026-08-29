@@ -194,6 +194,7 @@ cancel that frees the slot within one add-step.
 | `docs/web-ui/05-frontend.md` | Phase 3 — `packages/web`: Vite + React wizard, node-list diff |
 | `docs/web-ui/06-tree-canvas.md` | Phase 3 (in v1) — stylised passive-tree diff canvas |
 | `docs/web-ui/07-performance.md` | Cross-cutting — why PoB stays the fitness oracle + the speed-lever table |
+| `docs/web-ui/08-fork-prep.md` | Between phases 1 and 2 — the serial commit that makes phases 2–3 safe to run as parallel worktrees |
 
 **Decisions of record (2026-08-28, with the user):**
 
@@ -220,10 +221,140 @@ cancel that frees the slot within one add-step.
    sees. Phase 1.5 (lever 1b) parallelises one run's candidate batch across the pool — the real
    wall-time win, and the first fast-follow after v1 ships.
 
-Sequencing: phase 1 (bridge) → phase 2 (API) → phase 3 (UI = wizard + list diff + tree canvas) =
-**v1**. Then **phase 1.5** (parallel candidate eval, the wall-time win) as the first fast-follow.
+Sequencing: phase 1 (bridge) → **fork-prep** (`08`) → phase 2 (API) → phase 3 (UI = wizard + list
+diff + tree canvas) = **v1**. Then **phase 1.5** (parallel candidate eval, the wall-time win) as
+the first fast-follow.
+
+**Phase 1 is COMPLETE as of 2026-08-29**, on branch `phase1-bridge-service` (not yet merged to
+`main`):
+
+- `660534d` npm workspaces + `tsconfig` split. Cross-package resolution is **source-level aliases**
+  (`tsconfig` `paths` + a vitest alias) — no build step, no TS project references.
+- `97cbe27` + `5c24241` `pob-runtime/` and `bridge.ts` → `packages/pob-bridge`, submodule path
+  updated, shim added then dropped.
+- `2b52cee` `PobBridgePool` (size 2, FIFO, crash-respawn, `dispose`, `warm`) **plus a test-suite
+  split**: `npm test` = fake-bridge units only (fast, no LuaJIT on PATH); `npm run test:integration`
+  = real-bridge suite (`*.integration.test.ts`, `fileParallelism: false`). Keep new real-bridge
+  tests out of the default suite.
+- `a7b358c` `onProgress` + `shouldContinue` in `optimiseTree` / `recommendTree`. `shouldContinue`
+  false → clean early return with `stoppedBecause: "cancelled"`. `beamAddLoop` gained an `onDepth`
+  hook; all returns funnel through one `finish()` that emits the terminal event.
+
+Verified: 98 default tests green, integration suite 10/10, `tsc` clean, and the phase-1 gate
+(`optimise-tree --respec-budget 3` vs the `main` baseline) byte-identical — same 432 BuildOutputs,
+same plan.
+
+**Fork-prep is DONE — `e9e2c56`** (`08-fork-prep.md`, executed 2026-08-29). All v1 deps in one
+lockfile pass, `packages/{contract,api,web}` skeletons + aliases (shared `vitest.alias.ts`), web
+carved out of the commonjs typecheck, jsdom via `environmentMatchGlobs`, and the canvas fixtures
+committed (`packages/web/public/tree-0_5.min.json` 407 KB + `packages/web/fixtures/`), so the
+canvas track needs neither LuaJIT nor the submodule. 101 fast tests, integration still 10.
+
+### ✔ RESOLVED — `allocatedNodeIds.{before,after}` on `OptimiseTreeResult` (`3b7dcf6`)
+
+Fixed 2026-08-29 on `phase1-bridge-service`, as the agreed design said — no deviations.
+`list_allocated_nodes` now takes an optional `allocSet` alongside `removeIds`: it deallocs the
+`removeIds` cascade, `AllocNode`s each `allocSet` id (auto-pathing), one
+`BuildAllDependsAndPaths`, lists `spec.allocNodes`, restores. **No `recomputeBuild()`** — the
+method never reads `mainOutput`, so it adds zero BuildOutputs and cannot move the run's counter.
+The `removeIds`-only and no-arg call paths stay byte-identical (the added per-list dedup is a
+no-op without duplicates); an id in both sets is deallocated then re-allocated, ending allocated
+(what repair does when it re-picks a freed node).
+
+`optimiseTree` calls it once inside `finish()` — after the search settles, never during, so it
+can't touch search order or the beam — with `{ removeIds: <dropped ids>, allocSet: <winning
+picks> }`, and exposes `allocatedNodeIds: { before, after }` (both id-sorted; same node filter as
+`list_allocated_nodes`, i.e. class/ascendancy-start + item-granted nodes excluded).
+`after === before` whenever the recommendation is "change nothing" (`steps` empty).
+
+`after` is connected by construction (`spec.allocNodes` after real `AllocNode`/`DeallocNode`).
+Verified: `--rollback-to 34015` on `RampantlyBisexual` is byte-identical either side of the
+change (same 12-step plan, same 692 BuildOutputs, same `47236.738915`; only the new field
+appears). On the R_Thor fixture run `before` 127 → `after` 127, the size invariant
+`after.length === before.length − pointsFreed + Σ step.pointsSpent` holds, the one previously-
+unlogged traversal node (id 11433) is now present, and the integration test prices the
+newly-allocated ids explicitly to confirm `AllocNode` drags in no extra connectors. `04`'s
+`applyPlan.ts` writes `<Spec nodes>` straight from `allocatedNodeIds.after` now.
+
+Rejected alternative (threading path ids through `evaluate_candidate_nodes_from` + the beam) was
+not needed. Fixture `packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` regenerated:
+`afterConnected` populated (127 ids), `afterPicksOnly` (126, picks only) kept alongside for
+comparison. Tests: fast suite 101 → 106, integration 10 → 11 (new
+`optimiseTree.integration.test.ts`, a ~2 min tagged repair run).
+
+After that: `03` (the contract) stays serial and alone, since it is what forces rework in two
+tracks if it moves. Then fork into `04` / `05`+`06` / phase 1.5.
+
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.
+
+### Phases 2 and 3 — COMPLETE 2026-08-29 (parallel worktrees)
+
+Run as two concurrent Sonnet agents in `git worktree`s off `phase1-bridge-service`, exactly as
+`08-fork-prep.md` designed. Both merged back clean, including root `package.json` — the fork-prep
+bet paid off.
+
+- **`04` API** (`bf18bb2`, merged `8376f38`) — `packages/api`: Hono on `127.0.0.1:8787`, build
+  ingest + store, in-memory job registry (`EventEmitter`/job, FIFO, `MAX_ACTIVE_JOBS <= POOL_SIZE`),
+  SSE relay, cancel through `shouldContinue`, `updatedPobCode` via `applyPlan`, all 8 contract
+  mapper obligations tagged at their sites. `CoreFns` is injectable so the fast suite stubs core.
+- **`05`+`06` frontend + canvas** (`9055fb6`, `59f56a7`, `fdc7fcc`, `21845ea`, merged `6d27617`) —
+  `packages/web`: Vite + React 4-step wizard, node-list diff, and the stylised tree canvas ported
+  from the MIT `poe2-tools/poe2-build-planner` renderer onto `tree-0_5.min.json`
+  (`LICENSE.upstream` + per-file provenance; no GGG art). Upstream's min<->max wheel-zoom bug is
+  fixed (`zoom.ts`: log slider + fixed wheel step). Dev runs against a fixture-backed mock client
+  unless `VITE_USE_API=1`.
+
+**Integration fixes applied on top (2026-08-29):**
+
+- **`treeVersion` added to `BuildSummary`** (contract). `05` and `06` both specified a
+  tree-version-mismatch fallback to the list view, and it was **unimplementable** — no such field
+  existed anywhere in the contract, core, or the bridge, and `get_tree_status` does not return it.
+  The API now reads `<Spec treeVersion>` straight off the XML (`parseTreeVersion`, deliberately the
+  *first* `<Spec>` so it describes the spec `applyPlan` edits). `Results.tsx` prefers the declared
+  version and keeps the id-overlap heuristic only as the fallback for XML that carries none.
+- **`serveStatic` wired** — the prod server serves `packages/web/dist` at `/` with an SPA
+  fallback, mounted only when the bundle exists on disk so an API-only run doesn't 404 through a
+  rootless static handler.
+- **`zustand` dropped** — installed by fork-prep, never used (`05` mandates `useReducer`).
+
+**Known gaps carried forward, both cheap:**
+
+- `ProgressEvent.bestObjective` is required (`z.number()`), but core's `RecommendProgress` has no
+  such field, so recommend ticks report `0`. Either core exposes one or the contract makes it
+  optional for the recommend kind.
+- `lightningcss` has no native binding on this machine, so `vite build` uses
+  `cssMinify: "esbuild"` (`packages/web/vite.config.mts`). Machine-level, not a project defect.
+
+## Known follow-ups (non-blocking)
+
+- **`ProgressEvent.bestObjective` should be optional** (raised 2026-08-29, deferred as a
+  follow-up). `progress.ts`'s own header says the optimise fields and the recommend fields are
+  "all optional", but `bestObjective` is declared `z.number()` — required — and only
+  `OptimiseProgress` has it. `RecommendProgress` carries `candidatesTotal`/`candidatesScored`
+  and no objective, so `normalizeProgress` (`packages/api/src/jobs/mappers.ts:219`) is forced to
+  invent `0`.
+  **Why `0` is the wrong sentinel:** it is a legitimate objective value — builds that score 0 DPS
+  headless are a first-class error surface here (two in the corpus), so a consumer cannot tell
+  "recommend job, no such concept" from "optimise job on an unscorable build". Worse,
+  `RunProgress.tsx:49` computes `bestObjective - baselineObjective`, so a recommend tick would
+  render a huge *negative* delta — a run apparently collapsing.
+  **Not reachable today:** `packages/web/src/api.ts:80` hardcodes `kind: "optimise"`; the
+  recommend-only screen is a deferred v1 non-goal. This bites whoever adds that screen.
+  **Fix (~15 min):** `bestObjective: z.number().optional()`, drop the fabrication in the mapper,
+  guard it in `RunProgress` the way `depth`/`k` already are. Rejected alternative: giving
+  `RecommendProgress` a real `bestObjective` — recommend scores candidates in isolation against a
+  fixed baseline, so there is no "best so far" to report, and its
+  `candidatesScored`/`candidatesTotal` is already a better progress signal than optimise has
+  (a real denominator).
+- **`spike/genCanvasFixture.ts` writes only a trimmed canvas projection.** Contract tests must
+  therefore *reconstitute* a full `OptimiseResultDTO` before parsing, which is the weakest link
+  in an otherwise strong verification chain: `final.stats` is hand-authored, and the
+  reconstitution derives a finite `objectiveAfterRemoval`, so the fixture test never exercises
+  the nullable branch (a dedicated unit test does). Worth dumping an untrimmed
+  `OptimiseTreeResult` blob alongside the projection so future tests parse raw output instead.
+  Raised by the phase-1 session 2026-08-29. Not worth holding the fork for.
+- Bench sweep to justify a default `beamWidth > 1` (open since the beam-search track).
 
 ## Scope
 
@@ -254,12 +385,18 @@ See *Active next track: web UI + bridge service* above.
 
 ## `docs/` layout
 
+- `../CLAUDE.md` (repo root) — working guidance loaded every session: the fast/integration
+  test split (**integration runs only on request**), the `npm audit fix` prohibition, and how
+  cross-package imports resolve. Added 2026-08-29.
 - `status.md` — this file, the map.
 - `gotchas.md` — PoB-PoE2 leftovers to not trip on. Always relevant.
 - `constraint-rejection-repro.md` — live repro of the recommender's constraint filter.
 - `skill-optimiser-design.md` — shelved track, kept for reference.
 - `beam-search/` — the completed passive-tree optimiser track: `design.md` (+ Implementation
   status checklist), `repro.md`, `corpus.md`, `bench-totaldps.md`, `bench-dps-ehp-0-5.md`.
+- `cli/` — **user-facing** CLI reference: `README.md` (objectives, constraints, picking a
+  mode), `optimise-tree.md`, `recommend-tree.md`. Added 2026-08-29 alongside the root
+  `README.md`, which covers both the CLI and the web UI.
 - `web-ui/` — the active track. Start at its `README.md`.
 
 ## How to pick this up

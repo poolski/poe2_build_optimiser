@@ -113,3 +113,26 @@ to take well over ten minutes. Two things now keep a normal run fast: `recommend
 Notable+Keystone candidates only (skipping the thousands of small stat nodes, which rarely rank
 highly anyway -- override via `nodeTypes`/`includeAllNodeTypes`), and its `maxCandidates` option
 (plus the spike script's dev-time cap of 20) bounds cost further while iterating.
+
+## Don't verify tree connectivity by re-allocating a node set from scratch
+
+Found 2026-08-29 while adding `allocatedNodeIds` (`3b7dcf6`). The intuitive check — take a
+post-plan allocated set, `AllocNode` every id onto a bare tree, and assert it round-trips —
+**does not work, and its failure does not mean the set is disconnected.**
+
+From a bare frontier, `AllocNode` auto-paths each id by shortest path *in the order given*, so it
+pulls in connector nodes that aren't in the set. A real run pulled in 4 extra
+(59367, 62640, 63979, 64471). That is shortest-path ambiguity plus allocation-order sensitivity,
+not a defect in the set: a set read back from `spec.allocNodes` after a real allocation *is*
+connected by construction.
+
+**Do this instead:** build the new ids on top of the real survivors and check the net point
+delta — `get_stats_from({ allocSet, removeIds }).pointsSpent === added − freed`. Zero extra
+points means `AllocNode` dragged in no unaccounted connectors.
+
+## `removeIds` + `allocSet` may legitimately overlap
+
+Same change. It is tempting to reject or dedupe an id appearing in both lists as caller error.
+**It isn't.** Repair routinely frees a node and then re-picks it — in the shipped fixture, 2511 is
+both removed and re-added. The correct semantics are *remove first, then allocate; an overlapping
+id ends up allocated*. Dedup within each list only; never across the two.

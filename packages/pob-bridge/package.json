@@ -1,0 +1,11 @@
+{
+  "name": "@poe2/pob-bridge",
+  "version": "0.1.0",
+  "description": "Long-lived LuaJIT bridge to Path of Building's headless calc engine, plus a warm-process pool.",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

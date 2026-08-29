@@ -46,10 +46,18 @@ export const BuildSummary = z.object({
   pointsMax: z.number().int(),
   weaponSet1PointsUsed: z.number().int(),
   weaponSet2PointsUsed: z.number().int(),
+  treeVersion: z.string().nullable(),  // <Spec treeVersion>, e.g. "0_5"; null when absent
   baseline: z.record(z.string(), z.number()),   // the StatSet, JSON-safe (finite numbers only)
   notes: z.array(z.string()),          // e.g. "scores 0 DPS headless", "over-allocated by 2"
 });
 ```
+
+> **`treeVersion` added at integration 2026-08-29**, not in the original schema. `05` and `06`
+> both specify falling back to the list diff when the build's tree version differs from the
+> shipped canvas tree, and there was no field to check — it exists nowhere in core or the bridge
+> either, and `get_tree_status` does not return it. The API reads it off the XML (`04`, mapper
+> obligation 9). Nullable because a build XML need not carry the attribute; the frontend keeps an
+> id-overlap heuristic for that case.
 
 ### `optimise.ts`
 
@@ -102,7 +110,11 @@ in `04`, not here.
 - `final.stats` kept as `z.record(z.string(), z.number())` (the `StatSet`).
 - an added `updatedPobCode: z.string()` — the re-encoded build with the plan applied (`04`).
 - an added `allocatedNodeIds: z.object({ before: z.array(z.number().int()), after: z.array(z.number().int()) })`
-  — read off the bridge (`04`); the canvas (`06`, in v1) renders the diff from it.
+  — mirrors `OptimiseTreeResult.allocatedNodeIds` (**resolved 2026-08-29, `3b7dcf6`**): `after`
+  is the connected post-plan allocation set, id-sorted, same node filter as `list_allocated_nodes`
+  (class/ascendancy-start + item-granted nodes excluded). `optimiseTree` fills it; `04` maps it
+  straight through and uses it for `updatedPobCode`; the canvas (`06`, in v1) renders the diff
+  from it. `after === before` when the plan is "change nothing".
 - `addedNodeIds`, `removed[].id`, `steps[].id` preserved so the canvas can tint added / dropped /
   anchor distinctly.
 - `stoppedBecause` union includes `"cancelled"` (the `shouldContinue` early return, `02`).

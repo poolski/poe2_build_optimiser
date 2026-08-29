@@ -4,7 +4,7 @@
 // the freed points).
 // Argument parsing + console output live here; core/optimiseTree.ts returns plain data.
 
-import { PobBridge } from "./core/bridge";
+import { PobBridge } from "@poe2/pob-bridge";
 import { ELEMENTAL_RESIST_METRICS, expectValue, parseConstraint, parseIntFlag, parseList } from "./cliShared";
 import { loadBuildFromFile } from "./core/loadBuild";
 import { parseObjective } from "./core/objective";

@@ -989,22 +989,53 @@ end
 -- those nodes and their downstream cascades". The rollback-to-node repair option diffs the bare
 -- list against list_allocated_nodes({ removeIds = { anchor } }) to recover the anchor's cascade
 -- members (node.depends) -- which evaluate_dealloc_candidates only counts, never enumerates.
--- Same rollback discipline as list_allocatable_nodes_from; no recompute (never reads mainOutput).
+--
+-- Optional params.allocSet: AllocNode each id on top (after any removeIds), then rebuild paths --
+-- so the returned set is the CONNECTED post-plan allocation, every path node AllocNode drags in
+-- included. This is the only way to obtain optimiseTree's true `allocatedNodeIds.after`: the
+-- planner is probe-and-restore (get_stats_from etc. all RestoreUndoState), its `addedNodeIds` is
+-- picks-only, and ImportFromNodeList never auto-paths. removeIds + allocSet together is the beam's
+-- own order of operations (dealloc the dropped set, then re-spend); an id in both is deallocated
+-- and then re-allocated, ending allocated (repair often re-picks a node it just freed). Mirrors
+-- get_stats_from's prologue exactly, minus the recompute -- this method never reads mainOutput, so
+-- adding a BuildOutput here would be a spurious counter bump. Same rollback discipline as
+-- list_allocatable_nodes_from.
 methods.list_allocated_nodes = function(params)
 	if not build or not build.spec then
 		error("no build loaded")
 	end
 	local spec = build.spec
+	local hasRemove = params and params.removeIds and #params.removeIds > 0
+	local hasAlloc = params and params.allocSet and #params.allocSet > 0
 	local undo, buildFlagBefore
-	if params and params.removeIds and #params.removeIds > 0 then
+	if hasRemove or hasAlloc then
 		buildFlagBefore = build.buildFlag
 		undo = spec:CreateUndoState()
-		for _, removeId in ipairs(params.removeIds) do
-			local removeNode = spec.nodes[removeId]
-			if not removeNode then
-				error("unknown removeIds nodeId: " .. tostring(removeId))
+		if hasRemove then
+			local removeSeen = {}
+			for _, removeId in ipairs(params.removeIds) do
+				if not removeSeen[removeId] then
+					removeSeen[removeId] = true
+					local removeNode = spec.nodes[removeId]
+					if not removeNode then
+						error("unknown removeIds nodeId: " .. tostring(removeId))
+					end
+					spec:DeallocNode(removeNode)
+				end
 			end
-			spec:DeallocNode(removeNode)
+		end
+		if hasAlloc then
+			local allocSeen = {}
+			for _, allocId in ipairs(params.allocSet) do
+				if not allocSeen[allocId] then
+					allocSeen[allocId] = true
+					local allocNode = spec.nodes[allocId]
+					if not allocNode then
+						error("unknown allocSet nodeId: " .. tostring(allocId))
+					end
+					spec:AllocNode(allocNode)
+				end
+			end
 		end
 		spec:BuildAllDependsAndPaths()
 	end

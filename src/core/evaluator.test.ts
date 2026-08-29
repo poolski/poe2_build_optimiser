@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { PobBridgeClient } from "./bridge";
+import { PobBridgeClient } from "@poe2/pob-bridge";
 import { MemoEvaluator } from "./evaluator";
 
 // Fake bridge that records every call and answers the two "measure a partial allocation" RPCs

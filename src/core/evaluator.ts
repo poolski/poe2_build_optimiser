@@ -11,7 +11,7 @@
 // produces the bare allocSet key, byte-identical to extend mode. Keys are per evaluator instance;
 // make one per optimise run.
 
-import { PobBridgeClient } from "./bridge";
+import { PobBridgeClient } from "@poe2/pob-bridge";
 import { StatSet } from "./stats";
 
 export interface CandidateEval {

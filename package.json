@@ -4,9 +4,14 @@
   "description": "Recommends passive tree allocations for a PoE2 build using Path of Building's own headless calculation engine.",
   "private": true,
   "main": "dist/cli.js",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "recommend-tree": "ts-node src/cli.ts",
     "optimise-tree": "ts-node src/optimiseCli.ts",
+    "start": "ts-node packages/api/src/server.ts",
+    "dev:api": "ts-node packages/api/src/server.ts",
     "recommend-tree-spike": "ts-node spike/recommendTreeSpike.ts",
     "optimise-tree-spike": "ts-node spike/optimiseTreeSpike.ts",
     "characterise-build": "ts-node spike/characteriseBuild.ts",
@@ -15,13 +20,21 @@
     "bench-tree-approaches": "ts-node spike/benchTreeApproaches.ts",
     "verify-dealloc-cascade": "ts-node spike/verifyDeallocCascade.ts",
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "build:web": "npm run build:app -w @poe2/web",
+    "dev:web": "npm run dev -w @poe2/web",
+    "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
+    "test": "vitest run",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "concurrently": "^10.0.5",
     "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@poe2/pob-bridge": "*"
+  }
 }

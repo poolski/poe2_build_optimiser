@@ -2,7 +2,7 @@
 // Delete once folded into docs/beam-search/repro.md (design step 8).
 //   npx ts-node spike/verifyBeamBridge.ts "D:/My Documents/Path of Building (PoE2)/Builds/RampantlyBisexual.xml"
 
-import { PobBridge } from "../src/core/bridge";
+import { PobBridge } from "@poe2/pob-bridge";
 import { loadBuildFromFile } from "../src/core/loadBuild";
 
 interface AllocNode {

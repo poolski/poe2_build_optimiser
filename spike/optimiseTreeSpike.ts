@@ -7,7 +7,7 @@
 // respecBudget (default 0): >0 switches to repair mode -- free up to N low-value allocated leaves
 // and re-spend them; extraPoints is then ignored (re-spend is capped at what was freed).
 
-import { PobBridge } from "../src/core/bridge";
+import { PobBridge } from "@poe2/pob-bridge";
 import { loadBuildFromFile } from "../src/core/loadBuild";
 import { parseObjective } from "../src/core/objective";
 import { optimiseTree } from "../src/core/optimiseTree";

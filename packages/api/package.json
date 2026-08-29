@@ -1,0 +1,15 @@
+{
+  "name": "@poe2/api",
+  "version": "0.1.0",
+  "description": "Hono + Zod HTTP server: turns requests into optimiseTree / recommendTree calls on a PobBridgePool. Local-first, single-user, binds 127.0.0.1.",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.13.5"
+  }
+}

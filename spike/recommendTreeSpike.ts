@@ -8,7 +8,7 @@
 // is optional -- see recommendTree.ts's damageType option. minResist (e.g. 75) applies a floor
 // on Fire/Cold/Lightning resist so candidates that would drop a capped res below it are dropped.
 
-import { PobBridge } from "../src/core/bridge";
+import { PobBridge } from "@poe2/pob-bridge";
 import { loadBuildFromFile } from "../src/core/loadBuild";
 import { recommendTree } from "../src/core/recommendTree";
 

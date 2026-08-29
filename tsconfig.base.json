@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "baseUrl": ".",
+    "paths": {
+      "@poe2/pob-bridge": ["packages/pob-bridge/src/index.ts"],
+      "@poe2/pob-bridge/*": ["packages/pob-bridge/src/*"],
+      "@poe2/contract": ["packages/contract/src/index.ts"],
+      "@poe2/contract/*": ["packages/contract/src/*"],
+      "@poe2/api": ["packages/api/src/index.ts"],
+      "@poe2/api/*": ["packages/api/src/*"],
+      "@poe2/web": ["packages/web/src/index.ts"],
+      "@poe2/web/*": ["packages/web/src/*"]
+    }
+  }
+}

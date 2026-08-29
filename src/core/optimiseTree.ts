@@ -20,7 +20,7 @@
 // Returns whichever is better, the loaded tree or the best repaired one -- so it can always fall
 // back to "change nothing". See the design doc's step 7.
 
-import { PobBridgeClient } from "./bridge";
+import { PobBridgeClient } from "@poe2/pob-bridge";
 import { MemoEvaluator } from "./evaluator";
 import { metricObjective, Objective } from "./objective";
 import {
@@ -39,6 +39,32 @@ const DEFAULT_NODE_TYPES = ["Notable", "Keystone"];
 /** Rollback-to-node: minimum regular points that must survive the anchor's cascade. Below this the
  * add-loop has no spine to grow from and stalls on zero-delta pathing (that is from-scratch mode). */
 const MIN_ANCHOR_SPINE_POINTS = 3;
+
+/** Coarse progress signal, emitted at phase boundaries and once per add-loop depth / k-sweep
+ * iteration. Fire-and-forget: never affects search order or results. The argument object is
+ * reused between calls -- copy any field you need to retain. */
+export interface OptimiseProgress {
+	phase:
+		| "baseline" // measuring the loaded tree
+		| "regret-probe" // repair: scoring dealloc candidates
+		| "add-loop" // extend walk / repair re-spend (the long part)
+		| "k-sweep" // repair: re-running the add-loop for k = 1..N freed prefixes
+		| "finalising";
+	/** Real BuildOutput recomputes so far, from the bridge's get_metrics counter (0 against an
+	 * older bridge without it). The honest total is unknown up front, so the UI shows a rate +
+	 * elapsed unless `estimatedTotal` is set. */
+	buildOutputs: number;
+	/** Set once a depth's pooled candidate count is known. */
+	estimatedTotal?: number;
+	/** Best objective on any live plan so far (the baseline before the first improving step). */
+	bestObjective: number;
+	/** add-loop / k-sweep only. */
+	depth?: number;
+	k?: number;
+	kTotal?: number;
+	/** Optional short human line; the UI can also build its own from the fields above. */
+	note?: string;
+}
 
 export interface OptimiseTreeOptions {
 	/** mainOutput key to score on. Ignored when `objectiveFn` is given. Default "TotalDPS". */
@@ -107,6 +133,15 @@ export interface OptimiseTreeOptions {
 	/** Max number of add-steps the beam may take. Unset = bounded only by the point budget
 	 * (`headroom`). Mainly a cost knob for wide beams. */
 	beamDepth?: number;
+	/** Called at phase boundaries and once per add-loop depth / k-sweep iteration. Emitting first
+	 * reads the bridge's BuildOutput counter, so this is not purely synchronous -- but the read is
+	 * a pure query that never gates a branch or reorders candidate evaluation. Must not throw and
+	 * must not retain its argument (the object is reused). Undefined = no callback (CLI default). */
+	onProgress?: (ev: OptimiseProgress) => void;
+	/** Checked at the *same* boundaries as onProgress (never mid-BuildOutput). Returning false
+	 * makes optimiseTree stop after the current add-step and return its best plan so far with
+	 * `stoppedBecause: "cancelled"`. Undefined = never cancels (CLI default). Must not throw. */
+	shouldContinue?: () => boolean;
 }
 
 export interface OptimiseStep {
@@ -158,6 +193,15 @@ export interface OptimiseTreeResult {
 	steps: OptimiseStep[];
 	/** Anchor node ids of `steps` (path nodes AllocNode adds are not listed individually). */
 	addedNodeIds: number[];
+	/** The allocated regular-node id sets before and after applying this plan, each ascending by
+	 * id. Same filter as the `list_allocated_nodes` bridge method: class / ascendancy-start anchors
+	 * and item-granted (free-allocate) nodes are excluded. Unlike `addedNodeIds` (picks only),
+	 * `after` is read back from the bridge with the plan's removals deallocated and its picks
+	 * allocated, so it includes every path node `AllocNode` dragged in -- it is the connected set a
+	 * correct `<Spec nodes="...">` export needs. When the recommendation is "change nothing"
+	 * (`steps` empty), `after` equals `before`. Invariant for a committed plan:
+	 * `after.length === before.length - pointsFreed + sum(steps[].pointsSpent)`. */
+	allocatedNodeIds: { before: number[]; after: number[] };
 	/** Repair mode: points freed by `removed`, and points the re-spend actually consumed. */
 	pointsFreed: number;
 	pointsRespent: number;
@@ -172,7 +216,8 @@ export interface OptimiseTreeResult {
 		| "no-candidates"
 		| "nothing-to-do"
 		| "nothing-removable"
-		| "repair-not-worthwhile";
+		| "repair-not-worthwhile"
+		| "cancelled";
 	/** Populated when the bridge exposes get_metrics (real BuildOutput recomputes this run). */
 	buildOutputCount?: number;
 	/** Cumulative seconds the bridge spent inside recomputeBuild() this run (bridge-side os.clock,
@@ -221,6 +266,10 @@ interface AddLoopParams {
 	removeIds: number[];
 	startObjective: number;
 	startStats: StatSet;
+	/** Called once at the top of each depth, before that depth commits a step. Returning false
+	 * stops the loop and yields the best plan committed so far (`cancelled: true`). Undefined =
+	 * no progress / no cancellation. */
+	onDepth?: (depth: number, bestObjective: number) => Promise<boolean>;
 }
 
 interface AddLoopOutcome {
@@ -230,6 +279,8 @@ interface AddLoopOutcome {
 	finalObjective: number;
 	finalStats: StatSet;
 	stoppedBecause: "budget-reached" | "no-positive-candidate" | "no-candidates";
+	/** True when `onDepth` asked the loop to stop early. */
+	cancelled: boolean;
 }
 
 export async function optimiseTree(
@@ -286,15 +337,117 @@ export async function optimiseTree(
 		beamDepth: options.beamDepth !== undefined ? Math.max(1, Math.trunc(options.beamDepth)) : undefined,
 	};
 
+	// ---- progress + cancellation (both opt-in, side-effect-free) --------------------------------
+	const wantsProgress = options.onProgress !== undefined || options.shouldContinue !== undefined;
+	let lastBuildOutputs = 0;
+	let cancelled = false;
+
+	/** Emit one progress event (if onProgress) then poll shouldContinue. Returns false once the
+	 * caller has asked to stop. The BuildOutput count is read from the bridge's existing
+	 * get_metrics -- a pure query, no new RPC -- and the whole helper no-ops when neither hook is
+	 * set, so the CLI / bench paths are byte-for-byte unchanged. */
+	const tick = async (
+		phase: OptimiseProgress["phase"],
+		extra: Partial<OptimiseProgress> = {},
+	): Promise<boolean> => {
+		if (!wantsProgress) return true;
+		if (options.onProgress) {
+			try {
+				const m = await bridge.call<{ buildOutputCount?: number }>("get_metrics");
+				if (typeof m.buildOutputCount === "number") lastBuildOutputs = m.buildOutputCount;
+			} catch {
+				/* older bridge without the counter -- keep the last known value */
+			}
+			try {
+				options.onProgress({
+					phase,
+					buildOutputs: lastBuildOutputs,
+					bestObjective: baselineObjective,
+					...extra,
+				});
+			} catch {
+				/* a broken UI callback must never fail a job */
+			}
+		}
+		let cont = true;
+		try {
+			cont = options.shouldContinue ? options.shouldContinue() : true;
+		} catch {
+			cont = true; // a throwing predicate is treated as "keep going", never a failure
+		}
+		if (!cont) cancelled = true;
+		return cont;
+	};
+
+	/** Sorted allocated regular-node ids, optionally with a plan's `removeIds` deallocated and
+	 * `allocSet` (picks) allocated on top first. `list_allocated_nodes` never recomputes, so this
+	 * adds no BuildOutput -- the plan's determinism and the run's counter are untouched. */
+	const listAllocatedIds = async (params?: Record<string, unknown>): Promise<number[]> => {
+		const { nodes } = await bridge.call<{ nodes: { id: number }[] }>("list_allocated_nodes", params);
+		return nodes.map((n) => n.id).sort((a, b) => a - b);
+	};
+
+	/** Terminal `finalising` event, buildOutputs pinned to the reconciled count. Every return path
+	 * funnels through here -- which is also where `allocatedNodeIds` is resolved: one probe of the
+	 * settled plan, after the search, so it can never perturb search order or the beam. */
+	const finish = async (result: OptimiseTreeResult): Promise<OptimiseTreeResult> => {
+		const before = await listAllocatedIds();
+		// `steps` empty <=> the recommendation is "change nothing" (extend nothing-to-do, every
+		// no-change/cancelled/nothing-removable repair return): the tree is unchanged, so `after`
+		// is just `before`. A committed plan re-derives the connected set from the bridge, feeding
+		// it the same removeIds prologue + picks the winning beam used.
+		result.allocatedNodeIds = {
+			before,
+			after:
+				result.steps.length === 0
+					? before
+					: await listAllocatedIds({
+							removeIds: result.removed.map((r) => r.id),
+							allocSet: result.addedNodeIds,
+						}),
+		};
+		if (wantsProgress && options.onProgress) {
+			try {
+				options.onProgress({
+					phase: "finalising",
+					buildOutputs: result.buildOutputCount ?? lastBuildOutputs,
+					bestObjective: result.final.objective,
+				});
+			} catch {
+				/* ignore */
+			}
+		}
+		return result;
+	};
+
+	await tick("baseline", { bestObjective: baselineObjective });
+	if (cancelled) {
+		return finish(
+			await withMetrics(bridge, memo, {
+				...skeleton,
+				mode: repairMode ? "repair" : "extend",
+				...(repairMode ? { respecBudget, anchorNodeId } : {}),
+				final: { objective: baselineObjective, pointsSpent: 0, stats: baseline },
+				stoppedBecause: "cancelled",
+			}),
+		);
+	}
+
+	const depthTick = wantsProgress
+		? (depth: number, bestObjective: number): Promise<boolean> => tick("add-loop", { depth, bestObjective })
+		: undefined;
+
 	if (!repairMode) {
 		// ---- extend mode ----
 		if (extendHeadroom <= 0) {
-			return withMetrics(bridge, memo, {
-				...skeleton,
-				mode: "extend",
-				final: { objective: baselineObjective, pointsSpent: 0, stats: baseline },
-				stoppedBecause: "nothing-to-do",
-			});
+			return finish(
+				await withMetrics(bridge, memo, {
+					...skeleton,
+					mode: "extend",
+					final: { objective: baselineObjective, pointsSpent: 0, stats: baseline },
+					stoppedBecause: "nothing-to-do",
+				}),
+			);
 		}
 		const loop = await beamAddLoop({
 			...commonLoopParams,
@@ -303,39 +456,48 @@ export async function optimiseTree(
 			removeIds: [],
 			startObjective: baselineObjective,
 			startStats: baseline,
+			onDepth: depthTick,
 		});
-		const stoppedBecause =
-			loop.steps.length === 0
+		const stoppedBecause: OptimiseTreeResult["stoppedBecause"] = loop.cancelled
+			? "cancelled"
+			: loop.steps.length === 0
 				? loop.stoppedBecause === "budget-reached"
 					? "nothing-to-do"
 					: loop.stoppedBecause
 				: loop.stoppedBecause;
-		return withMetrics(bridge, memo, {
-			...skeleton,
-			mode: "extend",
-			steps: loop.steps,
-			addedNodeIds: loop.added,
-			final: { objective: loop.finalObjective, pointsSpent: loop.spent, stats: loop.finalStats },
-			stoppedBecause,
-		});
+		return finish(
+			await withMetrics(bridge, memo, {
+				...skeleton,
+				mode: "extend",
+				steps: loop.steps,
+				addedNodeIds: loop.added,
+				final: { objective: loop.finalObjective, pointsSpent: loop.spent, stats: loop.finalStats },
+				stoppedBecause,
+			}),
+		);
 	}
 
 	// ---- repair mode (any allocated regular node; removal cascades) ----
-	const noChange = (
+	const noChange = async (
 		reason: OptimiseTreeResult["stoppedBecause"],
 		removed: RemovedNode[] = [],
 	): Promise<OptimiseTreeResult> =>
-		withMetrics(bridge, memo, {
-			...skeleton,
-			mode: "repair",
-			respecBudget,
-			anchorNodeId,
-			removed,
-			final: { objective: baselineObjective, pointsSpent: 0, stats: baseline },
-			stoppedBecause: reason,
-		});
+		finish(
+			await withMetrics(bridge, memo, {
+				...skeleton,
+				mode: "repair",
+				respecBudget,
+				anchorNodeId,
+				removed,
+				final: { objective: baselineObjective, pointsSpent: 0, stats: baseline },
+				stoppedBecause: reason,
+			}),
+		);
 
 	const { nodes: allocated } = await bridge.call<{ nodes: AllocatedNode[] }>("list_allocated_nodes");
+	if (!(await tick("regret-probe"))) {
+		return noChange("cancelled");
+	}
 	const nodeById = new Map(allocated.map((n) => [n.id, n]));
 	// Ascendancy nodes are always frozen (separate point pool, no re-spend payoff); `options.freeze`
 	// adds regular nodes the user wants protected from the regret set.
@@ -465,6 +627,15 @@ export async function optimiseTree(
 	let bestLoop: AddLoopOutcome | undefined;
 	let bestFreed = 0;
 	for (let k = 1; k <= dropped.length; k++) {
+		if (
+			!(await tick("k-sweep", {
+				k,
+				kTotal: dropped.length,
+				bestObjective: bestLoop?.finalObjective ?? baselineObjective,
+			}))
+		) {
+			break;
+		}
 		const kDropped = dropped.slice(0, k);
 		const kDroppedIds = kDropped.map((l) => l.id);
 		const kPointsFreed = kDropped.reduce((s, l) => s + l.pointsFreed, 0);
@@ -479,6 +650,7 @@ export async function optimiseTree(
 			removeIds: kDroppedIds,
 			startObjective: kPostRemovalObjective,
 			startStats: kPostRemoval.stats,
+			onDepth: depthTick,
 		});
 
 		// Whole-plan gate vs the loaded baseline: a preserved metric must not end up regressed, even
@@ -494,30 +666,33 @@ export async function optimiseTree(
 			bestLoop = kLoop;
 			bestFreed = kPointsFreed;
 		}
+		if (cancelled) break; // an add-loop inside this k was cancelled mid-walk
 	}
 
 	if (!bestLoop) {
-		return noChange("repair-not-worthwhile", dropped);
+		return noChange(cancelled ? "cancelled" : "repair-not-worthwhile", dropped);
 	}
 
 	const usedRemovals = dropped.slice(0, bestK);
-	return withMetrics(bridge, memo, {
-		...skeleton,
-		mode: "repair",
-		respecBudget,
-		anchorNodeId,
-		removed: usedRemovals,
-		steps: bestLoop.steps,
-		addedNodeIds: bestLoop.added,
-		pointsFreed: bestFreed,
-		pointsRespent: bestLoop.spent,
-		final: {
-			objective: bestLoop.finalObjective,
-			pointsSpent: bestLoop.spent - bestFreed,
-			stats: bestLoop.finalStats,
-		},
-		stoppedBecause: bestLoop.stoppedBecause,
-	});
+	return finish(
+		await withMetrics(bridge, memo, {
+			...skeleton,
+			mode: "repair",
+			respecBudget,
+			anchorNodeId,
+			removed: usedRemovals,
+			steps: bestLoop.steps,
+			addedNodeIds: bestLoop.added,
+			pointsFreed: bestFreed,
+			pointsRespent: bestLoop.spent,
+			final: {
+				objective: bestLoop.finalObjective,
+				pointsSpent: bestLoop.spent - bestFreed,
+				stats: bestLoop.finalStats,
+			},
+			stoppedBecause: cancelled ? "cancelled" : bestLoop.stoppedBecause,
+		}),
+	);
 }
 
 /** One partial plan the beam is carrying. */
@@ -642,6 +817,7 @@ async function beamAddLoop(p: AddLoopParams): Promise<AddLoopOutcome> {
 	let beam: BeamState[] = [initial];
 	let best = initial;
 	let bestStop: AddLoopOutcome["stoppedBecause"] = "budget-reached";
+	let cancelled = false;
 	const consider = (state: BeamState, stop: AddLoopOutcome["stoppedBecause"]) => {
 		if (better(state, best)) {
 			best = state;
@@ -650,6 +826,16 @@ async function beamAddLoop(p: AddLoopParams): Promise<AddLoopOutcome> {
 	};
 
 	for (let depth = 0; depth < maxDepth && beam.length > 0; depth++) {
+		if (p.onDepth) {
+			// Report before this depth commits a step; the best plan "so far" on a cancel is
+			// whatever the beam is already carrying.
+			const liveBest = beam.reduce((m, s) => Math.max(m, s.objective), best.objective);
+			if (!(await p.onDepth(depth, liveBest))) {
+				for (const state of beam) consider(state, "budget-reached");
+				cancelled = true;
+				break;
+			}
+		}
 		const proposals: Expansion[] = [];
 		for (const state of beam) {
 			if (state.spent >= p.headroom) {
@@ -714,6 +900,7 @@ async function beamAddLoop(p: AddLoopParams): Promise<AddLoopOutcome> {
 		finalObjective: best.objective,
 		finalStats: best.stats,
 		stoppedBecause: bestStop,
+		cancelled,
 	};
 }
 
@@ -725,7 +912,10 @@ function matchesAny(statLines: string[], keywords: string[]): boolean {
 async function withMetrics(
 	bridge: PobBridgeClient,
 	memo: MemoEvaluator,
-	result: Omit<OptimiseTreeResult, "cacheHitRate" | "buildOutputCount" | "buildOutputSeconds"> & {
+	result: Omit<
+		OptimiseTreeResult,
+		"cacheHitRate" | "buildOutputCount" | "buildOutputSeconds" | "allocatedNodeIds"
+	> & {
 		cacheHitRate?: number;
 	},
 ): Promise<OptimiseTreeResult> {

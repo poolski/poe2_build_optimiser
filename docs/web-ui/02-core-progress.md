@@ -74,9 +74,34 @@ At each of those `onProgress` sites, also check `shouldContinue?.() ?? true` imm
 the emit; if false, break out of the loop / short-circuit to `finalising` and set
 `stoppedBecause: "cancelled"`.
 
-`buildOutputs` comes from the existing `MemoEvaluator` counter (`memo` already tracks it for
-`cacheHitRate`); expose a `memo.buildOutputs` getter if it isn't public yet. No new bridge RPC —
-`get_metrics` stays the end-of-run reconciliation.
+### Where `buildOutputs` comes from — read it from the bridge, not from the memo
+
+**Corrected 2026-08-29** (design pass by the phase-1 session; verified against the source). An
+earlier draft of this file said to expose a `memo.buildOutputs` getter from `MemoEvaluator`. That
+is wrong on two counts:
+
+- `MemoEvaluator` counts *evaluator calls* (for `cacheHitRate`). It has no BuildOutput counter.
+- Evaluator calls ≠ `BuildOutput()` invocations. `bridge.lua` fires `recomputeBuild()` **twice**
+  per `get_stats_from` and **N+1** times per dealloc probe (see the seven `recomputeBuild()` call
+  sites and the comment at `bridge.lua:1043`). A TS-side counter cannot mirror that without
+  hard-coding Lua internals, and would drift the moment `bridge.lua` changes.
+
+The authoritative counter is Lua-side: `buildOutputCount`, incremented inside `recomputeBuild()`
+(`bridge.lua:98`) and already surfaced by `get_metrics`, which `optimiseTree.ts:735` reads once at
+end of run.
+
+**So: source the progress `buildOutputs` from `get_metrics` too** — called at phase-boundary ticks
+only, and only when `onProgress` was actually passed. No new bridge RPC. Cost is one cheap RPC per
+*tick* (not per candidate), incurred only when a UI is attached; the CLIs pay nothing.
+
+This is also what makes the test assertion below ("last `buildOutputs` == `result.buildOutputCount`")
+exact rather than approximate — with a TS-side counter it is unsatisfiable.
+
+**Consequence for the interface:** the tick site must `await` that RPC, so `onProgress` is no
+longer emitted purely synchronously. That is fine at phase boundaries (already async contexts),
+but keep the hard rule intact: the awaited read must not gate a branch or reorder candidate
+evaluation. Reword the `onProgress` doc comment from "called synchronously" to "called at phase
+boundaries" when implementing.
 
 ## Constraints on the implementation
 

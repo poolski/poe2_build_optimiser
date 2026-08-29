@@ -22,7 +22,7 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { PobBridge } from "../src/core/bridge";
+import { PobBridge } from "@poe2/pob-bridge";
 import { parseObjective, Objective } from "../src/core/objective";
 import { StatSet, finiteNumber } from "../src/core/stats";
 
