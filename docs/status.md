@@ -328,6 +328,25 @@ bet paid off.
 
 ## Known follow-ups (non-blocking)
 
+- **`ProgressEvent.bestObjective` should be optional** (raised 2026-08-29, deferred as a
+  follow-up). `progress.ts`'s own header says the optimise fields and the recommend fields are
+  "all optional", but `bestObjective` is declared `z.number()` — required — and only
+  `OptimiseProgress` has it. `RecommendProgress` carries `candidatesTotal`/`candidatesScored`
+  and no objective, so `normalizeProgress` (`packages/api/src/jobs/mappers.ts:219`) is forced to
+  invent `0`.
+  **Why `0` is the wrong sentinel:** it is a legitimate objective value — builds that score 0 DPS
+  headless are a first-class error surface here (two in the corpus), so a consumer cannot tell
+  "recommend job, no such concept" from "optimise job on an unscorable build". Worse,
+  `RunProgress.tsx:49` computes `bestObjective - baselineObjective`, so a recommend tick would
+  render a huge *negative* delta — a run apparently collapsing.
+  **Not reachable today:** `packages/web/src/api.ts:80` hardcodes `kind: "optimise"`; the
+  recommend-only screen is a deferred v1 non-goal. This bites whoever adds that screen.
+  **Fix (~15 min):** `bestObjective: z.number().optional()`, drop the fabrication in the mapper,
+  guard it in `RunProgress` the way `depth`/`k` already are. Rejected alternative: giving
+  `RecommendProgress` a real `bestObjective` — recommend scores candidates in isolation against a
+  fixed baseline, so there is no "best so far" to report, and its
+  `candidatesScored`/`candidatesTotal` is already a better progress signal than optimise has
+  (a real denominator).
 - **`spike/genCanvasFixture.ts` writes only a trimmed canvas projection.** Contract tests must
   therefore *reconstitute* a full `OptimiseResultDTO` before parsing, which is the weakest link
   in an otherwise strong verification chain: `final.stats` is hand-authored, and the
