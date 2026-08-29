@@ -10,7 +10,7 @@ import { diffStateOf, type DiffSets, type MinTree } from "./types";
 import { visibleWorldRect, worldToScreen, type Size, type Viewport } from "./viewport";
 
 const BG = "#0a0806";
-const EDGE_DIM = "rgba(122,108,78,0.16)";
+const EDGE_DIM = "rgba(138,124,92,0.34)";
 const EDGE_ALLOC = "rgba(200,168,106,0.85)"; // both endpoints allocated after the plan -- gold
 const EDGE_DROPPED = "rgba(215,96,80,0.55)"; // both endpoints in `before` only -- blood
 
@@ -39,8 +39,10 @@ export function drawTree(ctx: CanvasRenderingContext2D, p: DrawParams): void {
   });
   const lod = lodFor(vp.zoom);
 
-  // Edges -- skipped at the dots LOD. Dedup by only drawing nb > id.
-  if (lod !== "dots") {
+  // Edges. Drawn at every LOD -- at the dots overview they are what makes the allocation
+  // legible as a connected tree (without them the allocated dots read as scattered noise; see
+  // 09-rollback-tree-preview.md). Dedup by only drawing nb > id.
+  {
     ctx.lineWidth = Math.max(0.5, 3 * vp.zoom);
     for (const id of visible) {
       const a = tree.nodesById.get(id);

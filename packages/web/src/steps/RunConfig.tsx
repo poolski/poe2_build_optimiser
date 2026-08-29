@@ -3,8 +3,11 @@
 
 import { useState } from "react";
 import { OBJECTIVE_SPEC_RE, type BuildSummary, type OptimiseRequestInput } from "@poe2/contract";
+import type { OptimiserClient } from "../api";
 import ObjectiveBuilder from "../components/ObjectiveBuilder";
 import ConstraintsEditor, { type ConstraintsValue } from "../components/ConstraintsEditor";
+import TreePreview from "../components/TreePreview";
+import { useBuildCanvas } from "../hooks/useBuildCanvas";
 
 interface Props {
   build: BuildSummary;
@@ -12,6 +15,7 @@ interface Props {
   onChange: (patch: Partial<OptimiseRequestInput>) => void;
   onRun: () => void;
   onBack: () => void;
+  client: OptimiserClient;
   busy?: boolean;
 }
 
@@ -30,13 +34,15 @@ function csvToIds(s: string): number[] {
     .filter((n) => Number.isFinite(n) && n !== 0);
 }
 
-export default function RunConfig({ build, request, onChange, onRun, onBack, busy }: Props) {
+export default function RunConfig({ build, request, onChange, onRun, onBack, client, busy }: Props) {
   const [advanced, setAdvanced] = useState(false);
   const [budgetKind, setBudgetKind] = useState<"extra" | "absolute">("extra");
+  const { canRender } = useBuildCanvas(build);
 
   const mode = request.mode;
   const objOk = OBJECTIVE_SPEC_RE.test(request.objective ?? "TotalDPS");
-  const rollbackOk = mode !== "rollback" || request.anchorNodeId !== undefined;
+  // Rollback picks its anchor on the canvas, so it needs both a pick and a renderable tree.
+  const rollbackOk = mode !== "rollback" || (request.anchorNodeId !== undefined && canRender);
   const canRun = !busy && objOk && rollbackOk;
 
   const applyConstraints = (v: ConstraintsValue) =>
@@ -63,6 +69,17 @@ export default function RunConfig({ build, request, onChange, onRun, onBack, bus
           ))}
         </div>
       )}
+
+      <fieldset>
+        <legend>Current tree{mode === "rollback" ? " — pick an anchor" : ""}</legend>
+        <TreePreview
+          build={build}
+          mode={mode}
+          anchorNodeId={request.anchorNodeId}
+          onPickAnchor={(id) => onChange({ anchorNodeId: id })}
+          client={client}
+        />
+      </fieldset>
 
       <fieldset>
         <legend>Mode</legend>
@@ -134,14 +151,11 @@ export default function RunConfig({ build, request, onChange, onRun, onBack, bus
 
         {mode === "rollback" && (
           <div style={{ marginTop: 12 }}>
-            <label>
-              <span className="lbl">Anchor node id (required)</span>
-              <input
-                type="number"
-                value={request.anchorNodeId ?? ""}
-                onChange={(e) => onChange({ anchorNodeId: numOrUndef(e.target.value) })}
-              />
-            </label>
+            <p className="note">
+              {request.anchorNodeId !== undefined
+                ? `Anchor: node ${request.anchorNodeId} (click another node on the tree above to change it).`
+                : "Click the node to roll back to on the tree above; its whole downstream subtree is freed."}
+            </p>
             <label>
               <span className="lbl">Respec budget for extra survivors (optional)</span>
               <input
@@ -151,9 +165,6 @@ export default function RunConfig({ build, request, onChange, onRun, onBack, bus
                 onChange={(e) => onChange({ respecBudget: numOrUndef(e.target.value) })}
               />
             </label>
-            <p className="note">
-              The node to roll back to; its whole downstream subtree is freed.
-            </p>
           </div>
         )}
       </fieldset>

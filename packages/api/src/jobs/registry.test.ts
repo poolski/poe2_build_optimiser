@@ -19,6 +19,7 @@ const BUILD: StoredBuild = {
 		pointsMax: 123,
 		weaponSet1PointsUsed: 0,
 		weaponSet2PointsUsed: 0,
+		allocatedNodeIds: [10, 20, 30, 40],
 		baseline: { TotalDPS: 1000 },
 		notes: [],
 	},

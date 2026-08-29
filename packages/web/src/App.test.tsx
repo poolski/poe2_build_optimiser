@@ -18,12 +18,16 @@ function fakeClient(): OptimiserClient {
         pointsMax: 112,
         weaponSet1PointsUsed: 0,
         weaponSet2PointsUsed: 0,
+        allocatedNodeIds: [10, 20, 30, 40],
         baseline: { TotalDPS: 100000 },
         notes: [],
       };
     },
     async getBuild() {
       throw new Error("unused");
+    },
+    async getCascade(_id, anchorNodeId) {
+      return { anchorNodeId, freedNodeIds: [anchorNodeId] };
     },
     async submitJob() {
       return { jobId: "j1", status: "queued" };

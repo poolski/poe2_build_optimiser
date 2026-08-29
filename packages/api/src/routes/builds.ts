@@ -1,7 +1,10 @@
 import { Hono } from "hono";
+import { z } from "zod";
 import { BuildInput } from "@poe2/contract";
 import type { BuildStore } from "../builds/store";
 import { badRequest, formatZodIssues } from "./errors";
+
+const CascadeRequest = z.object({ anchorNodeId: z.number().int() });
 
 export function buildRoutes(deps: { builds: BuildStore }): Hono {
 	const app = new Hono();
@@ -31,6 +34,30 @@ export function buildRoutes(deps: { builds: BuildStore }): Hono {
 		const stored = deps.builds.get(c.req.param("id"));
 		if (!stored) return c.json({ kind: "not-found", message: "no such build" }, 404);
 		return c.json(stored.summary);
+	});
+
+	// POST /api/builds/:id/cascade  { anchorNodeId }  -> CascadeResult
+	// The downstream subtree rolling back to the anchor would free, for the Configure-step preview.
+	app.post("/:id/cascade", async (c) => {
+		let body: unknown;
+		try {
+			body = await c.req.json();
+		} catch {
+			return badRequest(c, "request body is not valid JSON");
+		}
+		const parsed = CascadeRequest.safeParse(body);
+		if (!parsed.success) return badRequest(c, formatZodIssues(parsed.error));
+
+		try {
+			const result = await deps.builds.cascade(c.req.param("id"), parsed.data.anchorNodeId);
+			return c.json(result);
+		} catch (err) {
+			const message = err instanceof Error ? err.message : "could not compute cascade";
+			if (message === "unknown-build") {
+				return c.json({ kind: "not-found", message: "no such build" }, 404);
+			}
+			return badRequest(c, message);
+		}
 	});
 
 	return app;

@@ -56,11 +56,16 @@ function kindOf(n) {
 }
 const round2 = (v) => Math.round(v * 100) / 100;
 
+// `src.groups` is a 0-based JSON array, but `node.group` is a 1-based PoB/Lua group id
+// (Lua tables are 1-indexed; the serialiser shifted them by one). So the group that holds a
+// node lives at array index `node.group - 1`. Key our map by the 1-based id (index + 1) so a
+// straight `groups[node.group]` lookup lands on the right group -- without this every node reads
+// its neighbour group's coordinates and the whole tree scatters (09-rollback-tree-preview.md).
 const groups = {};
-for (const [gid, g] of Object.entries(src.groups ?? {})) {
-  if (!g || typeof g.x !== "number" || typeof g.y !== "number") continue;
-  groups[gid] = [round2(g.x), round2(g.y)];
-}
+src.groups.forEach((g, i) => {
+  if (!g || typeof g.x !== "number" || typeof g.y !== "number") return;
+  groups[String(i + 1)] = [round2(g.x), round2(g.y)];
+});
 
 const nodes = {};
 const nodeFlags = {};

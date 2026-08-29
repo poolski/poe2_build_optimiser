@@ -3,7 +3,7 @@
 // one build, many jobs.
 
 import { randomUUID } from "node:crypto";
-import type { BuildInput, BuildSummary } from "@poe2/contract";
+import type { BuildInput, BuildSummary, CascadeResult } from "@poe2/contract";
 import { BuildSummary as BuildSummarySchema } from "@poe2/contract";
 import type { PobBridgeClient } from "@poe2/pob-bridge";
 import type { StatSet, TreeStatus } from "../core";
@@ -96,6 +96,12 @@ export class BuildStore {
 				// older bridge / method unavailable -- skip the weapon note, not fatal.
 			}
 
+			// The current allocated set, for the Configure-step tree preview. No-arg
+			// `list_allocated_nodes` reads the loaded tree and adds zero BuildOutputs (no recompute).
+			// It returns `{ nodes: [{ id, ... }] }` (same shape core consumes); we keep the ids only.
+			const { nodes } = await bridge.call<{ nodes: { id: number }[] }>("list_allocated_nodes");
+			const allocatedNodeIds = nodes.map((n) => n.id).sort((a, b) => a - b);
+
 			const summary = BuildSummarySchema.parse({
 				buildId,
 				className: loaded.className,
@@ -106,6 +112,7 @@ export class BuildStore {
 				pointsMax: status.pointsMax,
 				weaponSet1PointsUsed: status.weaponSet1PointsUsed,
 				weaponSet2PointsUsed: status.weaponSet2PointsUsed,
+				allocatedNodeIds,
 				baseline: sanitizeStatSet(stats),
 				notes: buildNotes(stats, status, weaponSlots),
 			});
@@ -113,6 +120,39 @@ export class BuildStore {
 			const stored: StoredBuild = { buildId, xml, summary };
 			this.builds.set(buildId, stored);
 			return summary;
+		} finally {
+			bridge.release();
+		}
+	}
+
+	/**
+	 * The downstream `DeallocNode` cascade that rolling back to `anchorNodeId` would free, for the
+	 * Configure-step preview. Stateless: re-parses the stored XML on a fresh lease (parse only, no
+	 * recompute) and diffs the allocated set with/without the anchor's subtree.
+	 *
+	 * Throws `unknown-build` (route -> 404) for an unknown id and `anchor-not-allocated`
+	 * (route -> 400) when the anchor is not currently allocated. Deeper validity (ascendancy /
+	 * too-near-start) is left to the run-time rejection in `optimiseTree`.
+	 */
+	async cascade(buildId: string, anchorNodeId: number): Promise<CascadeResult> {
+		const stored = this.builds.get(buildId);
+		if (!stored) throw new Error("unknown-build");
+
+		const bridge = await this.source.acquire();
+		try {
+			await bridge.call("load_build_xml", { xml: stored.xml });
+			const { nodes: beforeNodes } = await bridge.call<{ nodes: { id: number }[] }>(
+				"list_allocated_nodes",
+			);
+			const before = beforeNodes.map((n) => n.id);
+			if (!before.includes(anchorNodeId)) throw new Error("anchor-not-allocated");
+			const { nodes: afterNodes } = await bridge.call<{ nodes: { id: number }[] }>(
+				"list_allocated_nodes",
+				{ removeIds: [anchorNodeId] },
+			);
+			const afterSet = new Set(afterNodes.map((n) => n.id));
+			const freedNodeIds = before.filter((id) => !afterSet.has(id)).sort((a, b) => a - b);
+			return { anchorNodeId, freedNodeIds };
 		} finally {
 			bridge.release();
 		}

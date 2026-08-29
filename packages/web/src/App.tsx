@@ -104,6 +104,7 @@ export default function App({ client }: { client?: OptimiserClient }) {
           onChange={(patch) => dispatch({ type: "editRequest", patch })}
           onRun={run}
           onBack={() => dispatch({ type: "back", to: "input" })}
+          client={api}
           busy={busy}
         />
       )}

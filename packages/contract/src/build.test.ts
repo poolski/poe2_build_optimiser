@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BuildInput, BuildSummary } from "@poe2/contract";
+import { BuildInput, BuildSummary, CascadeResult } from "@poe2/contract";
 
 describe("BuildInput", () => {
   it("accepts a pobCode body", () => {
@@ -47,6 +47,7 @@ describe("BuildSummary", () => {
     pointsMax: 123,
     weaponSet1PointsUsed: 0,
     weaponSet2PointsUsed: 0,
+    allocatedNodeIds: [101, 202, 303],
     baseline: { TotalDPS: 5513.5, Life: 3200, TotalEHP: 45000 },
     notes: [],
   };
@@ -77,5 +78,37 @@ describe("BuildSummary", () => {
     const r = BuildSummary.safeParse({ ...ok, level: 84.5 });
     expect(r.success).toBe(false);
     expect(r.error!.issues[0].path).toEqual(["level"]);
+  });
+
+  it("rejects a non-integer allocated node id", () => {
+    const r = BuildSummary.safeParse({ ...ok, allocatedNodeIds: [101, 2.5] });
+    expect(r.success).toBe(false);
+    expect(r.error!.issues[0].path).toEqual(["allocatedNodeIds", 1]);
+  });
+});
+
+describe("CascadeResult", () => {
+  const ok = { anchorNodeId: 34015, freedNodeIds: [34015, 40001, 40002] };
+
+  it("accepts a well-formed cascade", () => {
+    expect(CascadeResult.parse(ok)).toEqual(ok);
+  });
+
+  it("accepts an empty freed set", () => {
+    expect(CascadeResult.parse({ ...ok, freedNodeIds: [] }).freedNodeIds).toEqual([]);
+  });
+
+  it("rejects a missing anchor", () => {
+    const { anchorNodeId, ...bad } = ok;
+    void anchorNodeId;
+    const r = CascadeResult.safeParse(bad);
+    expect(r.success).toBe(false);
+    expect(r.error!.issues[0].path).toEqual(["anchorNodeId"]);
+  });
+
+  it("rejects a non-integer freed id", () => {
+    const r = CascadeResult.safeParse({ ...ok, freedNodeIds: [1.5] });
+    expect(r.success).toBe(false);
+    expect(r.error!.issues[0].path).toEqual(["freedNodeIds", 0]);
   });
 });

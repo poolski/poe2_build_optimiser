@@ -66,6 +66,7 @@ const MOCK_BUILD: BuildSummary = {
   pointsMax: fx.baseline.pointsMax,
   weaponSet1PointsUsed: 0,
   weaponSet2PointsUsed: 0,
+  allocatedNodeIds: [...fx.before].sort((a, b) => a - b),
   baseline: { TotalDPS: fx.baseline.objective, Life: 3200, TotalEHP: 45000 },
   notes: ["mock data -- fixture-backed client (unset VITE_USE_MOCK to hit the real server)"],
 };
@@ -135,6 +136,15 @@ export function makeMockClient(): OptimiserClient {
     },
     async getBuild(_id: string) {
       return MOCK_BUILD;
+    },
+    async getCascade(_id: string, anchorNodeId: number) {
+      await sleep(120);
+      // No tree topology in the mock: fake a small deterministic cascade -- the anchor plus the
+      // next few allocated ids after it -- so the freed-subtree highlight has something to show.
+      const before = [...fx.before].sort((a, b) => a - b);
+      const idx = before.indexOf(anchorNodeId);
+      const freed = idx >= 0 ? before.slice(idx, idx + 5) : [anchorNodeId];
+      return { anchorNodeId, freedNodeIds: [...freed].sort((a, b) => a - b) };
     },
     async submitJob(_req: OptimiseRequestInput): Promise<JobRef> {
       settled = undefined;
