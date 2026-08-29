@@ -18,6 +18,11 @@ export interface CreateAppDeps {
 	/** Production: a PobBridgePool. Satisfies both BridgeSource (acquire) and PoolStatsSource (stats). */
 	pool: BridgeSource & PoolStatsSource;
 	maxActiveJobs?: number;
+	/** Slots an "optimise" job leases (phase 1.5). Omitted -> config.jobParallelism (env
+	 *  JOB_PARALLELISM, itself defaulting to half the machine's cores), CLAMPED to this pool's
+	 *  actual size. Passed explicitly, it is NOT clamped: an explicit value the pool cannot
+	 *  satisfy is a caller bug and JobRegistry throws for it. */
+	jobParallelism?: number;
 	/** Injectable core entry points for the fast suite. */
 	core?: CoreFns;
 	/** Built-SPA root; false disables static serving outright (the fast suite). */
@@ -32,10 +37,21 @@ export interface CreatedApp {
 
 export function createApp(deps: CreateAppDeps): CreatedApp {
 	const builds = new BuildStore(deps.pool);
+	// The actual pool is the only authority on how many slots exist -- read straight from the same
+	// source (real PobBridgePool in prod, a fake in tests), never a separately-configured number
+	// that could drift from it.
+	const poolSize = deps.pool.stats().size;
 	const registry = new JobRegistry({
 		source: deps.pool,
 		builds,
+		poolSize,
 		maxActiveJobs: deps.maxActiveJobs ?? config.maxActiveJobs,
+		// config.jobParallelism is derived from config.poolSize, which is NOT necessarily this
+		// pool's size (tests and embedders pass their own pool). Clamp the fallback so a caller
+		// that overrides the pool but not the parallelism gets a working server rather than a
+		// startup throw. An explicitly-passed value is left alone so a real misconfiguration
+		// still fails loudly in JobRegistry.
+		jobParallelism: deps.jobParallelism ?? Math.min(poolSize, config.jobParallelism),
 		core: deps.core,
 	});
 

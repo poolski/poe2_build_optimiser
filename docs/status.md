@@ -171,9 +171,11 @@ Full sketch: `docs/beam-search/design.md` §7 ("Any-node repair") + §"Open ques
 ## Track: web UI + bridge service (added 2026-08-28; v1 shipped 2026-08-29)
 
 **Current state (per `git log` on `main`):** v1 has **shipped and merged** — phases 1–3, fork-prep,
-and the rollback tree preview (`09`). What remains, neither started: **phase 1.5** (parallel
-candidate eval, the single-run wall-time win) and **`10`** (RePoE-fork asset source, spec only). The
-detail below is kept as the record of how it landed.
+and the rollback tree preview (`09`). **Phase 1.5** (parallel candidate eval, the single-run
+wall-time win) is **built on branch `phase1.5-parallel-eval`** (not yet merged to `main`, not yet
+wired into `packages/api`'s job runner — see `docs/web-ui/01-bridge-service.md` §"Phase 1.5"). What
+remains, not started: **`10`** (RePoE-fork asset source, spec only). The detail below is kept as
+the record of how v1 landed; phase 1.5 is summarized further down under "Track: web UI".
 
 A **local web UI** over the same `src/core/` functions. It also pulled the long-deferred
 **bridge → standalone package** work along with it: a browser cannot shell out to LuaJIT, so the
@@ -289,8 +291,72 @@ comparison. Tests: fast suite 101 → 106, integration 10 → 11 (new
 `optimiseTree.integration.test.ts`, a ~2 min tagged repair run).
 
 That ordering played out as planned: `03` (the contract) landed serial and alone (it forces rework
-in two tracks if it moves), then `04` and `05`+`06` forked into parallel worktrees. Phase 1.5
-remains the one unstarted piece of the original sequence.
+in two tracks if it moves), then `04` and `05`+`06` forked into parallel worktrees.
+
+### Phase 1.5 — parallel candidate evaluation within a run — BUILT (2026-08-29, `phase1.5-parallel-eval`, unmerged)
+
+Full design record: `docs/web-ui/01-bridge-service.md` §"Phase 1.5". Summary: `PobBridgePool`
+gained `lease(n)` (acquires `n` slots together as one atomic, all-or-nothing unit — a `lease()`
+waiting for slots to free never holds any of them meanwhile, closing off a deadlock two concurrent
+wide leases could otherwise hit — releases all together, rejects immediately if `n` exceeds pool
+size). New `ParallelBridge` (`packages/pob-bridge/src/parallel.ts`) implements `PobBridgeClient`
+over a lease's slots: shards `evaluate_candidate_nodes[_from]` across slots and recombines by
+chunk index (order-independent of completion, byte-identical to a single slot), broadcasts
+`load_build_xml`/`reset_metrics` to every slot, sums `get_metrics` across slots, and routes
+everything else (`get_stats`, `list_allocatable_nodes_from`, `get_stats_from`,
+`list_allocated_nodes`, `evaluate_dealloc_candidates`, …) to the primary slot — verified against
+`bridge.lua`'s actual handlers, not just method-name inference. **Zero changes to `src/core`**:
+`MemoEvaluator` and `optimiseTree` already funnel every candidate batch through one
+`bridge.call(...)`, so a `ParallelBridge` parallelises transparently underneath them — a cleaner
+fit with this repo's "core receives a bridge, never constructs one" rule than the original sketch
+(which assumed a pool-aware evaluator threaded into `src/core`). `optimise-tree --parallelism <n>`
+wires it into the CLI.
+
+**`buildOutputCount` does NOT match exactly between the serial and parallel path — caught live,
+not a design flaw.** `evaluateCandidatesAgainst`'s tail in `bridge.lua` does one extra
+`recomputeBuild()` per `evaluate_candidate_nodes[_from]` *call* whenever `allocSet`/`removeIds` is
+non-empty; sharding turns one call into up to N, so it turns one tail recompute into up to N. The
+plan itself stays byte-identical (the tail never touches a candidate's own measured stats).
+Confirmed on a live run (`npm run test:integration` against a self-contained fixture, run once
+while fixing this): serial `buildOutputCount` 139, parallel (N=3) 145 — excess 6 =
+`(N-1) × (steps.length-1)` exactly, `steps.length` = 4. The acceptance-gate test
+(`src/core/optimiseTree.parallel.integration.test.ts`) now asserts that derived formula instead of
+exact equality, plus the (separately valid and unaffected) claim that `buildOutputCount` sums each
+slot's own `get_metrics`. `buildOutputSeconds` carries a related caveat, documented at the
+aggregation site: summed across concurrently-running children it's total CPU-seconds, not elapsed
+time.
+
+**Wired into `packages/api`'s job runner.** `BridgeSource` gained `acquireParallel(n)`
+(`PobBridgePool.acquireParallel` = `lease(n)` + `ParallelBridge`); `JobState` carries a
+`parallelism` decided once at `create()` (1 for "recommend" jobs always, `jobParallelism` — new
+registry option, env `JOB_PARALLELISM` — for "optimise" jobs); the runner picks
+`acquireParallel`/`acquire` accordingly. **Admission is now slot-based, not job-count-based**:
+`JobRegistry.pump()` admits the FIFO queue's head only when committed slots across every running
+job plus the head's own `parallelism` fit `poolSize`, restoring the invariant the old
+job-count-only rule silently broke once a job could lease `N > 1` slots (two admitted jobs each
+leasing more than what's actually free between them could otherwise block inside
+`PobBridgePool.lease()` — a deadlock). `maxActiveJobs` stays as an independent, additional ceiling
+on running job *count*.
+
+**Defaults are dynamic (2026-08-29):** `POOL_SIZE` and `JOB_PARALLELISM` both default to
+`defaultPoolSize()` — half the host's `os.availableParallelism()`, floor 1 (this machine: 16 → 8).
+Half rather than all because PoB's calc is CPU-bound (oversubscribing cores buys nothing) and each
+LuaJIT child is ~700 MB resident. Defaulting per-job parallelism to the *whole* pool is the point:
+anything less and a single run — the thing the user actually waits on — stays serial. A second
+concurrent optimise job then queues (strict FIFO) instead of both running at half speed, which is
+the right trade for a single-user local tool. `/api/health` reports
+`registry.effectiveJobParallelism` (the value after `createApp`'s clamp to the real pool), NOT
+`config.jobParallelism` — an embedder or test passing its own smaller pool gets the clamped
+fallback rather than a startup throw, and health must not report a number jobs won't get. Deliberately not exposed as a per-request
+`OptimiseRequest` field this pass — server-config-only, to avoid widening `packages/contract` for
+a knob a local single-user operator can already set via env. Fast suite 344 → 354 (`+3` registry
+admission tests against fake bridges: combined-parallelism-over-pool serialises, a 1-slot +
+3-slot job run concurrently, an over-`poolSize` `jobParallelism` is rejected at construction; `+8`
+`parallel.test.ts`: byte-identical sharded-vs-single, order-independence, `get_metrics` summation,
+a dying shard fails the whole call, broadcast, primary-only routing, no-shard-below-2). New
+real-bridge integration cases (not run routinely, per `CLAUDE.md`) in `pool.integration.test.ts`
+(the atomic-lease proof, a two-concurrent-`lease(2)`-no-deadlock case, `acquireParallel`) and the
+acceptance-gate test above.
 
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.

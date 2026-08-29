@@ -86,7 +86,11 @@ type JobState = {
 
 - **Admission.** `MAX_ACTIVE_JOBS` (default = pool size) running at once; extra jobs sit
   `queued`. Since a job holds a bridge for its whole run, `MAX_ACTIVE_JOBS === POOL_SIZE` means
-  no job ever waits inside `pool.acquire()`.
+  no job ever waits inside `pool.acquire()`. **Superseded by phase 1.5** (`01` §"Phase 1.5"): once
+  a job can lease more than 1 slot (`JOB_PARALLELISM > 1`), job-COUNT admission alone no longer
+  guarantees that invariant -- `JobRegistry`'s admission became SLOT-based (committed slots across
+  running jobs vs. `POOL_SIZE`), with `MAX_ACTIVE_JOBS` kept as a separate, additional ceiling on
+  running job count. `registry.ts`'s file header is the design of record for the current rule.
 - **Cancellation.** `abort.abort()` flips `status = "cancelled"`. The runner passes
   `shouldContinue: () => !abort.signal.aborted` into core (`02`), so `optimiseTree` stops after
   the current add-step, returns its partial plan with `stoppedBecause: "cancelled"`, and the
@@ -234,8 +238,9 @@ app.get("/api/jobs/:id/events", c => {
 |-----|---------|-------|
 | `PORT` | `8787` | binds `127.0.0.1` only |
 | `POB_LUAJIT_PATH` | (bridge default) | passed to the pool |
-| `POOL_SIZE` | `2` | single-user; one running + one queued/warm. LuaJIT child ≈ one PoB runtime of RAM. Raise it only with phase 1.5 (`01`). |
-| `MAX_ACTIVE_JOBS` | `= POOL_SIZE` | keep ≤ pool so acquire never blocks |
+| `POOL_SIZE` | **half the host's `availableParallelism()`**, floor 1 (16 cores → 8) | PoB's calc is CPU-bound, so oversubscribing cores buys nothing, and each LuaJIT child is ~700 MB resident (8 → ~5.6 GB). Lower it on a RAM-tight machine. |
+| `MAX_ACTIVE_JOBS` | `= POOL_SIZE` | additional ceiling on running job COUNT (phase 1.5: admission is primarily slot-based now, see `01`) |
+| `JOB_PARALLELISM` | **same as `POOL_SIZE`** | phase 1.5 (`01`): pool slots each "optimise" job leases. Defaulting it to the whole pool is what makes a single run fast — the point of the phase. A second optimise job then queues (strict FIFO) rather than halving both. Set below `POOL_SIZE` to trade run speed for job concurrency, or `1` for pre-phase-1.5 behaviour. Clamped to `<= POOL_SIZE`. |
 | `CONTRACT_VERSION` | from `@poe2/contract` | echoed on `/health` |
 
 ## Tests

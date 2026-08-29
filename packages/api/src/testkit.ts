@@ -12,28 +12,40 @@ import type { CoreFns } from "./jobs/runner";
 
 export type CallHandler = (method: string, params?: Record<string, unknown>) => unknown;
 
-/** A canned bridge: `call(method)` returns `handlers[method]` (or runs it if it's a function). */
+/** A canned bridge: `call(method)` returns `handlers[method]` (or runs it if it's a function).
+ *  `acquireParallel(n)` does not simulate real multi-slot fan-out (there is no fake for that --
+ *  ParallelBridge's own sharding is covered by packages/pob-bridge/src/parallel.test.ts); it just
+ *  hands back the same canned single-bridge shape, so callers/tests that only care about WHICH
+ *  acquire method the runner picked (and with what `n`) can assert on `parallelAcquisitions`. */
 export function fakeBridgeSource(
 	handlers: Record<string, unknown | CallHandler>,
 	opts: { onAcquire?: () => void; onRelease?: () => void } = {},
-): BridgeSource & { acquired: number; released: number } {
+): BridgeSource & { acquired: number; released: number; parallelAcquisitions: number[] } {
+	const makeLease = (): BridgeLease => ({
+		call: (async (method: string, params?: Record<string, unknown>) => {
+			const h = handlers[method];
+			if (h === undefined) throw new Error(`fake bridge: no handler for "${method}"`);
+			return typeof h === "function" ? (h as CallHandler)(method, params) : h;
+		}) as BridgeLease["call"],
+		release() {
+			source.released++;
+			opts.onRelease?.();
+		},
+	});
 	const source = {
 		acquired: 0,
 		released: 0,
+		parallelAcquisitions: [] as number[],
 		async acquire(): Promise<BridgeLease> {
 			source.acquired++;
 			opts.onAcquire?.();
-			return {
-				call: (async (method: string, params?: Record<string, unknown>) => {
-					const h = handlers[method];
-					if (h === undefined) throw new Error(`fake bridge: no handler for "${method}"`);
-					return typeof h === "function" ? (h as CallHandler)(method, params) : h;
-				}) as BridgeLease["call"],
-				release() {
-					source.released++;
-					opts.onRelease?.();
-				},
-			};
+			return makeLease();
+		},
+		async acquireParallel(n: number): Promise<BridgeLease> {
+			source.acquired++;
+			source.parallelAcquisitions.push(n);
+			opts.onAcquire?.();
+			return makeLease();
 		},
 	};
 	return source;

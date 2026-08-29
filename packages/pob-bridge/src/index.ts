@@ -5,4 +5,11 @@ export {
   type PobRpcRequest,
   type PobRpcResponse,
 } from "./bridge";
-export { PobBridgePool, type PobBridgePoolOptions, type PooledBridge } from "./pool";
+export {
+  PobBridgePool,
+  defaultPoolSize,
+  type PobBridgePoolOptions,
+  type PooledBridge,
+  type BridgeLeaseHandle,
+} from "./pool";
+export { ParallelBridge } from "./parallel";

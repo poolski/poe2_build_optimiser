@@ -17,6 +17,15 @@ export interface BridgeLease {
 }
 export interface BridgeSource {
 	acquire(): Promise<BridgeLease>;
+	/** Phase 1.5: `n` slots leased together, presented as one handle whose calls fan across them
+	 *  (see @poe2/pob-bridge's PobBridgePool.acquireParallel / ParallelBridge). The job runner uses
+	 *  this for a job whose decided parallelism is > 1; `n === 1` is equivalent to `acquire()`
+	 *  (kept as a separate method, not `n === 1` sugar for `acquireParallel`, so the ordinary
+	 *  single-slot path -- BuildStore.ingest/cascade, and any job with parallelism 1 -- never
+	 *  depends on the lease/ParallelBridge machinery at all). Admission control (JobRegistry) is
+	 *  what keeps a call here from ever needing to wait long: it never lets committed slots across
+	 *  all running jobs exceed the pool size, so by the time a job calls this, `n` slots are free. */
+	acquireParallel(n: number): Promise<BridgeLease>;
 }
 
 export interface StoredBuild {
