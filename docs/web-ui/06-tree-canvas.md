@@ -1,10 +1,11 @@
 # Phase 3 — tree canvas (in the v1 release)
 
-> **Partially superseded (2026-08-29) by [`10-repoe-asset-source.md`](10-repoe-asset-source.md).**
-> The "shapes, not sprites / no GGG art" scope below was the v1 cut. Post-v1, the canvas draws real
-> per-node icons sourced from RePoE-fork, with the stylised dot kept as the low-LOD / fallback tier
-> and the diff overlay drawn on top. The layout, diff-overlay, and version-mismatch behaviour in
-> this doc are unchanged; only the "no art" decision is reversed.
+> **Current behaviour. A change is proposed in [`10-repoe-asset-source.md`](10-repoe-asset-source.md)
+> (spec only — not built).** Everything in this doc — the stylised "shapes, not sprites / no GGG
+> art" render — is what ships today. `10` proposes drawing real per-node icons from RePoE-fork (dot
+> demoted to the low-LOD fallback), reversing only the "no art" decision; layout, diff-overlay, and
+> version-mismatch behaviour would be unchanged. Until `10` is implemented, this doc is accurate as
+> written.
 
 **Part of v1**, per the user (2026-08-28). For a *respec* tool a visual tree diff is the point —
 "move these points" reads far better on the tree than as a list of node names. The node-list diff

@@ -168,12 +168,16 @@ Full sketch: `docs/beam-search/design.md` §7 ("Any-node repair") + §"Open ques
   rollback-to-node with an anchor near the class-start: both need the add-loop to spend
   zero-delta pathing steps toward a distant payoff.
 
-## Active next track: web UI + bridge service (added 2026-08-28)
+## Track: web UI + bridge service (added 2026-08-28; v1 shipped 2026-08-29)
 
-The tree optimiser is feature-complete and the CLI surface has settled, so the next track is a
-**local web UI** over the same `src/core/` functions. It also pulls the long-deferred
+**Current state (per `git log` on `main`):** v1 has **shipped and merged** — phases 1–3, fork-prep,
+and the rollback tree preview (`09`). What remains, neither started: **phase 1.5** (parallel
+candidate eval, the single-run wall-time win) and **`10`** (RePoE-fork asset source, spec only). The
+detail below is kept as the record of how it landed.
+
+A **local web UI** over the same `src/core/` functions. It also pulled the long-deferred
 **bridge → standalone package** work along with it: a browser cannot shell out to LuaJIT, so the
-bridge has to move behind a long-lived service boundary. The two land together.
+bridge moved behind a long-lived service boundary. The two landed together.
 
 **Shape:** local-first — a `localhost` app wrapping the local LuaJIT bridge, single user, not
 hosted. A third consumer of `src/core/` after the two CLIs, same "parse in / data out" contract.
@@ -195,8 +199,8 @@ cancel that frees the slot within one add-step.
 | `docs/web-ui/06-tree-canvas.md` | Phase 3 (in v1) — stylised passive-tree diff canvas |
 | `docs/web-ui/07-performance.md` | Cross-cutting — why PoB stays the fitness oracle + the speed-lever table |
 | `docs/web-ui/08-fork-prep.md` | Between phases 1 and 2 — the serial commit that makes phases 2–3 safe to run as parallel worktrees |
-| `docs/web-ui/09-rollback-tree-preview.md` | Post-v1 — rollback anchor picker: canvas in Configure, click-to-select, freed-subtree preview |
-| `docs/web-ui/10-repoe-asset-source.md` | Post-v1 — web tree geometry + real node art + stat text + gems from RePoE-fork; adds icon rendering (supersedes `06`'s "no art"). Calc engine stays on PoB |
+| `docs/web-ui/09-rollback-tree-preview.md` | **Shipped** — rollback anchor picker: canvas in Configure, click-to-select, freed-subtree preview |
+| `docs/web-ui/10-repoe-asset-source.md` | **Spec only, not built** — proposes web tree geometry + real node art + stat text + gems from RePoE-fork, adding icon rendering (would reverse `06`'s "no art"). Calc engine would stay on PoB |
 
 **Decisions of record (2026-08-28, with the user):**
 
@@ -227,8 +231,8 @@ Sequencing: phase 1 (bridge) → **fork-prep** (`08`) → phase 2 (API) → phas
 diff + tree canvas) = **v1**. Then **phase 1.5** (parallel candidate eval, the wall-time win) as
 the first fast-follow.
 
-**Phase 1 is COMPLETE as of 2026-08-29**, on branch `phase1-bridge-service` (not yet merged to
-`main`):
+**Phase 1 — COMPLETE and merged to `main`** (2026-08-29; landed with the phase 2/3 merge
+`827863c`):
 
 - `660534d` npm workspaces + `tsconfig` split. Cross-package resolution is **source-level aliases**
   (`tsconfig` `paths` + a vitest alias) — no build step, no TS project references.
@@ -284,8 +288,9 @@ not needed. Fixture `packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` reg
 comparison. Tests: fast suite 101 → 106, integration 10 → 11 (new
 `optimiseTree.integration.test.ts`, a ~2 min tagged repair run).
 
-After that: `03` (the contract) stays serial and alone, since it is what forces rework in two
-tracks if it moves. Then fork into `04` / `05`+`06` / phase 1.5.
+That ordering played out as planned: `03` (the contract) landed serial and alone (it forces rework
+in two tracks if it moves), then `04` and `05`+`06` forked into parallel worktrees. Phase 1.5
+remains the one unstarted piece of the original sequence.
 
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.

@@ -151,11 +151,12 @@ in `packages/api`. Make it a committed artifact generated here instead. A build 
 re-couple the canvas track to the submodule, which is precisely what this task removes. Revisit
 only when the tree version bumps.
 
-> **Source superseded (2026-08-29) by [`10-repoe-asset-source.md`](10-repoe-asset-source.md).**
-> `tree-0_5.min.json` is now generated from RePoE-fork (`fetch-tree.mjs`), not from the PoB
-> submodule via `gen-min-tree.mjs`. This removes the submodule coupling at *regen* time too — a
-> fresh web worktree no longer needs `submodule update` to rebuild the tree. It stays a committed
-> artifact, not a build step (the point above holds). The calc engine still uses the PoB `tree.json`.
+> **Current behaviour. A change is proposed in [`10-repoe-asset-source.md`](10-repoe-asset-source.md)
+> (spec only — not built).** Today `tree-0_5.min.json` is still generated from the PoB submodule via
+> `gen-min-tree.mjs`, exactly as described here — so regenerating it does still need the submodule
+> checked out. `10` proposes generating it from RePoE-fork (`fetch-tree.mjs`) instead, which would
+> also remove that regen-time coupling; it would stay a committed artifact, not a build step, and the
+> calc engine would keep using the PoB `tree.json`. None of that is implemented yet.
 
 **Exit:** the canvas track can be developed in a worktree with the submodule never initialised.
 
