@@ -18,6 +18,9 @@
     "bench-tree-approaches": "ts-node spike/benchTreeApproaches.ts",
     "verify-dealloc-cascade": "ts-node spike/verifyDeallocCascade.ts",
     "build": "tsc -p tsconfig.json",
+    "build:web": "npm run build:app -w @poe2/web",
+    "dev:web": "npm run dev -w @poe2/web",
+    "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts"
   },
