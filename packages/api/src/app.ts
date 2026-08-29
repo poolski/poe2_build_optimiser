@@ -18,6 +18,9 @@ export interface CreateAppDeps {
 	/** Production: a PobBridgePool. Satisfies both BridgeSource (acquire) and PoolStatsSource (stats). */
 	pool: BridgeSource & PoolStatsSource;
 	maxActiveJobs?: number;
+	/** Slots an "optimise" job leases (phase 1.5). Default: config.jobParallelism (env
+	 *  JOB_PARALLELISM, itself defaulting to 1 -- i.e. off, byte-identical to pre-phase-1.5). */
+	jobParallelism?: number;
 	/** Injectable core entry points for the fast suite. */
 	core?: CoreFns;
 	/** Built-SPA root; false disables static serving outright (the fast suite). */
@@ -35,7 +38,12 @@ export function createApp(deps: CreateAppDeps): CreatedApp {
 	const registry = new JobRegistry({
 		source: deps.pool,
 		builds,
+		// deps.pool.stats().size is the actual pool the registry must never oversubscribe -- reads
+		// straight from the same source (real PobBridgePool in prod, a fake in tests), never a
+		// separately-configured number that could drift from it.
+		poolSize: deps.pool.stats().size,
 		maxActiveJobs: deps.maxActiveJobs ?? config.maxActiveJobs,
+		jobParallelism: deps.jobParallelism ?? config.jobParallelism,
 		core: deps.core,
 	});
 

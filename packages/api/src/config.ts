@@ -21,6 +21,17 @@ export interface ApiConfig {
 	poolSize: number;
 	/** Kept <= poolSize so a running job never blocks inside pool.acquire(). */
 	maxActiveJobs: number;
+	/**
+	 * Phase 1.5: pool slots each "optimise" job leases (see JobRegistry's admission rewrite,
+	 * packages/api/src/jobs/registry.ts). Each additional slot committed per job is another
+	 * ~700 MB-resident LuaJIT child that must be free before that job -- or any other job also
+	 * needing that many -- can start, so this defaults conservatively to 1 (off; every job leases
+	 * exactly one slot, identical to pre-phase-1.5 behaviour). Raise via JOB_PARALLELISM once
+	 * POOL_SIZE has headroom for it; kept <= poolSize (JobRegistry throws at construction
+	 * otherwise -- a config that could never admit an optimise job is a startup error, not a
+	 * per-job condition).
+	 */
+	jobParallelism: number;
 	contractVersion: string;
 	/**
 	 * Root of the built SPA, relative to the process cwd (the repo root -- `npm start` runs
@@ -37,6 +48,7 @@ export const config: ApiConfig = {
 	luajitPath: process.env.POB_LUAJIT_PATH || undefined,
 	poolSize,
 	maxActiveJobs: Math.min(poolSize, envInt("MAX_ACTIVE_JOBS", poolSize)),
+	jobParallelism: Math.min(poolSize, envInt("JOB_PARALLELISM", 1)),
 	contractVersion: CONTRACT_VERSION,
 	webDist: process.env.WEB_DIST || "packages/web/dist",
 };

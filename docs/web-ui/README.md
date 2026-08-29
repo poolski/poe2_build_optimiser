@@ -26,11 +26,13 @@ This directory is one file per domain — a mix of shipped design-of-record and 
 **On speed:** v1 (on `main`) runs a job as slowly as the CLI does — the pool (phase 1) only
 overlaps *concurrent* jobs, which a single user rarely has. The wall-time win is **phase 1.5**
 (lever 1b in `07`): parallelise one run's candidate batch across the pool. It is built
-(`packages/pob-bridge`'s `PobBridgePool.lease()` + `ParallelBridge`, `--parallelism <n>` on
-`optimise-tree`) but lives on the unmerged `phase1.5-parallel-eval` branch — the API server on
-`main` still runs every job on one slot, unchanged. Don't let the pool's existence imply v1 runs on
-`main` are fast; that only becomes true once this branch merges and the job runner is wired to it
-(see `01` §"Phase 1.5" → "Not yet wired").
+(`packages/pob-bridge`'s `PobBridgePool.lease()`/`acquireParallel()` + `ParallelBridge`,
+`--parallelism <n>` on `optimise-tree`, and `packages/api`'s job runner + `JobRegistry` wired to
+it) but lives on the unmerged `phase1.5-parallel-eval` branch — `main` itself still runs every job
+on one slot until this branch merges. Once merged, the win is opt-in server-side too: `POOL_SIZE`
+stays default 2 and the new `JOB_PARALLELISM` (env, default 1) has to be raised deliberately for
+the API to actually lease more than 1 slot per optimise job — see `01` §"Phase 1.5" for why that
+default is conservative (each extra slot committed per job is another ~700 MB-resident child).
 
 ## Decisions of record (2026-08-28)
 
@@ -148,15 +150,20 @@ carries the detailed narrative.
 - [x] **Rollback tree preview** (`09`) — canvas reused in Configure, click-to-select anchor,
       freed-subtree preview (`740374a`, PR #2 `05563b2`).
 - [x] **Phase 1.5 — parallel candidate eval** (`01` §"Phase 1.5", `07` lever 1b) — **built, on
-      `phase1.5-parallel-eval`, not yet merged.** `PobBridgePool.lease(n)` (new) + `ParallelBridge`
-      (new, `packages/pob-bridge/src/parallel.ts`) shard `evaluate_candidate_nodes[_from]` across N
-      leased slots and recombine by chunk index (order-independent, byte-identical to N=1);
-      `get_metrics` is summed across slots; `load_build_xml`/`reset_metrics` broadcast to every
-      slot; everything else routes to the primary slot. Zero changes to `src/core` — `ParallelBridge`
-      is a drop-in `PobBridgeClient`, consistent with "core receives a bridge, never constructs
-      one". `optimise-tree --parallelism <n>` wires it into the CLI. **Not yet wired into
-      `packages/api`'s job runner** — that's the remaining step before the web UI benefits; see
-      `01` §"Phase 1.5" for the exact follow-up.
+      `phase1.5-parallel-eval`, not yet merged.** `PobBridgePool.lease(n)`/`acquireParallel(n)`
+      (new, atomic all-or-nothing) + `ParallelBridge` (new, `packages/pob-bridge/src/parallel.ts`)
+      shard `evaluate_candidate_nodes[_from]` across N leased slots and recombine by chunk index
+      (order-independent, byte-identical plan to N=1 — `buildOutputCount` is NOT identical, by a
+      predictable amount; see `01` for the mechanism and the live numbers); `get_metrics` is
+      summed across slots; `load_build_xml`/`reset_metrics` broadcast to every slot; everything
+      else routes to the primary slot. Zero changes to `src/core` — `ParallelBridge` is a drop-in
+      `PobBridgeClient`, consistent with "core receives a bridge, never constructs one".
+      `optimise-tree --parallelism <n>` wires it into the CLI. **Wired into `packages/api`'s job
+      runner**: `BridgeSource.acquireParallel(n)`, a `parallelism` field on `JobState` decided at
+      admission, and `JobRegistry`'s admission rewritten to be slot-based (not job-count-based —
+      the old rule silently allowed a lease-time deadlock once a job could request `N > 1` slots).
+      New env `JOB_PARALLELISM` (default 1 = off). See `01` §"Phase 1.5" for the deadlock argument
+      and the fast admission tests.
 - [ ] **RePoE-fork asset source** (`10`) — **spec only, not started.** Web tree geometry + real node
       art + stat text + gem assets from RePoE-fork; adds icon rendering to the shared `TreeCanvas`.
 

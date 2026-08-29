@@ -25,6 +25,24 @@
 //     module-local counters in bridge.lua (`local buildOutputCount = 0` at file scope) -- each
 //     slot only knows about the recomputes *it* ran. The run's true total is the sum across every
 //     leased slot, not just the primary's.
+//       * buildOutputCount vs. the serial (N=1) count for the SAME options: NOT expected to be
+//         equal, and that is not a bug -- it is real extra work, not a miscount. The tail of
+//         evaluateCandidatesAgainst in bridge.lua (packages/pob-bridge/pob-runtime/bridge.lua)
+//         does one extra recomputeBuild() per evaluate_candidate_nodes_from CALL whenever that
+//         call's allocSet/removeIds is non-empty, to resync mainOutput after the call's own outer
+//         CreateUndoState/RestoreUndoState (see docs/gotchas.md). Sharding turns one such call
+//         into up to N, so it turns one tail recompute into up to N. It never touches a
+//         candidate's own measured stats (those come from the per-candidate AllocNode +
+//         recomputeBuild() inside the loop, before the tail runs) -- the PLAN stays
+//         byte-identical, only the recompute COUNT grows. Confirmed empirically 2026-08-29; see
+//         src/core/optimiseTree.parallel.integration.test.ts for the exact numbers and the
+//         predicted-overhead formula.
+//       * buildOutputSeconds: summed across N slots that ran CONCURRENTLY, this is total CPU-time
+//         across those children, NOT elapsed wall/simulation time -- unlike the serial (N=1) case,
+//         where buildOutputSeconds/buildOutputCount is a genuine per-recompute wall-time figure.
+//         A caller reusing this the way the bench harness's "sim s" / "ms/BO" columns do (as a
+//         proxy for elapsed time) will silently get a number that grows with N even though the
+//         run got faster, not slower. Treat it as a CPU-cost figure once N > 1, not a timing one.
 //   - everything else (get_stats, get_tree_status, list_allocatable_nodes_from, get_stats_from,
 //     list_allocated_nodes, evaluate_dealloc_candidates, ...) -- ROUTED to slots[0] ("primary").
 //     Each of these is a single round trip whose result is either a scalar snapshot of the whole

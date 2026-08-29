@@ -185,16 +185,91 @@ describe("PobBridgePool", () => {
 	);
 
 	it(
-		"a failed lease releases every slot it had already acquired",
+		"a lease() waiting for slots to free up holds NONE of them meanwhile (all-or-nothing)",
+		async () => {
+			const pool = makePool({ size: 3 });
+			const h1 = await pool.acquire();
+			const h2 = await pool.acquire();
+			expect(pool.stats()).toEqual({ size: 3, busy: 2, queued: 0 }); // 1 slot free
+
+			let resolved = false;
+			const leaseP = pool.lease(2).then((l) => {
+				resolved = true;
+				return l;
+			});
+			await new Promise((r) => setTimeout(r, 50));
+			expect(resolved).toBe(false);
+			// The critical assertion: busy is still 2, not 3 -- lease(2) did NOT grab the 1 free slot
+			// and hold it while waiting for a 2nd. A "grab-then-wait" implementation would show 3 here.
+			expect(pool.stats().busy).toBe(2);
+
+			h1.release(); // now 2 free -> lease(2) can proceed
+			const lease = await leaseP;
+			expect(resolved).toBe(true);
+			expect(lease.slots).toHaveLength(2);
+			expect(pool.stats()).toEqual({ size: 3, busy: 3, queued: 0 }); // h2 (1) + the lease (2)
+
+			lease.release();
+			h2.release();
+			expect(pool.stats()).toEqual({ size: 3, busy: 0, queued: 0 });
+		},
+		BOOT_MS,
+	);
+
+	it(
+		"two concurrent lease(2) calls against a 3-slot pool do not deadlock",
+		async () => {
+			const pool = makePool({ size: 3 });
+			const leaseA = await pool.lease(2); // grabs 2 of 3; 1 free
+			expect(pool.stats().busy).toBe(2);
+
+			let bResolved = false;
+			const leaseBP = pool.lease(2).then((l) => {
+				bResolved = true;
+				return l;
+			});
+			await new Promise((r) => setTimeout(r, 50));
+			expect(bResolved).toBe(false); // only 1 free -- B waits, holding nothing
+			expect(pool.stats().busy).toBe(2); // NOT 3 -- B never partially grabbed the free slot
+
+			leaseA.release(); // frees 2 -> exactly what B needs
+			const leaseB = await leaseBP;
+			expect(bResolved).toBe(true);
+			expect(leaseB.slots).toHaveLength(2);
+
+			leaseB.release();
+			expect(pool.stats()).toEqual({ size: 3, busy: 0, queued: 0 });
+		},
+		BOOT_MS,
+	);
+
+	it(
+		"lease() rejects and holds nothing if the pool is disposed while waiting",
 		async () => {
 			const pool = makePool({ size: 2 });
-			// Hold slot 0 so lease(2) can only acquire slot 1 before the pool disposes out from under it.
-			const held = await pool.acquire();
+			const held = await pool.acquire(); // both slots eventually busy: 1 here, lease(2) needs 2
 			const leaseP = pool.lease(2);
-			await new Promise((r) => setTimeout(r, 50)); // let lease(2) grab slot 1 and queue for slot 0
+			await new Promise((r) => setTimeout(r, 50)); // let lease(2) start waiting (only 1 free)
 			await pool.dispose();
 			await expect(leaseP).rejects.toThrow(/disposed/);
 			void held;
+		},
+		BOOT_MS,
+	);
+
+	it(
+		"acquireParallel(n) returns a single handle that fans calls across n slots, same build on each",
+		async () => {
+			const pool = makePool({ size: 3 });
+			const bridge = await pool.acquireParallel(3);
+			expect(pool.stats()).toEqual({ size: 3, busy: 3, queued: 0 });
+
+			await bridge.call("load_build_xml", { xml: MINIMAL_BUILD, name: "acquire-parallel-test" });
+			await bridge.call("reset_metrics");
+			expect(await bridge.call("get_stats")).toBeTruthy();
+
+			bridge.release();
+			expect(pool.stats()).toEqual({ size: 3, busy: 0, queued: 0 });
 		},
 		BOOT_MS,
 	);

@@ -55,7 +55,11 @@ export async function runJob(job: JobState, deps: RunnerDeps): Promise<void> {
 	const zeroDpsBuild = build.summary.notes.some((n) => n.includes("0 DPS"));
 	let lease: BridgeLease | undefined;
 	try {
-		lease = await deps.source.acquire();
+		// job.parallelism is decided once, at admission (registry.ts), so the JobRegistry's slot
+		// accounting and this call agree on exactly how many slots this job needs -- see
+		// registry.ts's file header. Plain acquire() for the common (and today's only default)
+		// parallelism-1 case keeps that path free of the lease/ParallelBridge machinery entirely.
+		lease = job.parallelism > 1 ? await deps.source.acquireParallel(job.parallelism) : await deps.source.acquire();
 		await lease.call("load_build_xml", { xml: build.xml });
 		await lease.call("reset_metrics");
 

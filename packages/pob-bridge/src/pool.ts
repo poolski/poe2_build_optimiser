@@ -1,8 +1,10 @@
 // A fixed-size pool of warm PobBridge children. One long-lived pool serves many optimise jobs
-// without paying PoB's multi-second boot per job. Parallelism here is *across* jobs only -- a
-// single job still runs serially on one acquired bridge (phase 1.5 changes that).
+// without paying PoB's multi-second boot per job. `acquire()` gives one job exclusive use of one
+// slot; `lease(n)` (phase 1.5) gives one job exclusive use of `n` slots at once, so a single job
+// can fan work across several children instead of running serially on one.
 
 import { PobBridge, PobBridgeClient } from "./bridge";
+import { ParallelBridge } from "./parallel";
 
 export interface PobBridgePoolOptions {
 	/** Warm children to keep. Default: POOL_SIZE env, else 2. Min 1. */
@@ -47,6 +49,10 @@ export class PobBridgePool {
 	private readonly onChildError?: (slot: number, err: Error) => void;
 	private readonly slots: Slot[];
 	private readonly queue: Waiter[] = []; // FIFO waiters when every slot is busy
+	/** Callbacks parked by lease() while waiting for `n` slots to be free together. Woken (all of
+	 *  them -- each just re-checks and re-parks if still not enough) whenever a slot frees up or
+	 *  the pool disposes. Not FIFO-ordered against `queue` -- see lease()'s doc comment. */
+	private readonly leaseWaiters: Array<() => void> = [];
 	private disposed = false;
 
 	constructor(opts: PobBridgePoolOptions = {}) {
@@ -80,12 +86,29 @@ export class PobBridgePool {
 	}
 
 	/** Resolve with `n` exclusive bridges leased together, all belonging to this one caller until
-	 *  `release()`. Acquires one at a time (reuses `acquire()`'s own FIFO queue), so a lease can
-	 *  take a moment to fully assemble under contention -- acceptable, jobs run for minutes. If
-	 *  any acquire in the sequence fails (e.g. the pool is disposed mid-lease), every slot already
-	 *  acquired is released before rejecting, so a failed lease never strands busy slots. Throws
-	 *  synchronously (no partial acquire) if `n` exceeds the pool size -- acquiring that many
-	 *  would otherwise wait forever for slots that can never free up.
+	 *  `release()`. Throws synchronously (no partial acquire) if `n` exceeds the pool size --
+	 *  acquiring that many would otherwise wait forever for slots that can never free up.
+	 *
+	 *  **All-or-nothing, by construction, not just on the happy path.** Unlike calling `acquire()`
+	 *  `n` times, this never claims some slots and then blocks holding them while it waits for the
+	 *  rest -- it waits until `n` slots are free, THEN claims all `n` in one synchronous burst (no
+	 *  `await` between checking "are `n` free?" and marking them busy, so nothing else can
+	 *  interleave and steal one out from under it in between). That matters because a caller that
+	 *  is careless about ordering -- e.g. two concurrent `lease(2)` calls against a pool of size 3
+	 *  -- would otherwise deadlock: each grabs 1 free slot immediately, then blocks forever waiting
+	 *  for a 2nd that the other call is also holding. With the atomic-burst design, the second
+	 *  `lease(2)` simply waits (holding *nothing*) until 2 slots are free together; if the first
+	 *  lease is released before a third caller starves it out, the second proceeds normally --
+	 *  no partial-hold, no deadlock, though a lease can still wait a while under heavy contention
+	 *  (acceptable: jobs run for minutes, and the intended caller -- `packages/api`'s JobRegistry
+	 *  -- has its own slot-accounting admission control that keeps a lease from blocking at all in
+	 *  the normal case; this is the defence-in-depth layer for whatever calls `lease()` directly).
+	 *  One fairness caveat: a `lease(n)` waiting on free slots does not queue ahead of single-slot
+	 *  `acquire()` callers or other `lease()` callers in any guaranteed order -- under sustained
+	 *  single-slot traffic a wide lease could in principle wait longer than a FIFO strict-order
+	 *  queue would give it. Not a concern for this pool's actual caller (the registry never issues
+	 *  more concurrent slot demand than `poolSize` in the first place), but worth knowing before
+	 *  reusing `lease()` somewhere with a different admission story.
 	 *
 	 *  Same contract as a single `acquire()`: the caller owns spec state. Loading the build once
 	 *  onto every slot (and any all-slots broadcast, e.g. reset_metrics) is the job of the
@@ -97,22 +120,48 @@ export class PobBridgePool {
 		if (count > this.size) {
 			throw new Error(`lease(${count}) exceeds pool size ${this.size} -- would wait forever`);
 		}
-		const slots: PooledBridge[] = [];
-		try {
-			for (let i = 0; i < count; i++) {
-				slots.push(await this.acquire());
+		for (;;) {
+			if (this.disposed) throw new Error("pool is disposed");
+			const free = this.slots.filter((s) => !s.busy);
+			if (free.length >= count) {
+				// Atomic burst: claim exactly `count` slots with no `await` in between claiming them,
+				// so this loop iteration cannot be interleaved by another lease()/acquire() stealing one.
+				const chosen = free.slice(0, count);
+				for (const s of chosen) s.busy = true;
+				const slots = chosen.map((s) => this.handleFor(s));
+				let released = false;
+				return {
+					slots,
+					release: () => {
+						if (released) return;
+						released = true;
+						for (const s of slots) s.release();
+					},
+				};
 			}
-		} catch (err) {
-			for (const s of slots) s.release();
-			throw err;
+			await new Promise<void>((resolve) => this.leaseWaiters.push(resolve));
 		}
+	}
+
+	/** `lease(n)` wrapped in a single `PooledBridge`-shaped handle that fans every call across the
+	 *  leased slots via `ParallelBridge` -- release the returned handle exactly like a plain
+	 *  `acquire()`'s. `n === 1` is a legal, if slightly roundabout, way to get a single slot (the
+	 *  1-slot `ParallelBridge` just routes every call straight through); packages/api's job runner
+	 *  uses this for any job whose decided parallelism is `> 1` and keeps plain `acquire()` for the
+	 *  common `n === 1` case. */
+	async acquireParallel(n: number): Promise<PooledBridge> {
+		const lease = await this.lease(n);
+		const bridge = new ParallelBridge(lease.slots);
 		let released = false;
 		return {
-			slots,
+			call: <T>(method: string, params?: Record<string, unknown>): Promise<T> => {
+				if (released) return Promise.reject(new Error("PooledBridge used after release()"));
+				return bridge.call<T>(method, params);
+			},
 			release: () => {
 				if (released) return;
 				released = true;
-				for (const s of slots) s.release();
+				lease.release();
 			},
 		};
 	}
@@ -156,6 +205,14 @@ export class PobBridgePool {
 			slot.bridge?.dispose();
 			slot.bridge = null;
 		}
+		this.wakeLeaseWaiters(); // let every parked lease() re-check and see `disposed`
+	}
+
+	/** Wake every lease() parked waiting for slots to free up. Each just re-checks "are `n` free
+	 *  now?" -- most will re-park immediately if not, which is cheap and correct, just not free of
+	 *  a thundering-herd re-check under heavy contention (acceptable at this pool's scale). */
+	private wakeLeaseWaiters(): void {
+		for (const wake of this.leaseWaiters.splice(0)) wake();
 	}
 
 	private spawnSlot(slot: Slot): PobBridge {
@@ -196,11 +253,14 @@ export class PobBridgePool {
 	private releaseSlot(slot: Slot): void {
 		const next = this.queue.shift();
 		if (next && !this.disposed) {
-			// Hand the still-busy slot straight to the next waiter (FIFO); ensure a live child.
+			// Hand the still-busy slot straight to the next single-slot waiter (FIFO); ensure a live
+			// child. The slot never actually goes "free", so lease() waiters have nothing new to see
+			// here -- no wake needed on this branch.
 			if (!slot.bridge) this.spawnSlot(slot);
 			next.deliver(slot);
 			return;
 		}
 		slot.busy = false;
+		this.wakeLeaseWaiters(); // a slot just became free -- let parked lease()s re-check
 	}
 }

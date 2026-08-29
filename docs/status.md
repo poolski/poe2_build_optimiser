@@ -296,27 +296,57 @@ in two tracks if it moves), then `04` and `05`+`06` forked into parallel worktre
 ### Phase 1.5 — parallel candidate evaluation within a run — BUILT (2026-08-29, `phase1.5-parallel-eval`, unmerged)
 
 Full design record: `docs/web-ui/01-bridge-service.md` §"Phase 1.5". Summary: `PobBridgePool`
-gained `lease(n)` (acquires `n` slots as one unit, releases all together, throws synchronously if
-`n` exceeds pool size). New `ParallelBridge` (`packages/pob-bridge/src/parallel.ts`) implements
-`PobBridgeClient` over a lease's slots: shards `evaluate_candidate_nodes[_from]` across slots and
-recombines by chunk index (order-independent of completion, byte-identical to a single slot),
-broadcasts `load_build_xml`/`reset_metrics` to every slot, sums `get_metrics` across slots, and
-routes everything else (`get_stats`, `list_allocatable_nodes_from`, `get_stats_from`,
+gained `lease(n)` (acquires `n` slots together as one atomic, all-or-nothing unit — a `lease()`
+waiting for slots to free never holds any of them meanwhile, closing off a deadlock two concurrent
+wide leases could otherwise hit — releases all together, rejects immediately if `n` exceeds pool
+size). New `ParallelBridge` (`packages/pob-bridge/src/parallel.ts`) implements `PobBridgeClient`
+over a lease's slots: shards `evaluate_candidate_nodes[_from]` across slots and recombines by
+chunk index (order-independent of completion, byte-identical to a single slot), broadcasts
+`load_build_xml`/`reset_metrics` to every slot, sums `get_metrics` across slots, and routes
+everything else (`get_stats`, `list_allocatable_nodes_from`, `get_stats_from`,
 `list_allocated_nodes`, `evaluate_dealloc_candidates`, …) to the primary slot — verified against
 `bridge.lua`'s actual handlers, not just method-name inference. **Zero changes to `src/core`**:
 `MemoEvaluator` and `optimiseTree` already funnel every candidate batch through one
 `bridge.call(...)`, so a `ParallelBridge` parallelises transparently underneath them — a cleaner
 fit with this repo's "core receives a bridge, never constructs one" rule than the original sketch
 (which assumed a pool-aware evaluator threaded into `src/core`). `optimise-tree --parallelism <n>`
-wires it into the CLI. Fast suite 344 → 351 (`packages/pob-bridge/src/parallel.test.ts`, fake
-slots: byte-identical sharded-vs-single, order-independence, `get_metrics` summation, a dying
-shard fails the whole call rather than dropping candidates, broadcast, primary-only routing).
-3 new cases in `pool.integration.test.ts` + a new
-`src/core/optimiseTree.parallel.integration.test.ts` acceptance-gate test (serial vs. parallel
-byte-identical, `buildOutputCount` sums exactly) — real-bridge, not run while landing this (ask
-first, per `CLAUDE.md`). **Not yet wired into `packages/api`'s job runner** — `BridgeSource` would
-need an `acquireParallel(n)` alongside `acquire()`, plus a decision on how a leased-N job
-interacts with `MAX_ACTIVE_JOBS <= POOL_SIZE`; left as the next step, not a code gap.
+wires it into the CLI.
+
+**`buildOutputCount` does NOT match exactly between the serial and parallel path — caught live,
+not a design flaw.** `evaluateCandidatesAgainst`'s tail in `bridge.lua` does one extra
+`recomputeBuild()` per `evaluate_candidate_nodes[_from]` *call* whenever `allocSet`/`removeIds` is
+non-empty; sharding turns one call into up to N, so it turns one tail recompute into up to N. The
+plan itself stays byte-identical (the tail never touches a candidate's own measured stats).
+Confirmed on a live run (`npm run test:integration` against a self-contained fixture, run once
+while fixing this): serial `buildOutputCount` 139, parallel (N=3) 145 — excess 6 =
+`(N-1) × (steps.length-1)` exactly, `steps.length` = 4. The acceptance-gate test
+(`src/core/optimiseTree.parallel.integration.test.ts`) now asserts that derived formula instead of
+exact equality, plus the (separately valid and unaffected) claim that `buildOutputCount` sums each
+slot's own `get_metrics`. `buildOutputSeconds` carries a related caveat, documented at the
+aggregation site: summed across concurrently-running children it's total CPU-seconds, not elapsed
+time.
+
+**Wired into `packages/api`'s job runner.** `BridgeSource` gained `acquireParallel(n)`
+(`PobBridgePool.acquireParallel` = `lease(n)` + `ParallelBridge`); `JobState` carries a
+`parallelism` decided once at `create()` (1 for "recommend" jobs always, `jobParallelism` — new
+registry option, env `JOB_PARALLELISM`, default 1 = off — for "optimise" jobs); the runner picks
+`acquireParallel`/`acquire` accordingly. **Admission is now slot-based, not job-count-based**:
+`JobRegistry.pump()` admits the FIFO queue's head only when committed slots across every running
+job plus the head's own `parallelism` fit `poolSize`, restoring the invariant the old
+job-count-only rule silently broke once a job could lease `N > 1` slots (two admitted jobs each
+leasing more than what's actually free between them could otherwise block inside
+`PobBridgePool.lease()` — a deadlock). `maxActiveJobs` stays as an independent, additional ceiling
+on running job *count*. `POOL_SIZE` stays default 2; `JOB_PARALLELISM` is the new conservative
+per-job-slot knob (default 1); `/api/health` echoes it. Deliberately not exposed as a per-request
+`OptimiseRequest` field this pass — server-config-only, to avoid widening `packages/contract` for
+a knob a local single-user operator can already set via env. Fast suite 344 → 354 (`+3` registry
+admission tests against fake bridges: combined-parallelism-over-pool serialises, a 1-slot +
+3-slot job run concurrently, an over-`poolSize` `jobParallelism` is rejected at construction; `+8`
+`parallel.test.ts`: byte-identical sharded-vs-single, order-independence, `get_metrics` summation,
+a dying shard fails the whole call, broadcast, primary-only routing, no-shard-below-2). New
+real-bridge integration cases (not run routinely, per `CLAUDE.md`) in `pool.integration.test.ts`
+(the atomic-lease proof, a two-concurrent-`lease(2)`-no-deadlock case, `acquireParallel`) and the
+acceptance-gate test above.
 
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.

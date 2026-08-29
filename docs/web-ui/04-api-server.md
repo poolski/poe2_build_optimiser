@@ -86,7 +86,11 @@ type JobState = {
 
 - **Admission.** `MAX_ACTIVE_JOBS` (default = pool size) running at once; extra jobs sit
   `queued`. Since a job holds a bridge for its whole run, `MAX_ACTIVE_JOBS === POOL_SIZE` means
-  no job ever waits inside `pool.acquire()`.
+  no job ever waits inside `pool.acquire()`. **Superseded by phase 1.5** (`01` §"Phase 1.5"): once
+  a job can lease more than 1 slot (`JOB_PARALLELISM > 1`), job-COUNT admission alone no longer
+  guarantees that invariant -- `JobRegistry`'s admission became SLOT-based (committed slots across
+  running jobs vs. `POOL_SIZE`), with `MAX_ACTIVE_JOBS` kept as a separate, additional ceiling on
+  running job count. `registry.ts`'s file header is the design of record for the current rule.
 - **Cancellation.** `abort.abort()` flips `status = "cancelled"`. The runner passes
   `shouldContinue: () => !abort.signal.aborted` into core (`02`), so `optimiseTree` stops after
   the current add-step, returns its partial plan with `stoppedBecause: "cancelled"`, and the
@@ -234,8 +238,9 @@ app.get("/api/jobs/:id/events", c => {
 |-----|---------|-------|
 | `PORT` | `8787` | binds `127.0.0.1` only |
 | `POB_LUAJIT_PATH` | (bridge default) | passed to the pool |
-| `POOL_SIZE` | `2` | single-user; one running + one queued/warm. LuaJIT child ≈ one PoB runtime of RAM. Raise it only with phase 1.5 (`01`). |
-| `MAX_ACTIVE_JOBS` | `= POOL_SIZE` | keep ≤ pool so acquire never blocks |
+| `POOL_SIZE` | `2` | single-user; one running + one queued/warm. LuaJIT child ≈ one PoB runtime of RAM. Raise it to make phase-1.5 `JOB_PARALLELISM` worth more than 1. |
+| `MAX_ACTIVE_JOBS` | `= POOL_SIZE` | additional ceiling on running job COUNT (phase 1.5: admission is primarily slot-based now, see `01`) |
+| `JOB_PARALLELISM` | `1` | phase 1.5 (`01`): pool slots each "optimise" job leases. `1` = off, byte-identical to pre-phase-1.5. Keep `<= POOL_SIZE`. |
 | `CONTRACT_VERSION` | from `@poe2/contract` | echoed on `/health` |
 
 ## Tests
