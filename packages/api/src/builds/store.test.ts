@@ -23,6 +23,7 @@ const okHandlers = {
 	get_stats: { TotalDPS: 5513.53, Life: 3200, TotalEHP: 45000, BadInf: Infinity, BadNaN: NaN },
 	get_tree_status: STATUS,
 	get_item_slots: { "Weapon 1": "Some Axe", Helmet: "Some Hat" },
+	list_allocated_nodes: { nodes: [{ id: 30 }, { id: 10 }, { id: 40 }, { id: 20 }] },
 };
 
 describe("parseAscendancy", () => {
@@ -89,6 +90,7 @@ describe("BuildStore.ingest", () => {
 			notes: [],
 		});
 		expect(summary.baseline).toEqual({ TotalDPS: 5513.53, Life: 3200, TotalEHP: 45000 });
+		expect(summary.allocatedNodeIds).toEqual([10, 20, 30, 40]);
 		expect(summary.buildId).toMatch(/^b_/);
 		expect(src.acquired).toBe(1);
 		expect(src.released).toBe(1);
@@ -129,5 +131,54 @@ describe("BuildStore.ingest", () => {
 	it("propagates a decode failure from a bad code", async () => {
 		const store = new BuildStore(fakeBridgeSource(okHandlers));
 		await expect(store.ingest({ kind: "pobCode", code: "not-valid-zlib" })).rejects.toThrow();
+	});
+});
+
+describe("BuildStore.cascade", () => {
+	// A bridge whose list_allocated_nodes drops [anchor, anchor+1] when asked to remove the anchor,
+	// modelling the DeallocNode cascade freeing the anchor plus a dependant.
+	const cascadeHandlers = {
+		...okHandlers,
+		list_allocated_nodes: (_m: string, params?: Record<string, unknown>) => {
+			const remove = (params?.removeIds as number[] | undefined) ?? [];
+			const all = [10, 20, 30, 31, 40]; // 31 depends on 30
+			const dropped = new Set<number>();
+			for (const id of remove) {
+				dropped.add(id);
+				dropped.add(id + 1); // its dependant cascades off too
+			}
+			return { nodes: all.filter((id) => !dropped.has(id)).map((id) => ({ id })) };
+		},
+	};
+
+	async function stored() {
+		const src = fakeBridgeSource(cascadeHandlers);
+		const store = new BuildStore(src);
+		const summary = await store.ingest({ kind: "xml", xml: SAMPLE_XML });
+		return { store, src, buildId: summary.buildId };
+	}
+
+	it("returns the freed cascade for an allocated anchor, ascending, including the anchor", async () => {
+		const { store, buildId } = await stored();
+		const r = await store.cascade(buildId, 30);
+		expect(r).toEqual({ anchorNodeId: 30, freedNodeIds: [30, 31] });
+	});
+
+	it("throws unknown-build for an unknown id", async () => {
+		const { store } = await stored();
+		await expect(store.cascade("b_nope", 30)).rejects.toThrow(/unknown-build/);
+	});
+
+	it("throws anchor-not-allocated when the anchor is not in the allocated set", async () => {
+		const { store, buildId } = await stored();
+		await expect(store.cascade(buildId, 999)).rejects.toThrow(/anchor-not-allocated/);
+	});
+
+	it("releases the bridge after computing a cascade", async () => {
+		const { store, src, buildId } = await stored();
+		await store.cascade(buildId, 30);
+		// one acquire+release for ingest, one for the cascade
+		expect(src.released).toBe(src.acquired);
+		expect(src.acquired).toBe(2);
 	});
 });

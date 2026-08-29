@@ -17,18 +17,33 @@ import {
   type Viewport,
 } from "./viewport";
 import { scaleToSlider, sliderToScale, wheelZoom } from "./zoom";
+import { clickPick } from "./pick";
 
 interface Props {
   minTree: MinTree;
   before: number[];
   after: number[];
   anchor?: number | null;
+  /** Fired on a genuine click (not a drag) on a node in `pickable`. */
+  onPick?: (id: number) => void;
+  /** Only nodes in this set are clickable; omitted ⇒ nothing is pickable (Results behaviour). */
+  pickable?: Set<number>;
+  /** "diff" (default) labels the overlay before→after; "select" labels it for anchor picking. */
+  legend?: "diff" | "select";
 }
 
 const HIT_RADIUS_PX = 26;
 const CLICK_SLOP_PX = 4;
 
-export default function TreeCanvas({ minTree, before, after, anchor = null }: Props) {
+export default function TreeCanvas({
+  minTree,
+  before,
+  after,
+  anchor = null,
+  onPick,
+  pickable,
+  legend = "diff",
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const indexRef = useRef<SpatialIndex | null>(null);
   const vpRef = useRef<Viewport>({ x: 0, y: 0, zoom: 0.05 });
@@ -179,6 +194,8 @@ export default function TreeCanvas({ minTree, before, after, anchor = null }: Pr
       hoverRef.current = hit;
       dirtyRef.current = true;
     }
+    (e.currentTarget as HTMLElement).style.cursor =
+      hit != null && pickable?.has(hit) ? "pointer" : "";
     if (hit == null) {
       if (tip) setTip(null);
     } else {
@@ -194,8 +211,14 @@ export default function TreeCanvas({ minTree, before, after, anchor = null }: Pr
     setTip(null);
   };
 
-  const onPointerUp = () => {
+  const onPointerUp = (e: React.PointerEvent) => {
+    const drag = dragRef.current;
     dragRef.current = null;
+    if (!drag || !onPick) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const hit = pickAt(e.clientX - rect.left, e.clientY - rect.top);
+    const id = clickPick(drag.moved, CLICK_SLOP_PX, hit, pickable);
+    if (id != null) onPick(id);
   };
 
   const tipNode = tip ? minTree.nodesById.get(tip.id) ?? null : null;
@@ -215,11 +238,13 @@ export default function TreeCanvas({ minTree, before, after, anchor = null }: Pr
         <div>
           <span className="sw" style={{ background: "#c8a86a" }} /> allocated
         </div>
+        {legend === "diff" && (
+          <div>
+            <span className="sw" style={{ background: "#5aa85a" }} /> added
+          </div>
+        )}
         <div>
-          <span className="sw" style={{ background: "#5aa85a" }} /> added
-        </div>
-        <div>
-          <span className="sw" style={{ background: "#d76050" }} /> dropped
+          <span className="sw" style={{ background: "#d76050" }} /> {legend === "select" ? "freed" : "dropped"}
         </div>
         {anchor != null && (
           <div>

@@ -6,6 +6,7 @@
 import type {
   BuildInput,
   BuildSummary,
+  CascadeResult,
   JobError,
   JobRef,
   OptimiseRequestInput,
@@ -31,6 +32,8 @@ export interface StreamHandlers {
 export interface OptimiserClient {
   createBuild(input: BuildInput): Promise<BuildSummary>;
   getBuild(id: string): Promise<BuildSummary>;
+  /** The subtree rolling back to `anchorNodeId` would free, for the Configure-step preview. */
+  getCascade(buildId: string, anchorNodeId: number): Promise<CascadeResult>;
   submitJob(req: OptimiseRequestInput): Promise<JobRef>;
   getJob(id: string): Promise<JobPoll>;
   cancelJob(id: string): Promise<JobRef>;
@@ -76,6 +79,12 @@ export const httpClient: OptimiserClient = {
     req<BuildSummary>("/builds", { method: "POST", body: JSON.stringify(input) }),
 
   getBuild: (id) => req<BuildSummary>(`/builds/${encodeURIComponent(id)}`),
+
+  getCascade: (id, anchorNodeId) =>
+    req<CascadeResult>(`/builds/${encodeURIComponent(id)}/cascade`, {
+      method: "POST",
+      body: JSON.stringify({ anchorNodeId }),
+    }),
 
   // POST /jobs takes OptimiseRequest | RecommendRequest discriminated by `kind` (04). v1 only
   // wires the optimise job.

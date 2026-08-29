@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import type { BuildSummary } from "@poe2/contract";
+import type { OptimiserClient } from "../api";
 import BuildInput from "./BuildInput";
 import RunConfig from "./RunConfig";
 import Results from "./Results";
@@ -18,9 +19,18 @@ const build: BuildSummary = {
   pointsMax: 118,
   weaponSet1PointsUsed: 0,
   weaponSet2PointsUsed: 0,
+  allocatedNodeIds: [10, 20, 30, 40],
   baseline: { TotalDPS: 500000 },
   notes: ["scores 0 DPS headless"],
 };
+
+// TreePreview only calls getCascade once a tree is ready; under renderToStaticMarkup / a failed
+// fetch it never renders the canvas, so this stub is enough to satisfy the prop type.
+const stubClient = {
+  async getCascade(_id: string, anchorNodeId: number) {
+    return { anchorNodeId, freedNodeIds: [anchorNodeId] };
+  },
+} as unknown as OptimiserClient;
 
 describe("BuildInput", () => {
   it("submits a pobCode discriminated-union value from the paste tab", () => {
@@ -57,6 +67,7 @@ describe("RunConfig", () => {
         onChange={() => {}}
         onRun={() => {}}
         onBack={() => {}}
+        client={stubClient}
       />,
     );
     expect(html).toContain("Ranger");
@@ -65,12 +76,21 @@ describe("RunConfig", () => {
     expect(html).toContain("rollback");
   });
 
-  it("shows the anchor-id field only in rollback mode", () => {
+  it("prompts to pick an anchor on the tree in rollback mode", () => {
     const req = { ...initialRequest("b1"), mode: "rollback" as const };
     const html = renderToStaticMarkup(
-      <RunConfig build={build} request={req} onChange={() => {}} onRun={() => {}} onBack={() => {}} />,
+      <RunConfig
+        build={build}
+        request={req}
+        onChange={() => {}}
+        onRun={() => {}}
+        onBack={() => {}}
+        client={stubClient}
+      />,
     );
-    expect(html).toContain("Anchor node id");
+    // The number input is gone; the rollback branch prompts a canvas pick instead.
+    expect(html).not.toContain("Anchor node id");
+    expect(html).toContain("Click the node to roll back to on the tree above");
   });
 
   it("emits a mode patch when a mode button is clicked", () => {
@@ -82,6 +102,7 @@ describe("RunConfig", () => {
         onChange={onChange}
         onRun={() => {}}
         onBack={() => {}}
+        client={stubClient}
       />,
     );
     m.act(() =>

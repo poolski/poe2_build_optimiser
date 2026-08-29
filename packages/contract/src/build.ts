@@ -47,7 +47,26 @@ export const BuildSummary = z.object({
    * but no field existed to implement it against.
    */
   treeVersion: z.string().nullable(),
+  /**
+   * The build's currently-allocated regular-node ids, ascending. Same node filter as the
+   * bridge's `list_allocated_nodes` (class/ascendancy-start + item-granted nodes excluded), so
+   * it mirrors `OptimiseResultDTO.allocatedNodeIds.before`. The Configure-step tree preview
+   * (`09-rollback-tree-preview.md`) draws the current tree straight from this -- no extra call.
+   */
+  allocatedNodeIds: z.array(z.number().int()),
   baseline: z.record(z.string(), z.number()), // the StatSet, finite numbers only
   notes: z.array(z.string()), // e.g. "scores 0 DPS headless", "over-allocated by 2"
 });
 export type BuildSummary = z.infer<typeof BuildSummary>;
+
+/**
+ * Response of `POST /api/builds/:id/cascade` -- the downstream `DeallocNode` cascade that rolling
+ * back to `anchorNodeId` would free. Node ids only (no "points freed" count: a true point count
+ * has weapon-set subtleties, `docs/status.md` "Blocker (a)", not worth faking for a preview).
+ * `freedNodeIds` is ascending and includes the anchor itself. Spec: `09-rollback-tree-preview.md`.
+ */
+export const CascadeResult = z.object({
+  anchorNodeId: z.number().int(),
+  freedNodeIds: z.array(z.number().int()),
+});
+export type CascadeResult = z.infer<typeof CascadeResult>;

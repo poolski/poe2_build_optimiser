@@ -29,6 +29,16 @@ const bridgeHandlers = {
 	get_stats: { TotalDPS: 5513.53, TotalEHP: 45000 },
 	get_tree_status: STATUS,
 	get_item_slots: { "Weapon 1": "Axe" },
+	list_allocated_nodes: (_m: string, params?: Record<string, unknown>) => {
+		const remove = (params?.removeIds as number[] | undefined) ?? [];
+		const all = [10, 20, 30, 31, 40]; // 31 depends on 30
+		const dropped = new Set<number>();
+		for (const id of remove) {
+			dropped.add(id);
+			dropped.add(id + 1);
+		}
+		return { nodes: all.filter((id) => !dropped.has(id)).map((id) => ({ id })) };
+	},
 };
 
 function makeApp(coreImpl: StubCoreImpl = {}) {
@@ -141,6 +151,50 @@ describe("POST /api/builds", () => {
 		const id = await ingestBuild(app);
 		expect((await app.request(`/api/builds/${id}`)).status).toBe(200);
 		expect((await app.request("/api/builds/nope")).status).toBe(404);
+	});
+
+	it("returns the summary's allocatedNodeIds", async () => {
+		const app = makeApp();
+		const id = await ingestBuild(app);
+		expect((await json(await app.request(`/api/builds/${id}`))).allocatedNodeIds).toEqual([
+			10, 20, 30, 31, 40,
+		]);
+	});
+
+	async function postCascade(app: App, id: string, body: unknown): Promise<Response> {
+		return app.request(`/api/builds/${id}/cascade`, {
+			method: "POST",
+			headers: JSON_HEADERS,
+			body: JSON.stringify(body),
+		});
+	}
+
+	it("POST /api/builds/:id/cascade returns the freed subtree", async () => {
+		const app = makeApp();
+		const id = await ingestBuild(app);
+		const res = await postCascade(app, id, { anchorNodeId: 30 });
+		expect(res.status).toBe(200);
+		expect(await json(res)).toEqual({ anchorNodeId: 30, freedNodeIds: [30, 31] });
+	});
+
+	it("cascade 404s an unknown build", async () => {
+		const res = await postCascade(makeApp(), "nope", { anchorNodeId: 30 });
+		expect(res.status).toBe(404);
+	});
+
+	it("cascade 400s a non-allocated anchor", async () => {
+		const app = makeApp();
+		const id = await ingestBuild(app);
+		const res = await postCascade(app, id, { anchorNodeId: 999 });
+		expect(res.status).toBe(400);
+		expect((await json(res)).kind).toBe("bad-request");
+	});
+
+	it("cascade 400s a malformed body", async () => {
+		const app = makeApp();
+		const id = await ingestBuild(app);
+		const res = await postCascade(app, id, { anchor: "x" });
+		expect(res.status).toBe(400);
 	});
 });
 
