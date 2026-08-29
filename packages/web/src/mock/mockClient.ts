@@ -3,8 +3,8 @@
 // LuaJIT and no pob-runtime submodule -- the same decoupling docs/web-ui/08-fork-prep.md set up
 // for the canvas.
 //
-// Enabled by default in `vite dev` unless VITE_USE_API=1. Never used in tests (they inject their
-// own fake).
+// Opt-in via VITE_USE_MOCK=1; dev otherwise hits the real API. Never used in tests (they inject
+// their own fake).
 
 import type {
   BuildInput,
@@ -67,7 +67,7 @@ const MOCK_BUILD: BuildSummary = {
   weaponSet1PointsUsed: 0,
   weaponSet2PointsUsed: 0,
   baseline: { TotalDPS: fx.baseline.objective, Life: 3200, TotalEHP: 45000 },
-  notes: ["mock data -- fixture-backed client (VITE_USE_API=1 to hit the real server)"],
+  notes: ["mock data -- fixture-backed client (unset VITE_USE_MOCK to hit the real server)"],
 };
 
 /** Reconstitute a full OptimiseResultDTO from the trimmed canvas fixture (same approach as the

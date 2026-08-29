@@ -185,7 +185,7 @@ cancel that frees the slot within one add-step.
 **Full plan is now `docs/web-ui/` — one file per domain:**
 
 | File | Domain |
-|------|--------|
+| ------ | -------- |
 | `docs/web-ui/README.md` | Index, decisions of record, architecture, sequencing |
 | `docs/web-ui/01-bridge-service.md` | Phase 1 — `pob-runtime/` + `bridge.ts` → `packages/pob-bridge` with a `PobBridgePool`; §"Phase 1.5" = parallel candidate eval within a run |
 | `docs/web-ui/02-core-progress.md` | Phase 1 — `onProgress` + `shouldContinue` in `optimiseTree` / `recommendTree` |
@@ -302,8 +302,8 @@ bet paid off.
   `packages/web`: Vite + React 4-step wizard, node-list diff, and the stylised tree canvas ported
   from the MIT `poe2-tools/poe2-build-planner` renderer onto `tree-0_5.min.json`
   (`LICENSE.upstream` + per-file provenance; no GGG art). Upstream's min<->max wheel-zoom bug is
-  fixed (`zoom.ts`: log slider + fixed wheel step). Dev runs against a fixture-backed mock client
-  unless `VITE_USE_API=1`.
+  fixed (`zoom.ts`: log slider + fixed wheel step). Dev hits the real API by default; set
+  `VITE_USE_MOCK=1` to run against the fixture-backed mock client with no API process.
 
 **Integration fixes applied on top (2026-08-29):**
 
