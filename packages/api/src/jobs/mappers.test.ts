@@ -176,6 +176,20 @@ describe("normalizeProgress", () => {
 		);
 		expect(pe.bestObjective).toBe(0);
 	});
+
+	it("forwards workers[] and topNodes[] when the core progress carries them", () => {
+		const workers = [
+			{ slot: 0, done: 12, total: 40 },
+			{ slot: 1, done: 8, total: 40 },
+		];
+		const topNodes = [{ id: "n1", name: "Iron Reflexes", scoreDelta: 42.5 }];
+		const pe = normalizeProgress(
+			{ phase: "add-loop", buildOutputs: 128, bestObjective: 10441.9, depth: 3, workers, topNodes } as never,
+			"j_4",
+			5000,
+		);
+		expect(pe).toMatchObject({ workers, topNodes });
+	});
 });
 
 describe("classifyError", () => {

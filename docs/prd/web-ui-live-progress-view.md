@@ -146,21 +146,14 @@ Ordered steps, each with a validation point.
 
 <!-- Resolve before building. -->
 
-- **Step 1 outcome** — *partially answered from the code, 2026-08-29, still needs a design call.*
-  Per-worker candidate state is **not** reachable from `beamAddLoop`: phase 1.5 is entirely a
-  `packages/pob-bridge` concern (`ParallelBridge`, `packages/pob-bridge/src/parallel.ts`) that
-  shards one `evaluate_candidate_nodes[_from]` batch across leased pool slots and recombines by
-  chunk index — deliberately *zero* `src/core` changes. Core sees one `bridge.call(...)`, never a
-  worker. So the options are: (a) drop "per-worker" and report per-*shard* progress by
-  instrumenting `ParallelBridge` with an observer callback at dispatch/settle, or (b) a new
-  read-only bridge RPC. (a) is cheaper and keeps core clean; it changes what the row means.
-  (Blocks steps 2–4.)
-- **Worker identity** — a "worker" is a leased pool slot (`PobBridgePool.lease(n)`, index within
-  `ParallelBridge.slots`), stable for the whole run, so slot index keys rows fine. But a slot is
-  not evaluating *a* candidate — it is evaluating a contiguous chunk of the batch's `nodeIds`.
-  Decide whether a row shows "slot 1 · 12/40 candidates" or is dropped in favour of the top-N
-  list alone.
-- **`topNodes` size**: fixed N (e.g. 5) or configurable? Default proposed: 5.
+- **Step 1 outcome** — *answered, 2026-08-30.* Option (a): instrument `ParallelBridge`
+  (`packages/pob-bridge/src/parallel.ts`) with an observer callback at dispatch/settle, reporting
+  per-shard progress. Keeps `src/core` clean (zero new bridge RPC); a "worker row" means a leased
+  pool slot working a chunk, not a single candidate.
+- **Worker identity** — *answered, 2026-08-30.* A row shows "slot N · done/total candidates"
+  (chunk progress), not a single current candidate — honest about what a shard observer can
+  report.
+- **`topNodes` size** — *answered, 2026-08-30.* Fixed at 5. No config surface added.
 - **recommendTree**: confirm it stays on the coarse tick for v1, or fold in a trimmed
   `topNodes` if step 2 makes it near-free.
 - **Canvas trigger** — *answered*: spec `06`'s stylised diff canvas is shipped on `main` and

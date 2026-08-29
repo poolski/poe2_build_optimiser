@@ -32,7 +32,23 @@ stays out of the tree). Provenance and design rationale live in git history and 
 
 ## Up next
 
-- [ ] *(nothing queued)*
+- [supervised] Wire a `ParallelBridge` shard-observer callback into the `beamAddLoop` tick sites
+  to populate `workers[]` — real design work across `packages/pob-bridge` and `src/core`, not
+  loop-safe (docs/prd/web-ui-live-progress-view.md)
+- [supervised] Extend the "throwing `onProgress`" determinism test to cover reading
+  `workers[]`/`topNodes[]` — blocked on the shard-observer wiring above landing first, or the
+  test can only assert against fields that don't exist yet (docs/prd/web-ui-live-progress-view.md)
+- [supervised] `RunProgress.tsx`: per-worker rows (slot · done/total) — needs an interactive look
+  at the component before committing to test shape (docs/prd/web-ui-live-progress-view.md)
+- [supervised] `RunProgress.tsx`: top-5 promising-nodes list — same reason as worker rows
+  (docs/prd/web-ui-live-progress-view.md)
+- [supervised] `RunProgress.tsx`: `bestObjective` sparkline — same reason as worker rows
+  (docs/prd/web-ui-live-progress-view.md)
+- [supervised] Highlight top-N nodes on the shipped `06` canvas — PRD's own validation is
+  "visual check", no acceptance test specified yet (docs/prd/web-ui-live-progress-view.md)
+- [supervised] End-to-end live-progress check against a real bridge, pool size 2, screenshot —
+  manual/E2E by nature; conflicts with the real-bridge-only-when-asked rule
+  (docs/prd/web-ui-live-progress-view.md)
 
 Candidates and deferred work live in [`docs/ROADMAP.md`](docs/ROADMAP.md) — an item moves up
 here when it is actively picked up.
