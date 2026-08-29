@@ -375,6 +375,9 @@ See *Active next track: web UI + bridge service* above.
 - `skill-optimiser-design.md` — shelved track, kept for reference.
 - `beam-search/` — the completed passive-tree optimiser track: `design.md` (+ Implementation
   status checklist), `repro.md`, `corpus.md`, `bench-totaldps.md`, `bench-dps-ehp-0-5.md`.
+- `cli/` — **user-facing** CLI reference: `README.md` (objectives, constraints, picking a
+  mode), `optimise-tree.md`, `recommend-tree.md`. Added 2026-08-29 alongside the root
+  `README.md`, which covers both the CLI and the web UI.
 - `web-ui/` — the active track. Start at its `README.md`.
 
 ## How to pick this up
