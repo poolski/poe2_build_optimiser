@@ -1,0 +1,104 @@
+{
+  "groundrulesVersion": "1.10.0",
+  "adopted": true,
+  "bootstrappedWithVersion": null,
+  "adoptedAt": "2026-08-29",
+  "adoptionMode": "map",
+  "migrations": [],
+  "answers": {
+    "projectName": "poe2-build-optimiser",
+    "adoptionStrategy": "map-in-place",
+    "intentSource": "docs/status.md"
+  },
+  "intent": {
+    "source": "file",
+    "sourceFile": "docs/status.md",
+    "synthesizedTo": "docs/VISION.md"
+  },
+  "appliedPractices": [],
+  "loop": {
+    "scaffolded": true,
+    "at": "2026-08-29"
+  },
+  "policies": {
+    "noAiAttribution": false
+  },
+  "generatedFiles": [
+    "docs/VISION.md",
+    "docs/decisions/README.md",
+    "docs/LEARNINGS.md",
+    "intake/README.md",
+    "docs/ARCHITECTURE.md",
+    "docs/GLOSSARY.md",
+    "docs/ROADMAP.md",
+    "docs/PROCESS.md",
+    "loop/README.md",
+    "loop/maker.md",
+    "loop/verifier.md",
+    "loop/.gitignore",
+    "loop/run-loop.sh",
+    "loop/run-loop.ps1"
+  ],
+  "adoptedFiles": {
+    "CLAUDE.md": "instructions (project-specific; not tool-managed)",
+    "README.md": "README (real project doc; not boilerplate)",
+    "LICENSE.md": "license",
+    "docs/status.md": "intent-source (living status & roadmap)",
+    "docs/gotchas.md": "reference (PoB-PoE2 quirks)",
+    "docs/skill-optimiser-design.md": "reference (shelved track, kept for context)",
+    "docs/constraint-rejection-repro.md": "reference (live repro of recommender constraints)",
+    "docs/beam-search/": "reference (completed optimization track)",
+    "docs/cli/": "reference (user-facing CLI docs)",
+    "docs/web-ui/": "reference (development track phases 1-10)"
+  },
+  "skippedFiles": {
+    "src/": "code (not a doc)",
+    "packages/": "code & workspaces (not docs)",
+    "spike/": "experiments (not docs)",
+    "scripts/": "tooling (not docs)",
+    ".gitignore": "config (not a doc)",
+    ".gitmodules": "config (not a doc)",
+    "tsconfig.*.json": "config (not a doc)",
+    "vitest.*.ts": "config (not a doc)",
+    "package.json": "config (not a doc)",
+    "testBuild.xml": "test artifact (not a doc)"
+  },
+  "detectedStack": {
+    "language": "TypeScript",
+    "runtime": "Node.js",
+    "packageManager": "npm",
+    "monorepo": "npm workspaces",
+    "framework": "ts-node, vitest",
+    "gitRemote": "github.com/poolski/build_optimiser"
+  },
+  "detectedFeatures": {
+    "hasGlobalClaude": false,
+    "hasProjectClaude": true,
+    "hasSuperpowers": false,
+    "hasPlanningFiles": false,
+    "planningFilesSearched": [
+      "plan.md",
+      "todo.md",
+      "todos.md",
+      "tasks.md",
+      "backlog.md"
+    ],
+    "existingDocs": [
+      "README.md",
+      "CLAUDE.md",
+      "LICENSE.md",
+      "docs/status.md",
+      "docs/gotchas.md",
+      "docs/skill-optimiser-design.md",
+      "docs/constraint-rejection-repro.md",
+      "docs/beam-search/",
+      "docs/cli/",
+      "docs/web-ui/"
+    ]
+  },
+  "migratedFiles": {},
+  "metadata": {
+    "adoptedBy": "Claude Code groundrules plugin v1.10.0",
+    "adoptionNotes": "Mapped in place — no file moves. CLAUDE.md is project-specific and was left untouched. docs/status.md is the authoritative map; VISION.md synthesizes it. Loop scaffolding supports future maker/verifier tasks. All docs are content-aware and project-contextualized (not boilerplate)."
+  }
+}
