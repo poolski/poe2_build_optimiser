@@ -4,6 +4,7 @@
 import { spawn, ChildProcessWithoutNullStreams } from "node:child_process";
 import * as path from "node:path";
 import * as readline from "node:readline";
+import { defaultLuajitPath, luaCModuleExt } from "./platform";
 
 export interface PobRpcRequest {
 	id: number;
@@ -26,7 +27,8 @@ export interface PobBridgeClient {
 }
 
 export interface PobBridgeOptions {
-	/** Override the luajit executable for this instance (else POB_LUAJIT_PATH, else the default). */
+	/** Override the luajit executable for this instance (else POB_LUAJIT_PATH, else the
+	 *  per-OS default from platform.ts -- msys64 on Windows, `luajit` on PATH elsewhere). */
 	luajitPath?: string;
 	/** Fired once when the child process exits, after every pending call() has been rejected.
 	 *  The pool uses this to notice a crashed slot; a plain `dispose()` also triggers it. */
@@ -37,7 +39,14 @@ export interface PobBridgeOptions {
 const PACKAGE_ROOT = path.resolve(__dirname, "..");
 const POB_SRC_DIR = path.join(PACKAGE_ROOT, "pob-runtime", "PathOfBuilding-PoE2", "src");
 const BRIDGE_LUA = path.join(PACKAGE_ROOT, "pob-runtime", "bridge.lua");
-const LUAJIT_EXE = process.env.POB_LUAJIT_PATH ?? "C:\\msys64\\mingw64\\bin\\luajit.exe";
+const LUAJIT_EXE = process.env.POB_LUAJIT_PATH || defaultLuajitPath();
+// Native Lua C modules. Windows loads the .dll's the submodule ships in ../runtime/. macOS/Linux
+// have no prebuilt libs there, so `npm run build:native` compiles lua-utf8 into packages/pob-bridge/
+// native/ (outside the submodule, so it survives submodule resets); that dir goes first on the path.
+// The entry is absolute -- LUA_CPATH's `?` substitution leaves it intact regardless of cwd.
+const NATIVE_EXT = luaCModuleExt();
+const NATIVE_DIR = path.join(PACKAGE_ROOT, "native");
+const LUA_CPATH = `${path.join(NATIVE_DIR, `?.${NATIVE_EXT}`)};../runtime/?.${NATIVE_EXT};;`;
 
 export class PobBridge implements PobBridgeClient {
 	private proc: ChildProcessWithoutNullStreams;
@@ -53,7 +62,7 @@ export class PobBridge implements PobBridgeClient {
 			env: {
 				...process.env,
 				LUA_PATH: "../runtime/lua/?.lua;../runtime/lua/?/init.lua;?.lua;;",
-				LUA_CPATH: "../runtime/?.dll;;",
+				LUA_CPATH,
 			},
 		});
 

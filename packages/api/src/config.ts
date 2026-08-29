@@ -15,7 +15,8 @@ const poolSize = envInt("POOL_SIZE", 2);
 export interface ApiConfig {
 	host: string;
 	port: number;
-	/** undefined -> PobBridge's own default (POB_LUAJIT_PATH env, else the msys64 path). */
+	/** undefined -> PobBridge's own default (POB_LUAJIT_PATH env, else the per-OS default:
+	 *  msys64 on Windows, `luajit` from PATH on macOS/Linux). */
 	luajitPath: string | undefined;
 	poolSize: number;
 	/** Kept <= poolSize so a running job never blocks inside pool.acquire(). */

@@ -8,10 +8,10 @@ import RunConfig from "./steps/RunConfig";
 import RunProgress from "./steps/RunProgress";
 import Results from "./steps/Results";
 
-// Mock client is the default in dev so the SPA runs with no API process (matches the canvas
-// decoupling). Set VITE_USE_API=1 to hit the real Hono server through the /api proxy.
-const useReal =
-  import.meta.env?.VITE_USE_API === "1" || import.meta.env?.PROD === true;
+// Dev hits the real Hono server through the /api proxy by default -- run `npm run dev` (api + web).
+// Set VITE_USE_MOCK=1 to fall back to the fixture-backed client and run the SPA with no API process
+// (the canvas-decoupling workflow).
+const useReal = import.meta.env?.VITE_USE_MOCK !== "1";
 
 const STEP_LABELS: [Step, string][] = [
   ["input", "1 · Build"],
