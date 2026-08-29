@@ -56,7 +56,11 @@ tested pan/zoom renderer for the ~5,100-node tree.
 | `nodeVisual.ts` | **per-node style lookup — 484 bytes; this is exactly where the "dot size by tier + PoE2 colour + minimal decoration" spec lives.** Re-skin here. |
 | `TreeView.tsx` | React wrapper (canvas ref, resize, event wiring) |
 
-Zustand is already a candidate dep for `packages/web` (`05`), so their store patterns port too.
+**Correction 2026-08-29:** an earlier draft said "Zustand is already a candidate dep for
+`packages/web` (`05`), so their store patterns port too". That was wrong about `05`, which
+explicitly decides **no state library** -- one `useReducer` in `state.ts`. Zustand is
+upstream's choice, not ours; port their render code, not their store wiring. The mistake
+propagated into `08`, which installed the dep unnecessarily.
 
 ### What to skip
 
@@ -144,3 +148,11 @@ carry it. Note it here so it isn't a surprise.
   out of time".
 - `packages/web/src/render/LICENSE.upstream` with the poe2-build-planner MIT notice + a
   one-line provenance comment in each ported file.
+
+> **Resolved at integration 2026-08-29.** This fallback was unimplementable as specified:
+> `BuildSummary` carried no `treeVersion`, nor did `OptimiseResultDTO`, and `get_tree_status`
+> does not return one -- the field simply did not exist anywhere in the contract, core, or the
+> bridge. `treeVersion: z.string().nullable()` was added to `BuildSummary`; the API fills it by
+> reading `<Spec treeVersion>` off the XML (`parseTreeVersion`, the *first* `<Spec>`, matching
+> the spec `applyPlan` edits). `Results.tsx` prefers the declared version and falls back to the
+> id-overlap heuristic only when the XML declares none (`isVersionMismatch`).

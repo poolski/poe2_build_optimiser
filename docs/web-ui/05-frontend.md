@@ -119,6 +119,14 @@ The form model is `OptimiseRequest` from the contract, so validation mirrors the
 - **Raw JSON** toggle for the whole `OptimiseResultDTO`.
 - **Recompute stats** footer: `buildOutputCount`, `cacheHitRate`, wall.
 
+> **Resolved at integration 2026-08-29.** This fallback was unimplementable as specified:
+> `BuildSummary` carried no `treeVersion`, nor did `OptimiseResultDTO`, and `get_tree_status`
+> does not return one — the field simply did not exist anywhere in the contract, core, or the
+> bridge. `treeVersion: z.string().nullable()` was added to `BuildSummary`; the API fills it by
+> reading `<Spec treeVersion>` off the XML (`parseTreeVersion`, the *first* `<Spec>`, matching
+> the spec `applyPlan` edits). `Results.tsx` prefers the declared version and falls back to the
+> id-overlap heuristic only when the XML declares none (`isVersionMismatch`).
+
 ## Typing against the contract (`564c15b`)
 
 - **Import every type from `@poe2/contract` via `z.infer`. Hand-write nothing** — a local

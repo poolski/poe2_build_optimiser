@@ -46,10 +46,18 @@ export const BuildSummary = z.object({
   pointsMax: z.number().int(),
   weaponSet1PointsUsed: z.number().int(),
   weaponSet2PointsUsed: z.number().int(),
+  treeVersion: z.string().nullable(),  // <Spec treeVersion>, e.g. "0_5"; null when absent
   baseline: z.record(z.string(), z.number()),   // the StatSet, JSON-safe (finite numbers only)
   notes: z.array(z.string()),          // e.g. "scores 0 DPS headless", "over-allocated by 2"
 });
 ```
+
+> **`treeVersion` added at integration 2026-08-29**, not in the original schema. `05` and `06`
+> both specify falling back to the list diff when the build's tree version differs from the
+> shipped canvas tree, and there was no field to check — it exists nowhere in core or the bridge
+> either, and `get_tree_status` does not return it. The API reads it off the XML (`04`, mapper
+> obligation 9). Nullable because a build XML need not carry the attribute; the frontend keeps an
+> id-overlap heuristic for that case.
 
 ### `optimise.ts`
 

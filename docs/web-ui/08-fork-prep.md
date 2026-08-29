@@ -41,7 +41,12 @@ why, with the in-line corrections found during execution. Re-read it before the 
 |-----------|--------------|
 | `contract` | `zod` |
 | `api` | `hono`, `@hono/node-server` |
-| `web` | `react`, `react-dom`, `zustand`; dev: `vite`, `@vitejs/plugin-react`, `@types/react`, `@types/react-dom`, `jsdom` |
+| `web` | `react`, `react-dom`; dev: `vite`, `@vitejs/plugin-react`, `@types/react`, `@types/react-dom`, `jsdom` |
+
+> **Corrected 2026-08-29 at integration: `zustand` should never have been on this list.**
+> It was installed on the strength of `06`'s claim that it was "already a candidate dep for
+> `packages/web` (`05`)" — but `05` decides the opposite (**no state library**, one
+> `useReducer`). Zustand is *upstream's* stack, not ours. Nothing ever imported it.
 | root | dev: `concurrently` |
 
 Install from the repo root with `-w <workspace>` so each lands in the right
@@ -89,8 +94,8 @@ no `jsx`. That is correct for the Node-side packages and wrong for the SPA, whic
 `lib: ["ES2022", "DOM", "DOM.Iterable"]`.
 
 The trap: root `tsconfig.json` has `include: ["src/**/*.ts", "packages/*/src/**/*.ts"]`. `.tsx`
-files escape that glob, so it *looks* fine — but web's plain `.ts` files (the Zustand store, the
-API client, the render helpers ported in `06`) get pulled into the commonjs/no-DOM program and
+files escape that glob, so it *looks* fine — but web's plain `.ts` files (the `useReducer` store,
+the API client, the render helpers ported in `06`) get pulled into the commonjs/no-DOM program and
 fail on the first `document` or `HTMLCanvasElement` reference.
 
 Fix: add `packages/web/**` to the root `tsconfig.json` `exclude`, and give `packages/web` its own

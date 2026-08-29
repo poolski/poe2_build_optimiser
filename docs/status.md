@@ -288,6 +288,44 @@ tracks if it moves. Then fork into `04` / `05`+`06` / phase 1.5.
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.
 
+### Phases 2 and 3 — COMPLETE 2026-08-29 (parallel worktrees)
+
+Run as two concurrent Sonnet agents in `git worktree`s off `phase1-bridge-service`, exactly as
+`08-fork-prep.md` designed. Both merged back clean, including root `package.json` — the fork-prep
+bet paid off.
+
+- **`04` API** (`bf18bb2`, merged `8376f38`) — `packages/api`: Hono on `127.0.0.1:8787`, build
+  ingest + store, in-memory job registry (`EventEmitter`/job, FIFO, `MAX_ACTIVE_JOBS <= POOL_SIZE`),
+  SSE relay, cancel through `shouldContinue`, `updatedPobCode` via `applyPlan`, all 8 contract
+  mapper obligations tagged at their sites. `CoreFns` is injectable so the fast suite stubs core.
+- **`05`+`06` frontend + canvas** (`9055fb6`, `59f56a7`, `fdc7fcc`, `21845ea`, merged `6d27617`) —
+  `packages/web`: Vite + React 4-step wizard, node-list diff, and the stylised tree canvas ported
+  from the MIT `poe2-tools/poe2-build-planner` renderer onto `tree-0_5.min.json`
+  (`LICENSE.upstream` + per-file provenance; no GGG art). Upstream's min<->max wheel-zoom bug is
+  fixed (`zoom.ts`: log slider + fixed wheel step). Dev runs against a fixture-backed mock client
+  unless `VITE_USE_API=1`.
+
+**Integration fixes applied on top (2026-08-29):**
+
+- **`treeVersion` added to `BuildSummary`** (contract). `05` and `06` both specified a
+  tree-version-mismatch fallback to the list view, and it was **unimplementable** — no such field
+  existed anywhere in the contract, core, or the bridge, and `get_tree_status` does not return it.
+  The API now reads `<Spec treeVersion>` straight off the XML (`parseTreeVersion`, deliberately the
+  *first* `<Spec>` so it describes the spec `applyPlan` edits). `Results.tsx` prefers the declared
+  version and keeps the id-overlap heuristic only as the fallback for XML that carries none.
+- **`serveStatic` wired** — the prod server serves `packages/web/dist` at `/` with an SPA
+  fallback, mounted only when the bundle exists on disk so an API-only run doesn't 404 through a
+  rootless static handler.
+- **`zustand` dropped** — installed by fork-prep, never used (`05` mandates `useReducer`).
+
+**Known gaps carried forward, both cheap:**
+
+- `ProgressEvent.bestObjective` is required (`z.number()`), but core's `RecommendProgress` has no
+  such field, so recommend ticks report `0`. Either core exposes one or the contract makes it
+  optional for the recommend kind.
+- `lightningcss` has no native binding on this machine, so `vite build` uses
+  `cssMinify: "esbuild"` (`packages/web/vite.config.mts`). Machine-level, not a project defect.
+
 ## Known follow-ups (non-blocking)
 
 - **`spike/genCanvasFixture.ts` writes only a trimmed canvas projection.** Contract tests must
@@ -328,6 +366,9 @@ See *Active next track: web UI + bridge service* above.
 
 ## `docs/` layout
 
+- `../CLAUDE.md` (repo root) — working guidance loaded every session: the fast/integration
+  test split (**integration runs only on request**), the `npm audit fix` prohibition, and how
+  cross-package imports resolve. Added 2026-08-29.
 - `status.md` — this file, the map.
 - `gotchas.md` — PoB-PoE2 leftovers to not trip on. Always relevant.
 - `constraint-rejection-repro.md` — live repro of the recommender's constraint filter.

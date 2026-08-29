@@ -186,6 +186,12 @@ validation rejection, not a type error.
    both are correct and both are commented in the contract.** `jobId` and
    `elapsedMs` are API-added; they are not on the core progress objects.
 
+9. **Populate `BuildSummary.treeVersion` from the XML** (added at integration 2026-08-29).
+   `get_tree_status` does not return it, so read `<Spec treeVersion>` directly — the **first**
+   `<Spec>`, deliberately the same one `applyPlan` edits, so the version reported describes the
+   spec that actually gets rewritten. `null` when the attribute is absent. `05`/`06` need this to
+   decide canvas vs list-diff; without it their specified fallback cannot be built.
+
 ## SSE stream (`GET /jobs/:id/events`)
 
 Hono's `streamSSE`:
