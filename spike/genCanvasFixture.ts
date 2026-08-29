@@ -11,16 +11,15 @@
 //   build        D:/My Documents/Path of Building (PoE2)/Builds/ninja/R_Thor-L84-weak.xml
 //   respecBudget 3   (repair mode; default objective TotalDPS, proximity 3, Notable/Keystone)
 //
-// KNOWN LIMITATION captured in the fixture as `afterConnected: null`:
-// there is currently no way to obtain the EXACT post-plan allocated-node id set (path/traversal
-// nodes included). `optimiseTree` is a pure planner -- it never leaves the bridge in the
-// post-plan state -- `result.addedNodeIds` is picks-only (path nodes AllocNode drags in are not
-// listed), and `PassiveSpec:ImportFromNodeList` allocates exactly the ids it is given (it does
-// not auto-path). No bridge RPC returns an allocated set for a given allocSet either. So the
-// fixture ships `before` (exact), `removedCascadeIds` (exact, via list_allocated_nodes'
-// removeIds), `addedPickIds` (exact, picks only) and `afterPicksOnly = before - removed +
-// picks`. `unloggedPathNodeCount` records how many traversal nodes that set is missing. Fill in
-// `afterConnected` once a bridge method can enumerate the connected post-plan set.
+// `afterConnected` is the EXACT connected post-plan allocated-node id set, path/traversal nodes
+// included -- from `optimiseTree`'s `allocatedNodeIds.after`, which since the 2026-08-29 bridge
+// change is `list_allocated_nodes({ removeIds: <dropped>, allocSet: <picks> })`: the bridge
+// deallocs the removal cascade, allocs the picks (AllocNode auto-paths), rebuilds paths, and
+// lists `spec.allocNodes` -- a connected set by construction. The fixture still also ships
+// `afterPicksOnly = before - removedCascade + picks` (picks only, no traversal nodes) for
+// comparison, and `unloggedPathNodeCount = afterConnected.length - afterPicksOnly.length`
+// (equivalently sum(step.pointsSpent) - steps.length) -- how many traversal nodes the picks-only
+// set was missing.
 
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -79,20 +78,10 @@ async function main(): Promise<void> {
     const addedPickIds = [...result.addedNodeIds].sort((a, b) => a - b);
     const afterPicksOnly = [...new Set([...postRemovalIds, ...addedPickIds])].sort((a, b) => a - b);
 
-    // How many traversal nodes afterPicksOnly is missing: price the whole re-spend set against
-    // the post-removal tree; net pointsSpent is (real nodes added) - (points freed).
-    let unloggedPathNodeCount: number | null = null;
-    try {
-      const priced = await bridge.call<{ pointsSpent: number }>("get_stats_from", {
-        allocSet: addedPickIds,
-        removeIds: removedIds,
-      });
-      // real added = net + freed ; picks-only added = addedPickIds.length
-      const realAdded = priced.pointsSpent + result.pointsFreed;
-      unloggedPathNodeCount = Math.max(0, realAdded - addedPickIds.length);
-    } catch {
-      /* older bridge without get_stats_from -- leave null */
-    }
+    // The exact connected post-plan set, straight off optimiseTree (bridge-derived, ascending).
+    const afterConnected = result.allocatedNodeIds.after;
+    // The traversal nodes afterPicksOnly was missing. Also equals sum(step.pointsSpent) - steps.length.
+    const unloggedPathNodeCount = afterConnected.length - afterPicksOnly.length;
 
     const metrics = await bridge.call<{ buildOutputCount?: number }>("get_metrics").catch(() => ({}) as { buildOutputCount?: number });
 
@@ -108,10 +97,11 @@ async function main(): Promise<void> {
         wallSeconds: Math.round((Date.now() - t0) / 100) / 10,
         buildOutputs: metrics.buildOutputCount ?? result.buildOutputCount ?? null,
         treeVersion: "0_5",
-        limitation:
-          "afterConnected is null: no current way to enumerate the EXACT connected post-plan " +
-          "allocated set (path nodes included). See the header of spike/genCanvasFixture.ts. " +
-          "Use afterPicksOnly (missing ~unloggedPathNodeCount traversal nodes) until that lands.",
+        note:
+          "afterConnected is the exact connected post-plan allocated set (path nodes included), " +
+          "from optimiseTree.allocatedNodeIds.after (list_allocated_nodes with allocSet+removeIds, " +
+          "added 2026-08-29). afterPicksOnly is kept for comparison; unloggedPathNodeCount is how " +
+          "many traversal nodes it was missing.",
       },
       baseline: {
         pointsUsed: status.pointsUsed,
@@ -142,7 +132,7 @@ async function main(): Promise<void> {
         statLines: s.statLines,
       })),
       afterPicksOnly,
-      afterConnected: null,
+      afterConnected,
       unloggedPathNodeCount,
       result: {
         mode: result.mode,
@@ -163,7 +153,7 @@ async function main(): Promise<void> {
       `wrote ${outFile}\n` +
         `  before ${beforeIds.length}  removedCascade ${removedCascadeIds.length}  ` +
         `addedPicks ${addedPickIds.length}  afterPicksOnly ${afterPicksOnly.length}  ` +
-        `unloggedPathNodes ${unloggedPathNodeCount ?? "?"}\n` +
+        `afterConnected ${afterConnected.length}  unloggedPathNodes ${unloggedPathNodeCount}\n` +
         `  stoppedBecause=${result.stoppedBecause}  objective ${result.baseline.objective} -> ${result.final.objective}\n` +
         `  BuildOutputs=${fixture.meta.buildOutputs}  wall=${fixture.meta.wallSeconds}s`,
     );

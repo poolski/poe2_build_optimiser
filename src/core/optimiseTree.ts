@@ -193,6 +193,15 @@ export interface OptimiseTreeResult {
 	steps: OptimiseStep[];
 	/** Anchor node ids of `steps` (path nodes AllocNode adds are not listed individually). */
 	addedNodeIds: number[];
+	/** The allocated regular-node id sets before and after applying this plan, each ascending by
+	 * id. Same filter as the `list_allocated_nodes` bridge method: class / ascendancy-start anchors
+	 * and item-granted (free-allocate) nodes are excluded. Unlike `addedNodeIds` (picks only),
+	 * `after` is read back from the bridge with the plan's removals deallocated and its picks
+	 * allocated, so it includes every path node `AllocNode` dragged in -- it is the connected set a
+	 * correct `<Spec nodes="...">` export needs. When the recommendation is "change nothing"
+	 * (`steps` empty), `after` equals `before`. Invariant for a committed plan:
+	 * `after.length === before.length - pointsFreed + sum(steps[].pointsSpent)`. */
+	allocatedNodeIds: { before: number[]; after: number[] };
 	/** Repair mode: points freed by `removed`, and points the re-spend actually consumed. */
 	pointsFreed: number;
 	pointsRespent: number;
@@ -370,9 +379,33 @@ export async function optimiseTree(
 		return cont;
 	};
 
+	/** Sorted allocated regular-node ids, optionally with a plan's `removeIds` deallocated and
+	 * `allocSet` (picks) allocated on top first. `list_allocated_nodes` never recomputes, so this
+	 * adds no BuildOutput -- the plan's determinism and the run's counter are untouched. */
+	const listAllocatedIds = async (params?: Record<string, unknown>): Promise<number[]> => {
+		const { nodes } = await bridge.call<{ nodes: { id: number }[] }>("list_allocated_nodes", params);
+		return nodes.map((n) => n.id).sort((a, b) => a - b);
+	};
+
 	/** Terminal `finalising` event, buildOutputs pinned to the reconciled count. Every return path
-	 * funnels through here. */
+	 * funnels through here -- which is also where `allocatedNodeIds` is resolved: one probe of the
+	 * settled plan, after the search, so it can never perturb search order or the beam. */
 	const finish = async (result: OptimiseTreeResult): Promise<OptimiseTreeResult> => {
+		const before = await listAllocatedIds();
+		// `steps` empty <=> the recommendation is "change nothing" (extend nothing-to-do, every
+		// no-change/cancelled/nothing-removable repair return): the tree is unchanged, so `after`
+		// is just `before`. A committed plan re-derives the connected set from the bridge, feeding
+		// it the same removeIds prologue + picks the winning beam used.
+		result.allocatedNodeIds = {
+			before,
+			after:
+				result.steps.length === 0
+					? before
+					: await listAllocatedIds({
+							removeIds: result.removed.map((r) => r.id),
+							allocSet: result.addedNodeIds,
+						}),
+		};
 		if (wantsProgress && options.onProgress) {
 			try {
 				options.onProgress({
@@ -879,7 +912,10 @@ function matchesAny(statLines: string[], keywords: string[]): boolean {
 async function withMetrics(
 	bridge: PobBridgeClient,
 	memo: MemoEvaluator,
-	result: Omit<OptimiseTreeResult, "cacheHitRate" | "buildOutputCount" | "buildOutputSeconds"> & {
+	result: Omit<
+		OptimiseTreeResult,
+		"cacheHitRate" | "buildOutputCount" | "buildOutputSeconds" | "allocatedNodeIds"
+	> & {
 		cacheHitRate?: number;
 	},
 ): Promise<OptimiseTreeResult> {

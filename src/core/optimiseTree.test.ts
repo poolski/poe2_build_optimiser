@@ -97,22 +97,31 @@ class FakeBridge implements PobBridgeClient {
 		}
 		if (method === "list_allocated_nodes") {
 			const removeIds = (params?.removeIds as number[] | undefined) ?? [];
+			const allocSet = (params?.allocSet as number[] | undefined) ?? [];
 			const gone = new Set<number>();
 			for (const rid of removeIds) {
 				gone.add(rid);
 				const meta = this.allocated.find((a) => a.id === rid);
 				for (const c of meta?.cascade ?? []) gone.add(c);
 			}
+			const byId = new Map(this.allocated.map((a) => [a.id, a]));
+			const outIds = new Set<number>();
+			for (const a of this.allocated) if (!gone.has(a.id)) outIds.add(a.id);
+			// removeIds are applied first, so an id in both sets ends up re-allocated (the repair
+			// re-picking a node it just freed). New picks not in `allocated` are modelled as plain
+			// leaves -- the fake has no tree geometry, so no path-node drag-in.
+			for (const id of allocSet) outIds.add(id);
 			return {
-				nodes: this.allocated
-					.filter((a) => !gone.has(a.id))
-					.map((a) => ({
-						id: a.id,
-						name: a.name ?? `Alloc ${a.id}`,
-						type: a.type ?? "Notable",
-						statLines: a.statLines ?? [`alloc stat ${a.id}`],
-						ascendancyName: a.ascendancyName,
-					})),
+				nodes: [...outIds].sort((x, y) => x - y).map((id) => {
+					const a = byId.get(id);
+					return {
+						id,
+						name: a?.name ?? `Alloc ${id}`,
+						type: a?.type ?? "Notable",
+						statLines: a?.statLines ?? [`alloc stat ${id}`],
+						ascendancyName: a?.ascendancyName,
+					};
+				}),
 			} as T;
 		}
 		if (method === "evaluate_dealloc_candidates") {
@@ -754,5 +763,160 @@ describe("optimiseTree (progress + cancellation)", () => {
 		expect(result.steps).toEqual([]);
 		expect(result.final.objective).toBe(1000);
 		expect(result.final.pointsSpent).toBe(0);
+	});
+});
+
+describe("optimiseTree (allocatedNodeIds)", () => {
+	// The post-plan connected allocation set, read back from the bridge once after the search
+	// settles. `before` is the loaded regular-node set; `after` re-derives it with the winning
+	// plan's removeIds prologue + picks applied (the same order the beam ran).
+
+	it("extend mode: after = before + picks; the probe uses the winning plan's alloc set", async () => {
+		const bridge = new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 7 }, { id: 3 }],
+			(allocSet, id) => ({ pointsSpent: 1, stats: { TotalDPS: 1000 + [...allocSet, id].length * 100 } }),
+			{
+				allocated: [
+					{ id: 501, removedStats: {} },
+					{ id: 500, removedStats: {} },
+				],
+			},
+		);
+
+		const result = await optimiseTree(bridge, { pointBudget: STATUS.pointsUsed + 2 });
+
+		expect(result.steps.map((s) => s.id)).toEqual([3, 7]);
+		expect(result.allocatedNodeIds.before).toEqual([500, 501]);
+		expect(result.allocatedNodeIds.after).toEqual([3, 7, 500, 501]);
+		const lastListCall = bridge.calls.filter((c) => c.method === "list_allocated_nodes").at(-1);
+		expect(lastListCall?.params).toEqual({ removeIds: [], allocSet: [3, 7] });
+	});
+
+	it("repair mode: after = before minus the removal cascade, plus the re-spend picks", async () => {
+		// valueLost 100:10 / 101:30 / 102:100; respecBudget 1 frees only node 100; the re-spend is
+		// a brand-new node id 5 (+500). after = {101,102} u {5}.
+		const valueLost: Record<number, number> = { 100: 10, 101: 30, 102: 100 };
+		const bridge = new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 5 }],
+			(allocSet, id, removeIds) => {
+				const lost = (removeIds ?? []).reduce((s, r) => s + (valueLost[r] ?? 0), 0);
+				const gain = [...allocSet, id].includes(5) ? 500 : 0;
+				return { pointsSpent: 1, stats: { TotalDPS: 1000 - lost + gain } };
+			},
+			{
+				allocated: [
+					{ id: 100, removedStats: { TotalDPS: 990 } },
+					{ id: 101, removedStats: { TotalDPS: 970 } },
+					{ id: 102, removedStats: { TotalDPS: 900 } },
+				],
+				statsFromFn: (_a, removeIds) => ({
+					TotalDPS: 1000 - removeIds.reduce((s, r) => s + (valueLost[r] ?? 0), 0),
+				}),
+			},
+		);
+
+		const result = await optimiseTree(bridge, { respecBudget: 1 });
+
+		expect(result.removed.map((r) => r.id)).toEqual([100]);
+		expect(result.steps.map((s) => s.id)).toEqual([5]);
+		expect(result.allocatedNodeIds.before).toEqual([100, 101, 102]);
+		expect(result.allocatedNodeIds.after).toEqual([5, 101, 102]);
+		// size invariant: before - pointsFreed + sum(step.pointsSpent)
+		const respent = result.steps.reduce((s, st) => s + st.pointsSpent, 0);
+		expect(result.allocatedNodeIds.after.length).toBe(
+			result.allocatedNodeIds.before.length - result.pointsFreed + respent,
+		);
+		const lastListCall = bridge.calls.filter((c) => c.method === "list_allocated_nodes").at(-1);
+		expect(lastListCall?.params).toEqual({ removeIds: [100], allocSet: [5] });
+	});
+
+	it("allocSet + removeIds together: a node freed then re-picked ends up allocated in `after`", async () => {
+		// Node 100 is both the lowest-value removal target and the only re-spend candidate (+500).
+		const valueLost: Record<number, number> = { 100: 10, 101: 30, 102: 100 };
+		const bridge = new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 100 }],
+			(allocSet, id, removeIds) => {
+				const lost = (removeIds ?? []).reduce((s, r) => s + (valueLost[r] ?? 0), 0);
+				const gain = [...allocSet, id].includes(100) ? 500 : 0;
+				return { pointsSpent: 1, stats: { TotalDPS: 1000 - lost + gain } };
+			},
+			{
+				allocated: [
+					{ id: 100, removedStats: { TotalDPS: 990 } },
+					{ id: 101, removedStats: { TotalDPS: 970 } },
+					{ id: 102, removedStats: { TotalDPS: 900 } },
+				],
+				statsFromFn: (_a, removeIds) => ({
+					TotalDPS: 1000 - removeIds.reduce((s, r) => s + (valueLost[r] ?? 0), 0),
+				}),
+			},
+		);
+
+		const result = await optimiseTree(bridge, { respecBudget: 1 });
+
+		expect(result.removed.map((r) => r.id)).toEqual([100]);
+		expect(result.steps.map((s) => s.id)).toEqual([100]);
+		const lastListCall = bridge.calls.filter((c) => c.method === "list_allocated_nodes").at(-1);
+		expect(lastListCall?.params).toEqual({ removeIds: [100], allocSet: [100] });
+		// removeIds is applied first, then allocSet -> 100 is back in.
+		expect(result.allocatedNodeIds.after).toEqual([100, 101, 102]);
+	});
+
+	it("no-change repair: after === before and the final probe carries no allocSet", async () => {
+		const valueLost: Record<number, number> = { 100: 10, 101: 30, 102: 100 };
+		const bridge = new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 5 }],
+			(allocSet, id, removeIds) => {
+				const lost = (removeIds ?? []).reduce((s, r) => s + (valueLost[r] ?? 0), 0);
+				const gain = [...allocSet, id].includes(5) ? 5 : 0; // never enough to beat the loss
+				return { pointsSpent: 1, stats: { TotalDPS: 1000 - lost + gain } };
+			},
+			{
+				allocated: [
+					{ id: 100, removedStats: { TotalDPS: 990 } },
+					{ id: 101, removedStats: { TotalDPS: 970 } },
+					{ id: 102, removedStats: { TotalDPS: 900 } },
+				],
+				statsFromFn: (_a, removeIds) => ({
+					TotalDPS: 1000 - removeIds.reduce((s, r) => s + (valueLost[r] ?? 0), 0),
+				}),
+			},
+		);
+
+		const result = await optimiseTree(bridge, { respecBudget: 1 });
+
+		expect(result.stoppedBecause).toBe("repair-not-worthwhile");
+		expect(result.steps).toEqual([]);
+		expect(result.allocatedNodeIds.before).toEqual([100, 101, 102]);
+		expect(result.allocatedNodeIds.after).toEqual([100, 101, 102]);
+		const listCalls = bridge.calls.filter((c) => c.method === "list_allocated_nodes");
+		expect(listCalls.every((c) => (c.params as { allocSet?: unknown } | undefined)?.allocSet === undefined)).toBe(true);
+	});
+
+	it("cancelled before any step: after === before", async () => {
+		const bridge = new FakeBridge(
+			{ TotalDPS: 1000 },
+			STATUS,
+			[{ id: 3 }],
+			(allocSet, id) => ({ pointsSpent: 1, stats: { TotalDPS: 1000 + [...allocSet, id].length * 100 } }),
+			{ allocated: [{ id: 500, removedStats: {} }] },
+		);
+
+		const result = await optimiseTree(bridge, {
+			pointBudget: STATUS.pointsUsed + 2,
+			shouldContinue: () => false,
+		});
+
+		expect(result.stoppedBecause).toBe("cancelled");
+		expect(result.allocatedNodeIds.before).toEqual([500]);
+		expect(result.allocatedNodeIds.after).toEqual([500]);
 	});
 });
