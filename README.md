@@ -26,18 +26,31 @@ optimiser never edits them.
 ## Prerequisites
 
 | Requirement | Notes |
-|-------------|-------|
+| ------------- | ------- |
 | **Node.js 22 or newer** | TypeScript run through `ts-node`. No `engines` field is enforced; the toolchain targets 22 and is developed on 24 |
-| **LuaJIT** | the PoB engine is Lua. Default path is `C:\msys64\mingw64\bin\luajit.exe`; override with the `POB_LUAJIT_PATH` environment variable |
+| **LuaJIT** | the PoB engine is Lua. On Windows the default is `C:\msys64\mingw64\bin\luajit.exe`; on macOS/Linux it's `luajit` from your `PATH` (`brew install luajit`, or a distro package). Override either with the `POB_LUAJIT_PATH` environment variable |
 | **The PoB submodule** | ~430 MB. `git submodule update --init --recursive` |
+| **Native Lua modules (macOS/Linux only)** | the submodule ships prebuilt Windows `.dll`s; elsewhere `npm run build:native` compiles the one module (`lua-utf8`) the engine needs to boot. Windows skips this |
 | **A build to work on** | a Path of Building 2 build saved as `.xml` (its `Builds` folder), or — for the web UI only — a PoB export code pasted in |
 
 ```bash
 git submodule update --init --recursive && npm ci
+npm run build:native   # macOS/Linux only; no-op on Windows
 ```
 
 RAM is worth knowing about: each LuaJIT child holds a full PoB runtime at roughly 700 MB
 resident. The CLIs use one. The web server pools two by default.
+
+### Platform support
+
+The bridge was first built on Windows and now runs on macOS and Linux too. Nothing is
+platform-specific in the app itself — the bridge detects the OS to pick the LuaJIT executable
+(`luajit` from `PATH`, or the msys64 path on Windows) and the Lua C-module extension (`.so` vs
+`.dll`). The one native dependency the engine needs to boot, `lua-utf8`, ships prebuilt in the
+submodule for Windows; on macOS/Linux `npm run build:native` compiles it from a pinned,
+checksum-verified upstream source into `packages/pob-bridge/native/` (kept out of the submodule so
+it survives resets). On macOS the build is a universal `arm64 + x86_64` binary; on Linux point
+`CC` at a cross-compiler to target another architecture.
 
 ## Using the command line
 
@@ -74,7 +87,7 @@ npm run dev
 ```
 
 Starts the API on `127.0.0.1:8787` and the Vite dev server on `127.0.0.1:5173` with `/api`
-proxied through. Open **http://127.0.0.1:5173**.
+proxied through. Open **<http://127.0.0.1:5173>**.
 
 By default the dev SPA runs against a **fixture-backed mock**, so the UI can be worked on without
 LuaJIT or the submodule. To drive the real engine:
@@ -89,7 +102,7 @@ VITE_USE_API=1 npm run dev
 npm run build:web && npm start
 ```
 
-The API serves the built SPA at **http://127.0.0.1:8787**. A production build always uses the
+The API serves the built SPA at **<http://127.0.0.1:8787>**. A production build always uses the
 real engine — the mock is dev-only.
 
 Neither command is a background service. Start it when you want it, `Ctrl-C` when you are done.
