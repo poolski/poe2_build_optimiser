@@ -133,8 +133,9 @@ The API serves the built web bundle at `/` if `packages/web/dist` exists; otherw
 ## Documentation
 
 - **`PLAN.md`** — authoritative roadmap and status. Keep current.
-- **`docs/decisions/`** — ADRs. When you make a load-bearing decision, add one and trim the prose
-  that carried it elsewhere to a pointer.
+- **`docs/decisions/`** — ADRs, named `NNNN-title-kebab.md`. When you make a load-bearing
+  decision, add one with `/groundrules:add-adr` and trim the prose that carried it elsewhere to a
+  pointer.
 - **`intake/beam-search-design.md`** — full optimisation algorithm design + implementation checklist.
 - **`intake/web-ui/`** — phase-by-phase development specs.
 - **`docs/gotchas.md`** — PoB-PoE2 quirks and traps.

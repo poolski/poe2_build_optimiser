@@ -38,9 +38,9 @@ Bring passive-tree geometry, node art, and stat text in from a RePoE fork so the
 render real node artwork, gem icons in sockets, and per-node stat text.
 
 - **Spec:** [`intake/web-ui/10-repoe-asset-source.md`](../intake/web-ui/10-repoe-asset-source.md) — written, not built.
-- **Decision needed first:** this reverses ADR-010 ("stylised only, no GGG art"). Confirm we want
-  that before starting; if adopted, supersede ADR-010 with a new ADR.
-- **Blocked on:** nothing technical; the calc engine stays on PoB either way.
+- **Decided:** [ADR-0012](decisions/0012-repoe-fork-asset-source.md) — adopted 2026-08-29,
+  superseding ADR-0010's "stylised only, no GGG art".
+- **Blocked on:** nothing; the calc engine stays on PoB either way.
 
 ## Deferred — pick up only on demand
 
@@ -80,7 +80,7 @@ nullable `objectiveAfterRemoval` branch (a dedicated unit test does).
 ### Skill / support-gem optimisation
 
 Skill and support gems are immutable calculation inputs. The optimiser never edits gem links,
-levels, or qualities (ADR-002). Gems have their own balance mechanics (drop rates, level gates,
+levels, or qualities (ADR-0002). Gems have their own balance mechanics (drop rates, level gates,
 family uniqueness, socket colours) and are a separate problem. The design sketch is kept in
 [`intake/skill-optimiser-design.md`](../intake/skill-optimiser-design.md) in case scope reopens.
 

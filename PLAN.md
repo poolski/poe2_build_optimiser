@@ -94,7 +94,7 @@ dropped.
   `optimise-tree --parallelism <n>` on the CLI; the API job runner picks it per job.
   Caveat: `buildOutputCount` does not match the serial path exactly (sharding multiplies one tail
   recompute per call); the *plan* is byte-identical. Details: `intake/web-ui/01-bridge-service.md`
-  §"Phase 1.5" and ADR-011.
+  §"Phase 1.5" and ADR-0011.
 
 - **Local web UI** — `packages/{pob-bridge, contract, api, web}`, npm workspaces, source-level
   aliases (no build step, no TS project references). Local-first, single user, not hosted.
@@ -111,7 +111,7 @@ dropped.
     `tree.json`; no GGG art). `VITE_USE_MOCK=1` runs against a fixture-backed mock client.
   - Core changes for the UI: `onProgress` + `shouldContinue` in `optimiseTree` / `recommendTree`.
   Full plan, one file per domain: `intake/web-ui/` (start at its `README.md`). Decisions:
-  ADR-005, ADR-006, ADR-008, ADR-009, ADR-010, ADR-011.
+  ADR-0005, ADR-0006, ADR-0008, ADR-0009, ADR-0010, ADR-0011, ADR-0012.
 
 - **PoB-PoE2 gotchas** — `docs/gotchas.md`. Read before touching `bridge.lua` tree/alloc code or
   relying on any mechanic that might be a PoE1 leftover.
@@ -119,14 +119,14 @@ dropped.
 ## Out of scope
 
 - **Passive tree only.** Skill gems and their support gems are immutable calc inputs — the
-  optimiser never edits `socketGroupList` (ADR-002).
+  optimiser never edits `socketGroupList` (ADR-0002).
 - **Skill / support-gem optimiser — shelved indefinitely.** Design sketch + the completed
   PoE1-vs-PoE2 assumption audit kept in `intake/skill-optimiser-design.md` for reference only.
 - **PoB stays the fitness oracle.** Not replaced by a home-grown engine over GGG's data exports —
   the exports are data, not the damage formula. The ~280 ms/recompute cost is a speed-lever
-  problem, not an architecture problem (ADR-001, `intake/web-ui/07-performance.md`).
+  problem, not an architecture problem (ADR-0001, `intake/web-ui/07-performance.md`).
 
-Decisions of record live in `docs/decisions/` (ADR-001 … ADR-011).
+Decisions of record live in `docs/decisions/` (ADR-0001 … ADR-0012).
 
 ## Doc layout
 
@@ -140,7 +140,7 @@ Curated docs live in `docs/`; the design specs that fed them live in `intake/`.
 - `../PLAN.md` — this file, the plan and the map.
 - `VISION.md` / `ARCHITECTURE.md` / `ROADMAP.md` / `PROCESS.md` / `LEARNINGS.md` / `GLOSSARY.md` —
   groundrules-managed synthesis docs.
-- `decisions/` — ADR-001 … ADR-011, the decisions of record.
+- `decisions/` — ADR-0001 … ADR-0012, the decisions of record.
 - `gotchas.md` — PoB-PoE2 leftovers to not trip on. Always relevant.
 - `constraint-rejection-repro.md` — live repro of the recommender's constraint filter.
 - `beam-search/` — the tree-optimiser track's results: `repro.md` (validation write-up),

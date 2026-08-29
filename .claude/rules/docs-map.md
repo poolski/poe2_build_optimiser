@@ -15,7 +15,7 @@ paths:
 - **`docs/`** — curated, kept-current synthesis docs (`VISION.md`, `ARCHITECTURE.md`,
   `PROCESS.md`, `LEARNINGS.md`, `GLOSSARY.md`), plus `gotchas.md` and the `beam-search/` and
   `cli/` references.
-- **`docs/decisions/`** — ADR-001 … ADR-011, the decisions of record. When you make a
+- **`docs/decisions/`** — ADR-0001 … ADR-0012, the decisions of record. When you make a
   load-bearing choice, add an ADR and trim the prose that carried it to a pointer.
 - **`intake/`** — design specs the curated docs were synthesised from. Change these **only when
   the design changes**, not on every code edit.

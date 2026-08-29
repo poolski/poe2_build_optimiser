@@ -62,7 +62,7 @@
     "docs/constraint-rejection-repro.md": "reference (live repro of recommender constraints)",
     "docs/beam-search/": "reference (completed optimization track: results + validation)",
     "docs/cli/": "reference (user-facing CLI docs)",
-    "docs/decisions/": "decisions (ADR-001..ADR-011, extracted from prose 2026-08-29)",
+    "docs/decisions/": "decisions (0001..0012, extracted from prose 2026-08-29; renamed to the groundrules NNNN-slug convention 2026-08-29)",
     "intake/beam-search-design.md": "spec (tree-optimiser design + implementation checklist)",
     "intake/web-ui/": "spec (web UI + bridge-service design track, phases 1-10)",
     "intake/skill-optimiser-design.md": "spec (shelved track, kept for context)"
@@ -120,6 +120,6 @@
   },
   "metadata": {
     "adoptedBy": "Claude Code groundrules plugin v1.10.0",
-    "adoptionNotes": "Adopted in map mode (no moves). A 2026-08-29 follow-up reorg then split docs by kind: design specs (web-ui/, beam-search design, skill-optimiser-design) moved to intake/; decisions of record extracted from prose into docs/decisions/ as ADR-001..ADR-011. On 2026-08-29 docs/status.md was moved to repo-root PLAN.md (active plan + the map); VISION.md synthesizes it. See migratedFiles."
+    "adoptionNotes": "Adopted in map mode (no moves). A 2026-08-29 follow-up reorg then split docs by kind: design specs (web-ui/, beam-search design, skill-optimiser-design) moved to intake/; decisions of record extracted from prose into docs/decisions/ as 0001..0012 (renamed from an ad-hoc ADR-NNN scheme to the groundrules NNNN-slug convention on 2026-08-29, bodies conformed to adr-template.md). On 2026-08-29 docs/status.md was moved to repo-root PLAN.md (active plan + the map); VISION.md synthesizes it. See migratedFiles."
   }
 }

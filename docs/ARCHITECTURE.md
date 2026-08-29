@@ -106,7 +106,7 @@ Full rationale for each is in `docs/decisions/`.
 
 ## See also
 
-- **`docs/decisions/`** — ADR-001 … ADR-011, the decisions of record
+- **`docs/decisions/`** — ADR-0001 … ADR-0012, the decisions of record
 - **`intake/web-ui/`** — phase-by-phase development specs (01–10)
 - **`docs/gotchas.md`** — PoB-PoE2 quirks to watch
 - **`CLAUDE.md`** — test strategy, dependencies, layout

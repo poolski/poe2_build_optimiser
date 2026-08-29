@@ -43,7 +43,7 @@ Three layers:
 ## See also
 
 - **`PLAN.md`** — the authoritative status and roadmap
-- **`docs/decisions/`** — ADR-001 … ADR-011, the decisions of record
+- **`docs/decisions/`** — ADR-0001 … ADR-0012, the decisions of record
 - **`intake/web-ui/README.md`** — the web UI + bridge-service design track
 - **`intake/beam-search-design.md`** — full design and implementation checklist
 - **`CLAUDE.md`** — working guidance on tests, dependencies, and the repo layout

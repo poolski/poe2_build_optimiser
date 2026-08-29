@@ -1,6 +1,8 @@
-# ADR-003 — Any-node cascading repair, not leaf-only
+<!-- generated-by: groundrules v1.10.0 -->
+# 0003 — Any-node cascading repair, not leaf-only
 
-**Status:** Accepted (2026-08-28) — supersedes the original leaf-only repair
+**Date**: 2026-08-28
+**Status**: Accepted — supersedes the original leaf-only repair
 
 ## Context
 
@@ -17,10 +19,29 @@ Candidates are ranked by objective value lost, greedy-knapsacked to a `respecBud
 ceiling (an over-budget cascade is skipped for a smaller one), and the driver sweeps `k = 1..N`
 points freed, keeping the best.
 
+## Alternatives considered
+
+- **Keep leaf-only repair** — rejected: it cannot reach ~80% of the allocated nodes, which is
+  where the dead pathing and stranded attribute chains actually sit.
+- **Free interior nodes without the cascade** — impossible: PoB re-derives connectivity, so an
+  interior removal orphans its downstream nodes whether or not we model it. The cascade is the
+  real unit of removal.
+
 ## Consequences
 
-- The `k`-sweep counts *points* freed (variable per removal), not leaves.
+### Positive
+- Repair reaches dead cross-build pathing and unused jewel sockets that leaf-only structurally
+  could not.
+
+### Negative / Tradeoffs
+- The `k`-sweep counts *points* freed (variable per removal), not leaves, so the budget is no
+  longer a simple node count.
+
+### Neutral
 - `stoppedBecause: "no-leaves"` became `"nothing-removable"`.
 - `removeIds` on the bridge was already cascade-safe, so no bridge change was needed.
 - Ascendancy nodes stay unconditionally frozen — their point pool cannot be re-spent.
-- Design detail: `intake/beam-search-design.md` §7.
+
+## Notes
+
+Design detail: `intake/beam-search-design.md` §7.

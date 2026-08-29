@@ -12,7 +12,7 @@ kept-current view of the project lives in `docs/`; `PLAN.md` (repo root) is the 
 | ---- | ---- |
 | `beam-search-design.md` | The passive-tree optimiser design + implementation-status checklist + open questions. Results and validation write-ups stay in `docs/beam-search/`. |
 | `web-ui/` | The web UI + bridge-service track — one file per domain (`01`–`10`), plus `README.md` as the index. `01`–`09` shipped; `10` is spec-only. |
-| `skill-optimiser-design.md` | Shelved skill/support-gem optimiser sketch + its completed PoE1-vs-PoE2 assumption audit. Kept for reference (see ADR-002). |
+| `skill-optimiser-design.md` | Shelved skill/support-gem optimiser sketch + its completed PoE1-vs-PoE2 assumption audit. Kept for reference (see ADR-0002). |
 
 ## What goes here
 

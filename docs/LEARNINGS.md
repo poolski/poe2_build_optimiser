@@ -63,7 +63,7 @@ it does not have, producing a plan PoB will not accept.
 **Why**: the first repair design only freed terminal nodes. Real trees waste points on long dead
 paths whose *interior* nodes are the ones worth removing, so leaf-only repair could not reach the
 actual waste and under-performed on real builds. Lifting the filter and freeing connected subtrees
-through `DeallocNode` is what made repair useful (ADR-003).
+through `DeallocNode` is what made repair useful (ADR-0003).
 
 **When to apply**: any change to the regret set or the removal candidate pool. Removal candidates
 are "any allocated node with its downstream cascade", not "nodes with no children".
@@ -84,7 +84,7 @@ item in [`docs/ROADMAP.md`](ROADMAP.md)). Per-run overrides via `--beam-width` a
 **Why**: with no floor on a defensive metric, repair "improves" a build by enabling Chaos
 Inoculation — which removes the life cap — and then reallocating every life node into damage. The
 objective score climbs and the build is unplayable. The floor is what makes the optimiser's output
-trustworthy rather than merely high-scoring (ADR-004).
+trustworthy rather than merely high-scoring (ADR-0004).
 
 **When to apply**: any run that can free allocated nodes, and any new objective or scoring blend.
 Preserve at least one defensive metric (`--preserve`, default `TotalEHP` — resists come from gear,
@@ -95,7 +95,7 @@ substitute for it.
 
 **Why**: each LuaJIT child holds roughly 700 MB resident, so "one per core" exhausts RAM on a normal
 desktop long before it saturates the CPU. `POOL_SIZE` and `JOB_PARALLELISM` therefore default to
-half the host's cores (floor 1), not all of them (ADR-011).
+half the host's cores (floor 1), not all of them (ADR-0011).
 
 **When to apply**: when changing pool defaults, adding a parallel code path, or running anything that
 boots real bridges. Corollary: only one session or worktree may run the integration suite at a time —
@@ -128,7 +128,7 @@ states.
 ## Any test that boots a real bridge belongs in `*.integration.test.ts`
 
 **Why**: end-to-end optimiser runs once leaked into the default suite, which turned the routine check
-into a ~4-minute, multi-gigabyte run that spawns `luajit.exe` children. The split (ADR-007) exists to
+into a ~4-minute, multi-gigabyte run that spawns `luajit.exe` children. The split (ADR-0007) exists to
 keep `npm test` fast and fake-bridge-only; a single misplaced test silently undoes it for everyone.
 
 **When to apply**: when adding any test that constructs a real bridge or pool — put it in an
@@ -149,7 +149,7 @@ from `packages/` into repo-root `src/`.
 ## Resolve cross-package imports through source aliases, not a build step
 
 **Why**: cross-package imports resolve through `tsconfig.base.json` `paths` plus the vitest aliases,
-so the repo has no build step and no TypeScript project references (ADR-006). A new workspace
+so the repo has no build step and no TypeScript project references (ADR-0006). A new workspace
 dependency usually needs no `npm install` at all — reaching for the lockfile first adds churn and
 risks disturbing the five deliberately-unfixed dev-toolchain advisories.
 
