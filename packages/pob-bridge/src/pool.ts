@@ -20,6 +20,15 @@ export interface PooledBridge extends PobBridgeClient {
 	release(): void;
 }
 
+/** N exclusive slots leased together for one run (phase 1.5 -- parallel candidate evaluation
+ *  within a single optimise/recommend job). `slots[0]` is the conventional "primary" a caller
+ *  routes single-round-trip / stateful RPCs to (see ParallelBridge in ./parallel). */
+export interface BridgeLeaseHandle {
+	readonly slots: PooledBridge[];
+	/** Release every leased slot. Must be called (use try/finally). Idempotent. */
+	release(): void;
+}
+
 interface Slot {
 	readonly index: number;
 	bridge: PobBridge | null; // null = never spawned, or dead and awaiting re-spawn
@@ -68,6 +77,44 @@ export class PobBridgePool {
 		return new Promise<PooledBridge>((resolve, reject) => {
 			this.queue.push({ deliver: (slot) => resolve(this.handleFor(slot)), reject });
 		});
+	}
+
+	/** Resolve with `n` exclusive bridges leased together, all belonging to this one caller until
+	 *  `release()`. Acquires one at a time (reuses `acquire()`'s own FIFO queue), so a lease can
+	 *  take a moment to fully assemble under contention -- acceptable, jobs run for minutes. If
+	 *  any acquire in the sequence fails (e.g. the pool is disposed mid-lease), every slot already
+	 *  acquired is released before rejecting, so a failed lease never strands busy slots. Throws
+	 *  synchronously (no partial acquire) if `n` exceeds the pool size -- acquiring that many
+	 *  would otherwise wait forever for slots that can never free up.
+	 *
+	 *  Same contract as a single `acquire()`: the caller owns spec state. Loading the build once
+	 *  onto every slot (and any all-slots broadcast, e.g. reset_metrics) is the job of the
+	 *  dispatcher built on top -- see ParallelBridge in ./parallel, which special-cases
+	 *  load_build_xml / reset_metrics as a broadcast to every leased slot. */
+	async lease(n: number): Promise<BridgeLeaseHandle> {
+		if (this.disposed) throw new Error("pool is disposed");
+		const count = Math.max(1, Math.trunc(n));
+		if (count > this.size) {
+			throw new Error(`lease(${count}) exceeds pool size ${this.size} -- would wait forever`);
+		}
+		const slots: PooledBridge[] = [];
+		try {
+			for (let i = 0; i < count; i++) {
+				slots.push(await this.acquire());
+			}
+		} catch (err) {
+			for (const s of slots) s.release();
+			throw err;
+		}
+		let released = false;
+		return {
+			slots,
+			release: () => {
+				if (released) return;
+				released = true;
+				for (const s of slots) s.release();
+			},
+		};
 	}
 
 	/** OS pids of each slot's live child (undefined where not spawned). Diagnostic / health. */

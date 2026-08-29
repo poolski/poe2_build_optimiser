@@ -143,6 +143,62 @@ describe("PobBridgePool", () => {
 		BOOT_MS,
 	);
 
+	// A minimal but complete PoB-PoE2 build (same fixture as bridge.integration.test.ts): enough
+	// for loadBuildFromXML to construct a spec and for get_stats to return a real StatSet.
+	const MINIMAL_BUILD = `<?xml version="1.0" encoding="UTF-8"?>
+<PathOfBuilding2>
+  <Build level="1" className="Ranger" ascendClassName="None" mainSocketGroup="1"/>
+  <Skills/>
+  <Tree activeSpec="1"><Spec treeVersion="0_2" classId="1" ascendClassId="0" nodes=""/></Tree>
+  <Items/>
+  <Config/>
+</PathOfBuilding2>`;
+
+	it(
+		"lease(n) hands out n distinct slots, all loadable with the same build",
+		async () => {
+			const pool = makePool({ size: 3 });
+			const lease = await pool.lease(3);
+			cleanups.push(() => lease.release());
+			expect(lease.slots).toHaveLength(3);
+			expect(pool.stats()).toEqual({ size: 3, busy: 3, queued: 0 });
+
+			await Promise.all(lease.slots.map((s) => s.call("load_build_xml", { xml: MINIMAL_BUILD, name: "lease-test" })));
+			const stats = await Promise.all(lease.slots.map((s) => s.call("get_stats")));
+			expect(stats[1]).toEqual(stats[0]);
+			expect(stats[2]).toEqual(stats[0]);
+
+			lease.release();
+			expect(pool.stats()).toEqual({ size: 3, busy: 0, queued: 0 });
+		},
+		BOOT_MS,
+	);
+
+	it(
+		"lease(n) throws synchronously when n exceeds the pool size",
+		async () => {
+			const pool = makePool({ size: 2 });
+			await expect(pool.lease(3)).rejects.toThrow(/exceeds pool size/);
+			expect(pool.stats()).toEqual({ size: 2, busy: 0, queued: 0 }); // no partial acquire leaked
+		},
+		BOOT_MS,
+	);
+
+	it(
+		"a failed lease releases every slot it had already acquired",
+		async () => {
+			const pool = makePool({ size: 2 });
+			// Hold slot 0 so lease(2) can only acquire slot 1 before the pool disposes out from under it.
+			const held = await pool.acquire();
+			const leaseP = pool.lease(2);
+			await new Promise((r) => setTimeout(r, 50)); // let lease(2) grab slot 1 and queue for slot 0
+			await pool.dispose();
+			await expect(leaseP).rejects.toThrow(/disposed/);
+			void held;
+		},
+		BOOT_MS,
+	);
+
 	it("honours an explicit size over the POOL_SIZE env", () => {
 		const prev = process.env.POOL_SIZE;
 		process.env.POOL_SIZE = "7";

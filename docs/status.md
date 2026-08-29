@@ -171,9 +171,11 @@ Full sketch: `docs/beam-search/design.md` §7 ("Any-node repair") + §"Open ques
 ## Track: web UI + bridge service (added 2026-08-28; v1 shipped 2026-08-29)
 
 **Current state (per `git log` on `main`):** v1 has **shipped and merged** — phases 1–3, fork-prep,
-and the rollback tree preview (`09`). What remains, neither started: **phase 1.5** (parallel
-candidate eval, the single-run wall-time win) and **`10`** (RePoE-fork asset source, spec only). The
-detail below is kept as the record of how it landed.
+and the rollback tree preview (`09`). **Phase 1.5** (parallel candidate eval, the single-run
+wall-time win) is **built on branch `phase1.5-parallel-eval`** (not yet merged to `main`, not yet
+wired into `packages/api`'s job runner — see `docs/web-ui/01-bridge-service.md` §"Phase 1.5"). What
+remains, not started: **`10`** (RePoE-fork asset source, spec only). The detail below is kept as
+the record of how v1 landed; phase 1.5 is summarized further down under "Track: web UI".
 
 A **local web UI** over the same `src/core/` functions. It also pulled the long-deferred
 **bridge → standalone package** work along with it: a browser cannot shell out to LuaJIT, so the
@@ -289,8 +291,32 @@ comparison. Tests: fast suite 101 → 106, integration 10 → 11 (new
 `optimiseTree.integration.test.ts`, a ~2 min tagged repair run).
 
 That ordering played out as planned: `03` (the contract) landed serial and alone (it forces rework
-in two tracks if it moves), then `04` and `05`+`06` forked into parallel worktrees. Phase 1.5
-remains the one unstarted piece of the original sequence.
+in two tracks if it moves), then `04` and `05`+`06` forked into parallel worktrees.
+
+### Phase 1.5 — parallel candidate evaluation within a run — BUILT (2026-08-29, `phase1.5-parallel-eval`, unmerged)
+
+Full design record: `docs/web-ui/01-bridge-service.md` §"Phase 1.5". Summary: `PobBridgePool`
+gained `lease(n)` (acquires `n` slots as one unit, releases all together, throws synchronously if
+`n` exceeds pool size). New `ParallelBridge` (`packages/pob-bridge/src/parallel.ts`) implements
+`PobBridgeClient` over a lease's slots: shards `evaluate_candidate_nodes[_from]` across slots and
+recombines by chunk index (order-independent of completion, byte-identical to a single slot),
+broadcasts `load_build_xml`/`reset_metrics` to every slot, sums `get_metrics` across slots, and
+routes everything else (`get_stats`, `list_allocatable_nodes_from`, `get_stats_from`,
+`list_allocated_nodes`, `evaluate_dealloc_candidates`, …) to the primary slot — verified against
+`bridge.lua`'s actual handlers, not just method-name inference. **Zero changes to `src/core`**:
+`MemoEvaluator` and `optimiseTree` already funnel every candidate batch through one
+`bridge.call(...)`, so a `ParallelBridge` parallelises transparently underneath them — a cleaner
+fit with this repo's "core receives a bridge, never constructs one" rule than the original sketch
+(which assumed a pool-aware evaluator threaded into `src/core`). `optimise-tree --parallelism <n>`
+wires it into the CLI. Fast suite 344 → 351 (`packages/pob-bridge/src/parallel.test.ts`, fake
+slots: byte-identical sharded-vs-single, order-independence, `get_metrics` summation, a dying
+shard fails the whole call rather than dropping candidates, broadcast, primary-only routing).
+3 new cases in `pool.integration.test.ts` + a new
+`src/core/optimiseTree.parallel.integration.test.ts` acceptance-gate test (serial vs. parallel
+byte-identical, `buildOutputCount` sums exactly) — real-bridge, not run while landing this (ask
+first, per `CLAUDE.md`). **Not yet wired into `packages/api`'s job runner** — `BridgeSource` would
+need an `acquireParallel(n)` alongside `acquire()`, plus a decision on how a leased-N job
+interacts with `MAX_ACTIVE_JOBS <= POOL_SIZE`; left as the next step, not a code gap.
 
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.
