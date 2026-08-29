@@ -1,0 +1,23 @@
+{
+  "name": "@poe2/web",
+  "version": "0.1.0",
+  "description": "Vite + React SPA: paste/upload a build -> configure a run -> watch SSE progress -> node-list diff + stylised tree canvas. Dev server proxies /api to packages/api.",
+  "private": true,
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^6.1.1",
+    "jsdom": "^29.1.1",
+    "vite": "^8.2.2"
+  }
+}
