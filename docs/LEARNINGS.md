@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Learnings
 
 Non-obvious insights, patterns, and gotchas discovered during development. A living record of what works and what doesn't.

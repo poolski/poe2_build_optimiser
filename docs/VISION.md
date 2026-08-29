@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Vision
 
 **poe2-build-optimiser** — Find the best passive tree allocations for a Path of Exile 2 build, fast and accurate.

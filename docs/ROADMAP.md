@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Roadmap
 
 Future-looking only. What exists today and the completed milestones live in

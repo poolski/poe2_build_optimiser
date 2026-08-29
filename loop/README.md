@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Loop
 
 A **maker/verifier autonomous loop** for tasks that benefit from repeated cycles.

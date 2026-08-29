@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Glossary
 
 PoE2 and build-optimisation terminology.

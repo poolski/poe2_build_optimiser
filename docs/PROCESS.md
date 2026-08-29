@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Development Process
 
 How the project is built, tested, and shipped.

@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Maker
 
 **Task:** Generate or update something as part of a loop iteration.

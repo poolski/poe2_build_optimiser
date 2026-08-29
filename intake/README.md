@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Intake
 
 Design specs and source documents that the curated `docs/` were synthesised from.

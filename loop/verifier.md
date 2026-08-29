@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Verifier
 
 **Task:** Check the maker's output and decide if the loop should continue.

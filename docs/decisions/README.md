@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Architecture Decision Records
 
 Records of significant decisions and their rationale — the "why" behind major choices, for future

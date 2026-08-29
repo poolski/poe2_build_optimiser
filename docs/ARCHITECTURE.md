@@ -1,3 +1,4 @@
+<!-- generated-by: groundrules v1.10.0 -->
 # Architecture
 
 High-level system design, layers, and component interactions.
