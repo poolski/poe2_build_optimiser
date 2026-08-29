@@ -22,15 +22,20 @@ Do them once, up front, serially. Then fork.
 ## Gate
 
 **Do not start until phase 1 is complete** (`01`, `02`). Fork-prep edits exactly the root files
-the bridge work is editing. As of 2026-08-29 phase 1 is 3/4 done — workspaces (`660534d`), the
-package move (`97cbe27`, `5c24241`), and `PobBridgePool` + the real-bridge integration suite
-(`2b52cee`) have landed; `onProgress` + `shouldContinue` (`02`) is the remainder.
+the bridge work is editing. Phase 1 completed 2026-08-29 (`660534d`, `97cbe27`, `5c24241`, `2b52cee`, `a7b358c`) and
+**this document was executed as `e9e2c56`**. It is kept as the record of what was done and
+why, with the in-line corrections found during execution. Re-read it before the fork.
 
 ---
 
 ## The tasks
 
 ### 1. Install every v1 dependency in one pass
+
+> **Corrected 2026-08-29 during execution: do task 2 first.** `npm install -w <newpkg> <dep>`
+> silently no-ops (exit 0, no error) when npm has not yet linked that workspace. Create all
+> three skeleton `package.json`s (task 2), run one bare `npm install` so npm links the
+> workspaces, *then* do the `-w` installs.
 
 | Workspace | Dependencies |
 |-----------|--------------|
@@ -101,14 +106,23 @@ Fix: add `packages/web/**` to the root `tsconfig.json` `exclude`, and give `pack
 `vitest.config.ts` includes `packages/*/src/**/*.test.ts` and runs in the default node
 environment with no JSX transform. It will happily pick up web's component tests and fail them.
 
-Web tests need `environment: "jsdom"` plus `@vitejs/plugin-react`. Decide between:
+Web tests need `environment: "jsdom"` plus a JSX transform.
 
-- **`vitest.workspace.ts`** (recommended) — idiomatic for vitest 2.1, composes the existing fast
-  and integration configs as projects and adds a third for web with its own environment/plugins.
-- Per-package vitest configs, with the root scripts fanning out.
-
-Take the workspace file: it keeps the existing fast/integration split intact and gives web its own
-environment without duplicating the alias map.
+> **Corrected 2026-08-29 during execution — do NOT use `vitest.workspace.ts`.** The original
+> recommendation here was wrong, and was disproved empirically. A workspace file is *globally
+> auto-discovered*, so once it exists both `vitest` (`npm test`) **and**
+> `vitest --config vitest.integration.config.ts` run every project — including the LuaJIT
+> integration files. `--config` stops isolating, which destroys the suite split that `2b52cee`
+> deliberately introduced.
+>
+> **What was done instead:** `environmentMatchGlobs: [["packages/web/**", "jsdom"]]` plus
+> `esbuild.jsx: "automatic"` in `vitest.config.ts`. Keeps one config, keeps `--config`
+> isolation, no duplicated alias map.
+>
+> **Also: `@vitejs/plugin-react` is not usable from the root vitest config.** It requires
+> `vite@8`, which npm nests under `packages/web/node_modules` where the root config cannot
+> resolve it. esbuild's automatic JSX covers the tests; the frontend track gets the real plugin
+> via its own web-local `vite.config.ts` for the dev server. `05` should not promise otherwise.
 
 **Exit:** a trivial React component test passes, and the existing node-environment tests still
 pass in the same `npm test` run.

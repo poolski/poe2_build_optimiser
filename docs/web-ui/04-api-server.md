@@ -131,6 +131,26 @@ extraPoints` needs `get_tree_status` first (same as `optimiseCli.ts:272`).
 
 ## `updatedPobCode` (`pob/applyPlan.ts`)
 
+> **BLOCKER — corrected 2026-08-29 (fork-prep, verified in source).** The approach below does
+> **not work as written**, and implementing it would emit a *corrupt* PoB export rather than an
+> imperfect one. Three independent confirmations:
+>
+> - `optimiseTree.ts:194` — `addedNodeIds` is "Anchor node ids of `steps` (path nodes AllocNode
+>   adds are not listed individually)". Picks only; traversal nodes are never recorded.
+> - `bridge.lua:993` — `list_allocated_nodes` accepts only `removeIds`. There is no way to ask
+>   for the allocated set of an arbitrary `allocSet`.
+> - `bridge.lua:1038` — `ImportFromNodeList` cannot express a disconnected tree, and
+>   `optimiseTree` is a pure planner (probe-and-restore, `bridge.lua:799`), so the bridge never
+>   holds the post-plan state to read back.
+>
+> Net: string-replacing `<Spec nodes="...">` from `removed` + `addedNodeIds` yields a
+> **disconnected** tree. This blocks `updatedPobCode` here and the `after` render in `06`.
+>
+> **Fix first, in `packages/pob-bridge` + `src/core`** (NOT in this track): either teach
+> `list_allocated_nodes` to accept an `allocSet`, or have `optimiseTree` record each step's path
+> node ids. Concrete test case: `packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` ships
+> `afterConnected: null` with `unloggedPathNodeCount: 1`.
+
 No bridge round-trip needed. The `<Spec>` element's `nodes="12,34,56,…"` attribute is the
 allocated-node id list. Given `result.removed[].id` (+ their cascades — use
 `result.pointsFreed` cross-check) and `result.addedNodeIds` + the path nodes each step dragged

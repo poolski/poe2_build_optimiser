@@ -244,9 +244,32 @@ Verified: 98 default tests green, integration suite 10/10, `tsc` clean, and the 
 (`optimise-tree --respec-budget 3` vs the `main` baseline) byte-identical — same 432 BuildOutputs,
 same plan.
 
-Next is **`08-fork-prep.md`** — one serial commit that lets `04` / `05`+`06` / phase 1.5 proceed as
-parallel worktrees. `03` (the contract) stays serial and alone after it, since it is what forces
-rework in two tracks if it moves.
+**Fork-prep is DONE — `e9e2c56`** (`08-fork-prep.md`, executed 2026-08-29). All v1 deps in one
+lockfile pass, `packages/{contract,api,web}` skeletons + aliases (shared `vitest.alias.ts`), web
+carved out of the commonjs typecheck, jsdom via `environmentMatchGlobs`, and the canvas fixtures
+committed (`packages/web/public/tree-0_5.min.json` 407 KB + `packages/web/fixtures/`), so the
+canvas track needs neither LuaJIT nor the submodule. 101 fast tests, integration still 10.
+
+### ⚠ BLOCKER before the fan-out — `allocatedNodeIds.after` is not obtainable
+
+Found during fork-prep, verified in source. `04`'s `applyPlan.ts` and `06`'s `after` render both
+assume the post-plan allocated set can be recovered. It cannot:
+
+- `optimiseTree.ts:194` — `addedNodeIds` is picks-only; the path nodes `AllocNode` drags in are
+  never recorded.
+- `bridge.lua:993` — `list_allocated_nodes` accepts only `removeIds`, never an `allocSet`.
+- `bridge.lua:1038` — `ImportFromNodeList` cannot express a disconnected tree, and `optimiseTree`
+  is a pure planner (probe-and-restore, `bridge.lua:799`), so the bridge never holds the state.
+
+Writing `<Spec nodes>` from `removed` + `addedNodeIds` therefore emits a **disconnected tree** —
+a corrupt PoB export, not a cosmetic gap. **Fix in `packages/pob-bridge` + `src/core` first**
+(teach `list_allocated_nodes` an `allocSet`, or record each step's path ids). It is phase-1
+territory, explicitly off-limits to the three UI tracks, and it blocks two of them. Test case:
+`packages/web/fixtures/canvas-diff.R_Thor-L84-weak.json` (`afterConnected: null`,
+`unloggedPathNodeCount: 1`).
+
+After that: `03` (the contract) stays serial and alone, since it is what forces rework in two
+tracks if it moves. Then fork into `04` / `05`+`06` / phase 1.5.
 
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.
