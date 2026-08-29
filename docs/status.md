@@ -288,6 +288,17 @@ tracks if it moves. Then fork into `04` / `05`+`06` / phase 1.5.
 Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below all of
 it — pick them up only on demand.
 
+## Known follow-ups (non-blocking)
+
+- **`spike/genCanvasFixture.ts` writes only a trimmed canvas projection.** Contract tests must
+  therefore *reconstitute* a full `OptimiseResultDTO` before parsing, which is the weakest link
+  in an otherwise strong verification chain: `final.stats` is hand-authored, and the
+  reconstitution derives a finite `objectiveAfterRemoval`, so the fixture test never exercises
+  the nullable branch (a dedicated unit test does). Worth dumping an untrimmed
+  `OptimiseTreeResult` blob alongside the projection so future tests parse raw output instead.
+  Raised by the phase-1 session 2026-08-29. Not worth holding the fork for.
+- Bench sweep to justify a default `beamWidth > 1` (open since the beam-search track).
+
 ## Scope
 
 **Passive skill tree only.** Skill gems and their support gems are immutable calculation inputs —

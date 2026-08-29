@@ -180,7 +180,10 @@ validation rejection, not a type error.
    `extend|repair`. `rollback` means "pass `anchorNodeId`"; core has no `mode` option.
 8. **Progress naming:** core's `OptimiseProgress` / `RecommendProgress` already call the count
    `buildOutputs`, matching `ProgressEvent`. Only the *bridge's* `get_metrics` says
-   `buildOutputCount` — bridge that name only if you read the bridge directly. `jobId` and
+   `buildOutputCount` — bridge that name only if you read the bridge directly. **The two names
+   coexist deliberately: `OptimiseResultDTO.buildOutputCount` (the *result* field) keeps core's
+   name, while only the *progress event* normalises to `buildOutputs`. Do not "harmonise" them —
+   both are correct and both are commented in the contract.** `jobId` and
    `elapsedMs` are API-added; they are not on the core progress objects.
 
 ## SSE stream (`GET /jobs/:id/events`)
