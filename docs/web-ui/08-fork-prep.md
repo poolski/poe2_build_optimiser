@@ -38,7 +38,7 @@ why, with the in-line corrections found during execution. Re-read it before the 
 > workspaces, *then* do the `-w` installs.
 
 | Workspace | Dependencies |
-|-----------|--------------|
+| ----------- | -------------- |
 | `contract` | `zod` |
 | `api` | `hono`, `@hono/node-server` |
 | `web` | `react`, `react-dom`; dev: `vite`, `@vitejs/plugin-react`, `@types/react`, `@types/react-dom`, `jsdom` |
@@ -151,6 +151,13 @@ in `packages/api`. Make it a committed artifact generated here instead. A build 
 re-couple the canvas track to the submodule, which is precisely what this task removes. Revisit
 only when the tree version bumps.
 
+> **Current behaviour. A change is proposed in [`10-repoe-asset-source.md`](10-repoe-asset-source.md)
+> (spec only — not built).** Today `tree-0_5.min.json` is still generated from the PoB submodule via
+> `gen-min-tree.mjs`, exactly as described here — so regenerating it does still need the submodule
+> checked out. `10` proposes generating it from RePoE-fork (`fetch-tree.mjs`) instead, which would
+> also remove that regen-time coupling; it would stay a committed artifact, not a build step, and the
+> calc engine would keep using the PoB `tree.json`. None of that is implemented yet.
+
 **Exit:** the canvas track can be developed in a worktree with the submodule never initialised.
 
 ### 7. Leave root `scripts` alone
@@ -167,7 +174,7 @@ deliberately and cheaply.
 `git worktree add` does **not** initialise submodules — which works in our favour after task 6:
 
 | Track | Submodule needed? | Rough disk |
-|-------|-------------------|------------|
+| ------- | ------------------- | ------------ |
 | `05` + `06` frontend + canvas | **no** (task 6) | ~200 MB |
 | `04` API | yes — the real-pool integration test | ~630 MB |
 | phase 1.5 parallel eval | yes | ~630 MB |

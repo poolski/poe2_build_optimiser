@@ -1,28 +1,30 @@
-# Web UI + bridge service — plan index
+# Web UI + bridge service — index
 
-The tree optimiser (`src/core/optimiseTree.ts` + `recommendTree.ts`) is feature-complete and its
-CLI surface has settled. The next track puts a **local web UI** over the same `src/core/`
-functions, and pulls the long-deferred **bridge → standalone package** work along with it: a
-browser cannot shell out to LuaJIT, so the bridge has to move behind a long-lived service
-boundary. The two land together.
+**Current state (per `git log` on `main`):** v1 **shipped** — a **local web UI** over `src/core/`,
+with the LuaJIT bridge extracted into a standalone service package. Phases 1–3, fork-prep, and the
+rollback tree preview (`09`) are all merged. **Two items remain, neither started:** phase 1.5
+(parallel candidate eval — the single-run wall-time win) and the RePoE-fork asset source (`10`,
+spec only). See Sequencing below for the per-phase status and commit refs.
 
-This directory is the plan, split by domain so each piece can be picked up on its own:
+This directory is one file per domain — a mix of shipped design-of-record and the two open specs:
 
 | File | Domain | Phase |
-|------|--------|-------|
+| ------ | -------- | ------- |
 | [`01-bridge-service.md`](01-bridge-service.md) | Lift `pob-runtime/` + `src/core/bridge.ts` into a package with a process pool; §"Phase 1.5" = parallel candidate eval within a run | 1 (+1.5) |
 | [`02-core-progress.md`](02-core-progress.md) | The two v1 changes to `src/core/*`: `onProgress` + `shouldContinue` | 1 |
 | [`03-shared-contract.md`](03-shared-contract.md) | Zod schemas + inferred types shared by API and UI | 2 |
 | [`04-api-server.md`](04-api-server.md) | Hono + Zod HTTP server: builds, jobs, SSE progress | 2 |
 | [`05-frontend.md`](05-frontend.md) | Vite + React SPA: input → config → run → node-list diff | 3 |
-| [`06-tree-canvas.md`](06-tree-canvas.md) | Stylised passive-tree canvas with the diff highlighted — **in v1** | 3 |
+| [`06-tree-canvas.md`](06-tree-canvas.md) | Stylised passive-tree canvas with the diff highlighted (shipped) | 3 |
 | [`07-performance.md`](07-performance.md) | Why PoB stays the fitness oracle + the full speed-lever table | cross-cutting |
 | [`08-fork-prep.md`](08-fork-prep.md) | The one commit between phase 1 and phase 2 that makes the later phases safe to run in parallel | 1 → 2 |
+| [`09-rollback-tree-preview.md`](09-rollback-tree-preview.md) | Rollback anchor picker: reuse the canvas in Configure, click-to-select, freed-subtree preview | **shipped** |
+| [`10-repoe-asset-source.md`](10-repoe-asset-source.md) | **Spec, not built.** Proposes moving the web tree (geometry, node art, stat text) + a gem asset layer onto RePoE-fork, adding real node icons — would reverse `06`'s "no art" | not started |
 
 **On speed:** v1 runs a job as slowly as the CLI does — the pool (phase 1) only overlaps
 *concurrent* jobs, which a single user rarely has. The wall-time win is **phase 1.5** (lever 1b in
-`07`): parallelise one run's candidate batch across the pool. v1 ships against the serial path;
-1.5 is the first fast-follow. Don't let the pool's existence imply v1 runs are fast.
+`07`): parallelise one run's candidate batch across the pool. v1 runs against the serial path;
+1.5 (not yet built) is the first fast-follow. Don't let the pool's existence imply v1 runs are fast.
 
 ## Decisions of record (2026-08-28)
 
@@ -58,7 +60,9 @@ Settled with the user before writing this plan:
    tree version ≠ the shipped one. Canvas is stylised only (shapes not sprites, dot size by tier,
    PoE2 colours, no orbit rotation), ported from the MIT Canvas2D renderer in
    `poe2-tools/poe2-build-planner` (same stack) onto our PoB `tree.json` — ~1 day, no GGG art.
-   PoB-faithful render (DDS texture pipeline) stays out of scope.
+   PoB-faithful render (DDS texture pipeline) stays out of scope. **This is the current, shipped
+   behaviour.** A change to source geometry + real node art from RePoE-fork is *proposed but not
+   yet built* in `10-repoe-asset-source.md`.
 
 ## Architecture
 
@@ -97,10 +101,10 @@ its third consumer after the two CLIs. v1 touches core in exactly two places —
 `shouldContinue` (`02-core-progress.md`); phase 1.5 adds a third (the pool-backed parallel
 evaluator, `01` §"Phase 1.5").
 
-## Repo layout after the track
+## Repo layout
 
-Move to npm workspaces (the repo is a single package today). Nothing about the CLIs changes for
-the user — the `npm run` scripts still work from the root.
+The repo is npm workspaces (moved in `660534d`). Nothing about the CLIs changed for the user — the
+`npm run` scripts still work from the root. Current layout:
 
 ```
 build_optimiser/
@@ -114,41 +118,34 @@ build_optimiser/
     web/                       # phase 3 — Vite + React SPA
 ```
 
-`src/core/bridge.ts` becomes a re-export shim (`export * from "@poe2/pob-bridge"`) for one
-release so nothing downstream breaks in a single commit, then callers switch to the package
-import and the shim is deleted.
+`src/core/bridge.ts` was moved to `@poe2/pob-bridge` via a one-release re-export shim (`97cbe27`),
+then all callers switched to the package import and the shim was dropped (`5c24241`).
 
 ## Sequencing
 
-- [ ] **Phase 1 — bridge service** (`01`, `02`)
-  - [ ] npm workspaces + `tsconfig.base.json`; decide project-references vs ordered build; root
-        `test` script runs `vitest` across *all* packages; root run-scripts still green
-  - [ ] move `pob-runtime/` + `src/core/bridge.ts` into `packages/pob-bridge`, submodule path
-        updated, `src/core` imports the package, all 88 tests green
-  - [ ] `PobBridgePool` — size 2 default, `acquire`/`release`, crash-replace, `dispose`, `warm()`
-  - [ ] `onProgress` + `shouldContinue` in `OptimiseTreeOptions`, wired at the beam depths +
-        k-sweep; CLIs pass neither; `shouldContinue`-false → `stoppedBecause: "cancelled"`
-- [ ] **Fork-prep** (`08`) — one serial commit before phase 2: install all v1 deps in a single
-      lockfile pass, create the `contract` / `api` / `web` skeletons + aliases, split the web
-      typecheck and vitest environment out of the Node-side ones, and commit the canvas fixtures.
-      After this the remaining phases can run as parallel worktrees without fighting over root
-      files. Skip it only if the whole track is being done serially by one session.
-- [ ] **Phase 2 — API** (`03`, `04`)
-  - [ ] `packages/contract` — request/response/event Zod schemas
-  - [ ] `packages/api` — Hono server, build decode/encode, job registry, SSE
-  - [ ] Cancel wired through `shouldContinue` (frees the bridge within one add-step)
-  - [ ] updated-PoB-code output (read allocated ids off the bridge, patch `<Spec nodes>`, re-encode)
-- [ ] **Phase 3 — UI** (`05`, `06`)
-  - [ ] Vite + React scaffold, dev proxy to the API
-  - [ ] input → summary → run-config form → progress panel → results
-  - [ ] `05` node-list diff + copy updated PoB code
-  - [ ] `06` tree canvas: `tree-0_5.min.json` build step; port the MIT renderer from
-        `poe2-tools/poe2-build-planner`, re-skin `nodeVisual.ts`, diff overlay; list-diff
-        fallback on a tree-version mismatch
-- [ ] **Phase 4 — parallel candidate eval** (`01` §"Phase 1.5", `07` lever 1b) — first
-      fast-follow after v1 ships. Pool-backed evaluator in `beamAddLoop`, id-sorted recollection,
-      determinism unchanged. This is what makes a single run fast. (Numbered 1.5 in `01`/`07`
-      because it modifies phase-1 code; sequenced here, after the v1 UI.)
+Status is per `git log` on `main` (the authoritative source); commit refs in parentheses. `status.md`
+carries the detailed narrative.
+
+- [x] **Phase 1 — bridge service** (`01`, `02`) — npm workspaces + `tsconfig` split (`660534d`),
+      `pob-runtime/` + `bridge.ts` → `packages/pob-bridge` (`97cbe27`, `5c24241`), `PobBridgePool`
+      + the real-bridge integration suite (`2b52cee`), `onProgress` + `shouldContinue` (`a7b358c`).
+- [x] **Fork-prep** (`08`) — deps in one lockfile pass, `contract`/`api`/`web` skeletons + aliases,
+      web typecheck/vitest split out, canvas fixtures committed (`e9e2c56`). Plus
+      `allocatedNodeIds.{before,after}` on the core result (`3b7dcf6`).
+- [x] **Phase 2 — API** (`03`, `04`) — `packages/contract` Zod schemas + DTOs (`564c15b`),
+      `packages/api` Hono server + job registry + SSE + `updatedPobCode` (`bf18bb2`, merged
+      `8376f38`), serve the built SPA at `/` (`0eeaa3f`).
+- [x] **Phase 3 — UI** (`05`, `06`) — Vite + React scaffold (`9055fb6`), 4-step wizard + node-list
+      diff (`fdc7fcc`), stylised tree canvas (`59f56a7`, merged `6d27617`). Follow-ups on `main`:
+      `treeVersion` on `BuildSummary` (`5a5bd57`), edges at all zoom (`cf3d6cf`), group-index
+      off-by-one fix (`29dc76e`).
+- [x] **Rollback tree preview** (`09`) — canvas reused in Configure, click-to-select anchor,
+      freed-subtree preview (`740374a`, PR #2 `05563b2`).
+- [ ] **Phase 4 — parallel candidate eval** (`01` §"Phase 1.5", `07` lever 1b) — **not started.**
+      Pool-backed evaluator in `beamAddLoop`, id-sorted recollection, determinism unchanged. The
+      real single-run wall-time win. (Numbered 1.5 in `01`/`07` because it modifies phase-1 code.)
+- [ ] **RePoE-fork asset source** (`10`) — **spec only, not started.** Web tree geometry + real node
+      art + stat text + gem assets from RePoE-fork; adds icon rendering to the shared `TreeCanvas`.
 
 ## Running it
 
@@ -180,8 +177,10 @@ Neither is a background service — it's a tool you start when you want it and C
 ## Non-goals for v1
 
 - Hosting / multi-user / persistence of jobs across a server restart.
-- A PoB-faithful tree render (sprites, DDS atlases, orbit rotation) — the v1 canvas is stylised
-  shapes only (`06`).
+- A PoB-faithful tree render (sprites, DDS atlases, orbit rotation) — the canvas is stylised
+  shapes only (`06`), and that is what ships today. `10-repoe-asset-source.md` proposes adding real
+  node icons from RePoE-fork (fetched PNGs + `drawImage`, not a DDS/atlas pipeline), but that work
+  is not started.
 - Editing gear, gems, or anything outside the passive tree (permanent project scope).
 - Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below
   this track — pick them up only on demand.
