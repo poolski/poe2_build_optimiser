@@ -9,7 +9,7 @@ boundary. The two land together.
 This directory is the plan, split by domain so each piece can be picked up on its own:
 
 | File | Domain | Phase |
-|------|--------|-------|
+| ------ | -------- | ------- |
 | [`01-bridge-service.md`](01-bridge-service.md) | Lift `pob-runtime/` + `src/core/bridge.ts` into a package with a process pool; §"Phase 1.5" = parallel candidate eval within a run | 1 (+1.5) |
 | [`02-core-progress.md`](02-core-progress.md) | The two v1 changes to `src/core/*`: `onProgress` + `shouldContinue` | 1 |
 | [`03-shared-contract.md`](03-shared-contract.md) | Zod schemas + inferred types shared by API and UI | 2 |
@@ -18,6 +18,8 @@ This directory is the plan, split by domain so each piece can be picked up on it
 | [`06-tree-canvas.md`](06-tree-canvas.md) | Stylised passive-tree canvas with the diff highlighted — **in v1** | 3 |
 | [`07-performance.md`](07-performance.md) | Why PoB stays the fitness oracle + the full speed-lever table | cross-cutting |
 | [`08-fork-prep.md`](08-fork-prep.md) | The one commit between phase 1 and phase 2 that makes the later phases safe to run in parallel | 1 → 2 |
+| [`09-rollback-tree-preview.md`](09-rollback-tree-preview.md) | Rollback anchor picker: reuse the canvas in Configure, click-to-select, freed-subtree preview | post-v1 |
+| [`10-repoe-asset-source.md`](10-repoe-asset-source.md) | Move the web tree (geometry, node art, stat text) + the gem asset layer onto RePoE-fork; adds real node icons — **supersedes `06`'s "no art"** | post-v1 |
 
 **On speed:** v1 runs a job as slowly as the CLI does — the pool (phase 1) only overlaps
 *concurrent* jobs, which a single user rarely has. The wall-time win is **phase 1.5** (lever 1b in
@@ -59,6 +61,10 @@ Settled with the user before writing this plan:
    PoE2 colours, no orbit rotation), ported from the MIT Canvas2D renderer in
    `poe2-tools/poe2-build-planner` (same stack) onto our PoB `tree.json` — ~1 day, no GGG art.
    PoB-faithful render (DDS texture pipeline) stays out of scope.
+   **Superseded post-v1 by `10-repoe-asset-source.md`:** the web tree now sources geometry + real
+   node art from RePoE-fork and the canvas draws real icons (the stylised dot becomes the low-LOD
+   fallback). The calc engine still runs on PoB's `tree.json` — only the render layer's source
+   changed.
 
 ## Architecture
 
@@ -181,7 +187,8 @@ Neither is a background service — it's a tool you start when you want it and C
 
 - Hosting / multi-user / persistence of jobs across a server restart.
 - A PoB-faithful tree render (sprites, DDS atlases, orbit rotation) — the v1 canvas is stylised
-  shapes only (`06`).
+  shapes only (`06`). Post-v1, `10-repoe-asset-source.md` adds real node icons from RePoE-fork
+  (fetched PNGs + `drawImage`, not a DDS/atlas pipeline).
 - Editing gear, gems, or anything outside the passive tree (permanent project scope).
 - Deferred beam-search items (pruning layers, `--target-level`, from-scratch mode) stay below
   this track — pick them up only on demand.

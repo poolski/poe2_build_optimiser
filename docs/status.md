@@ -195,6 +195,8 @@ cancel that frees the slot within one add-step.
 | `docs/web-ui/06-tree-canvas.md` | Phase 3 (in v1) — stylised passive-tree diff canvas |
 | `docs/web-ui/07-performance.md` | Cross-cutting — why PoB stays the fitness oracle + the speed-lever table |
 | `docs/web-ui/08-fork-prep.md` | Between phases 1 and 2 — the serial commit that makes phases 2–3 safe to run as parallel worktrees |
+| `docs/web-ui/09-rollback-tree-preview.md` | Post-v1 — rollback anchor picker: canvas in Configure, click-to-select, freed-subtree preview |
+| `docs/web-ui/10-repoe-asset-source.md` | Post-v1 — web tree geometry + real node art + stat text + gems from RePoE-fork; adds icon rendering (supersedes `06`'s "no art"). Calc engine stays on PoB |
 
 **Decisions of record (2026-08-28, with the user):**
 
