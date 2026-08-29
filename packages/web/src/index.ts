@@ -7,4 +7,7 @@
 // via `npm run build -w @poe2/web`. ./env.ts stays as the canary that locks that split in.
 export const WEB_PACKAGE = "@poe2/web";
 
+export { default as App } from "./App";
+export * from "./state";
+export * from "./api";
 export * from "./render";
