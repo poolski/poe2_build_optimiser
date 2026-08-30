@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { drawTree } from "./draw";
+import { onIconLoad } from "./iconCache";
 import type { MinTree } from "./types";
 import { buildSpatialIndex, nodeAt, type SpatialIndex } from "./spatialIndex";
 import {
@@ -158,6 +159,10 @@ export default function TreeCanvas({
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
+    const unsubscribeIconLoad = onIconLoad(() => {
+      dirtyRef.current = true;
+    });
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
@@ -189,6 +194,7 @@ export default function TreeCanvas({
       cancelAnimationFrame(raf);
       ro.disconnect();
       canvas.removeEventListener("wheel", onWheel);
+      unsubscribeIconLoad();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minTree]);

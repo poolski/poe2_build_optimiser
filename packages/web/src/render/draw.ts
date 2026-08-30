@@ -3,6 +3,7 @@
 // (intake/web-ui/06-tree-canvas.md): plain arcs for nodes, category tint + diff overlay, no art.
 
 import { edgeGeometry } from "./arc";
+import { getIcon } from "./iconCache";
 import { lodFor } from "./lod";
 import { nodeVisual } from "./nodeVisual";
 import { queryRect, type SpatialIndex } from "./spatialIndex";
@@ -92,10 +93,15 @@ export function drawTree(ctx: CanvasRenderingContext2D, p: DrawParams): void {
 
     const v = nodeVisual(n, state);
     const r = Math.max(1, v.radius * vp.zoom);
-    ctx.fillStyle = v.fill;
-    ctx.beginPath();
-    ctx.arc(s.sx, s.sy, r, 0, Math.PI * 2);
-    ctx.fill();
+    const icon = getIcon(n.icon);
+    if (icon) {
+      ctx.drawImage(icon, s.sx - r, s.sy - r, r * 2, r * 2);
+    } else {
+      ctx.fillStyle = v.fill;
+      ctx.beginPath();
+      ctx.arc(s.sx, s.sy, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     if (v.ring || v.stroke) {
       ctx.strokeStyle = v.stroke ?? "#ecd49a";

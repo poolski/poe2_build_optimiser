@@ -96,5 +96,6 @@ export function stubCanvas(): void {
     stroke() {},
     fill() {},
     setTransform() {},
+    drawImage() {},
   })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
 }
