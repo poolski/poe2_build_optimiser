@@ -47,3 +47,4 @@ state live in `PLAN.md`, `intake/beam-search-design.md`, and `intake/web-ui/`.
 | [0011](0011-parallelism-defaults-to-half-cores.md) | Pool size and job parallelism default to half the host's cores | Accepted | 2026-08-29 |
 | [0012](0012-repoe-fork-asset-source.md) | RePoE-fork is the web render layer's asset source | Accepted | 2026-08-29 |
 | [0013](0013-close-out-live-progress-view-prd-defer-remaining-scope.md) | Close out live-progress-view PRD; defer sparkline, canvas highlight, and e2e check to a new feature | Accepted | 2026-08-30 |
+| [0014](0014-bundle-configure-step-ui-ideas-into-one-feature-release.md) | Bundle Configure-step UI ideas into one feature release | Accepted | 2026-08-30 |

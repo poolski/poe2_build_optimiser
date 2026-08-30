@@ -24,6 +24,22 @@ canvas, and a real-bridge end-to-end validation run.
 - **Effort:** small-moderate — `RunProgress.tsx` sparkline, an additive canvas layer, and a
   manual e2e pass.
 
+### Configure step: node freeze/unfreeze/anchor menu, constraint/objective metric pickers
+
+Three backlog ideas bundled into one release: a right-click context menu on `TreeCanvas` nodes
+(Freeze / Unfreeze / Anchor for rollback), a hybrid metric picker for `ConstraintsEditor` rows,
+and a hybrid objective-metric picker in `ObjectiveBuilder` — replacing today's blind free-text
+entry for all three.
+
+- **Spec:** [`docs/prd/web-ui-configure-step-pickers.md`](prd/web-ui-configure-step-pickers.md) —
+  PRD written, open questions resolved (2026-08-30), not built. Bundled per
+  [ADR-0014](decisions/0014-bundle-configure-step-ui-ideas-into-one-feature-release.md).
+- **Blocked on:** nothing — ready to build. Metric source is a vendored static list merged with
+  live baseline stats; pickers stay hybrid (autocomplete + free text); freeze-list names resolve
+  via the same node-data source `NodeDiff.tsx` uses.
+- **Effort:** small-moderate — two component swaps (`ConstraintsEditor`, `ObjectiveBuilder`), a
+  3-action context menu on `TreeCanvas`, and threading a node-name lookup into `RunConfig`.
+
 ### Bench sweep for a default `beamWidth > 1`
 
 The optimiser ships with `beamWidth = 1` (pure greedy), proven sufficient on the 25-build corpus.

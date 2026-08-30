@@ -32,10 +32,20 @@ stays out of the tree). Provenance and design rationale live in git history and 
 
 ## Up next
 
-- [supervised] Progress view extras: `bestObjective` sparkline, canvas top-N highlight, and the
-  real-bridge end-to-end check — split from the live-progress-view PRD per
-  [ADR-0013](docs/decisions/0013-close-out-live-progress-view-prd-defer-remaining-scope.md)
-  (docs/prd/web-ui-progress-view-extras.md)
+- [supervised] `TreeCanvas` right-click context menu (Freeze / Unfreeze / Anchor for rollback) —
+  no existing test scaffold for canvas hit-testing/pointer interactions, and menu
+  positioning/dismiss behaviour isn't spec'd — needs an interactive design pass, not a loop
+  (docs/prd/web-ui-configure-step-pickers.md)
+- [supervised] `RunConfig` wiring for the context-menu actions + freeze-list name resolution —
+  depends on the `TreeCanvas` menu's shape, and how the node-name lookup threads into
+  `RunConfig` is still an open implementation choice, not a pre-specified one
+  (docs/prd/web-ui-configure-step-pickers.md)
+- [supervised] End-to-end Configure-step manual check (pick metrics, freeze/unfreeze/anchor,
+  confirm request payload) — manual by nature, no automated stop condition
+  (docs/prd/web-ui-configure-step-pickers.md)
+
+3 tasks from this PRD's metric-picker scope are looped instead — see `loop/backlog.md`
+(shared known-metrics module, `ConstraintsEditor` wiring, `ObjectiveBuilder` refactor).
 
 Candidates and deferred work live in [`docs/ROADMAP.md`](docs/ROADMAP.md) — an item moves up
 here when it is actively picked up.
@@ -46,12 +56,6 @@ Raw ideas, captured before they're lost (e.g. via `/groundrules:idea`). Not yet 
 gets triaged later → a **decision** (ADR), a **build** (PRD), a **milestone** (ROADMAP), or
 dropped.
 
-- [ ] **Freeze nodes from tree explorer** — add a right-click context menu to the Configure
-  tree explorer to freeze nodes. *(build?)*
-- [ ] **Dropdown metric picker in constraint builder** — let users pick constraint metrics from
-  a dropdown instead of typing them blind, since they don't know what's available.
-- [ ] **Selectable objective metric** — let the user pick the single objective metric from a
-  list rather than typing/configuring it.
 - [ ] **Drop MinResist constraint** — resists mostly come from gear, not the skill tree, so
   MinResist doesn't pull its weight as a constraint. *(decision?)*
 - [ ] **Back navigation between wizard steps** — at every step except the first, let the user
@@ -62,7 +66,11 @@ dropped.
 
 ## Waiting / blocked
 
-- [ ] ...
+- [ ] Progress view extras: `bestObjective` sparkline, canvas top-N highlight, and the
+  real-bridge end-to-end check — parked, not currently being picked up. Split from the
+  live-progress-view PRD per
+  [ADR-0013](docs/decisions/0013-close-out-live-progress-view-prd-defer-remaining-scope.md)
+  (docs/prd/web-ui-progress-view-extras.md)
 
 ## Recently done
 

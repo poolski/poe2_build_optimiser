@@ -62,3 +62,36 @@ test. See `docs/prd/web-ui-live-progress-view.md` for full context.
       (already ranked most-promising first by the emitter — do not re-sort), each entry showing
       its `name` and `scoreDelta`. When `topNodes` is absent or empty, render no `top-nodes`
       element. Out of scope: the worker rows, the sparkline, the canvas.
+
+- [ ] **Add a shared known-metrics module (`packages/web/src/metrics/knownMetrics.ts`).**
+      Acceptance test: `npx vitest run packages/web/src/metrics/knownMetrics.test.ts` → exit 0 =
+      green. Behaviour: export `KNOWN_METRICS: string[]` — exactly
+      `["TotalDPS", "TotalEHP", "Life", "Mana", "EnergyShield", "FireResist"]` (real names already
+      referenced elsewhere in this repo; do not add any name not already attested in the
+      codebase) — and `mergeMetricOptions(buildStatsKeys?: string[]): string[]`, which returns
+      `KNOWN_METRICS` unchanged when called with no argument or `[]`, and otherwise appends any
+      `buildStatsKeys` entries not already present, preserving `KNOWN_METRICS`'s order and case-
+      sensitive de-duping. Out of scope: wiring this into any component (separate tasks below).
+
+- [ ] **Wire `ConstraintsEditor`'s metric field to the shared known-metrics list
+      (`packages/web/src/components/ConstraintsEditor.tsx`).** Acceptance test:
+      `npx vitest run packages/web/src/components/ConstraintsEditor.test.tsx` → exit 0 = green.
+      Behaviour: each constraint row's metric `<input>` gets a `list="<id>"` attribute pointing
+      at a `<datalist>` (rendered once, not per-row) whose `<option>` values equal
+      `mergeMetricOptions()` from `../metrics/knownMetrics` — a plain call with no build-stats
+      argument. The field must still accept and emit an arbitrary free-text value not in that
+      list, unchanged from today (`rowsToConstraints` output identical for the same typed
+      string). Out of scope: `ObjectiveBuilder`, sourcing build-specific stat keys into
+      `mergeMetricOptions`'s argument, the freeze/anchor context menu, `TreeCanvas`.
+
+- [ ] **Refactor `ObjectiveBuilder`'s single-metric datalist onto the shared known-metrics list,
+      dropping the invented names (`packages/web/src/components/ObjectiveBuilder.tsx`).**
+      Acceptance test: `npx vitest run packages/web/src/components/ObjectiveBuilder.test.tsx` →
+      exit 0 = green. Behaviour: the existing `list="metric-suggestions"` `<datalist>` (currently
+      hand-rolled with `TotalDPS, TotalEHP, Life, EnergyShield, CombinedDPS, FullDPS`) must have
+      its `<option>` values replaced with exactly `KNOWN_METRICS` from `../metrics/knownMetrics`
+      (drops `CombinedDPS` and `FullDPS`, adds `Mana` and `FireResist`) — same `list`/`datalist`
+      wiring pattern, just sourced from the shared module instead of a local array. The field
+      must still accept and emit an arbitrary free-text value, and `buildObjectiveSpec` output
+      must be unchanged for any given value. Out of scope: `ConstraintsEditor`, the `dps-ehp` /
+      `blend` kinds, the freeze/anchor context menu, `TreeCanvas`.

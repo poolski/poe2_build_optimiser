@@ -12,6 +12,20 @@ Include the minimal code snippet / command when it is the fix.
 
 ---
 
+## Grep for existing wiring before scoping a PRD as "free text"
+
+**Why**: on 2026-08-30 the Configure-step-pickers PRD was scoped assuming `ObjectiveBuilder`'s
+metric field was pure free text, based on reading the field's obvious JSX. It only surfaced
+during `/groundrules:realize` test-authoring that the field already had a `datalist` hybrid
+picker (shipped in `fdc7fcc`) — containing two invented metric names, `CombinedDPS` and
+`FullDPS`, that had sat unnoticed on `main` since. The cost: a PRD success criterion and build
+step had to be rewritten mid-`realize`, and an invented-data bug went undetected for a release.
+
+**When to apply**: before writing a PRD's Problem/Scope section claiming a behaviour is "free
+text" / "missing" / "not built," grep for the attribute or handler that would prove otherwise
+(`list=`, `datalist`, `onClick`, `onContextMenu`, etc.) rather than stopping at eyeballing the
+component's obvious code path.
+
 ## A spec is not queued until it is linked: land the PRD, the ROADMAP entry, and the PLAN.md triage removal together
 
 **Why**: on 2026-08-29 the live-progress-view PRD was written and committed, but `PLAN.md` still

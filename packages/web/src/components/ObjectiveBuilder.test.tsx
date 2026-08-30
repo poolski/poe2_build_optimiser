@@ -4,6 +4,7 @@ import ObjectiveBuilder, {
   buildObjectiveSpec,
   parseObjectiveModel,
 } from "./ObjectiveBuilder";
+import { KNOWN_METRICS } from "../metrics/knownMetrics";
 import { click, mount, setInput } from "../test/dom";
 
 describe("buildObjectiveSpec (pure)", () => {
@@ -71,6 +72,23 @@ describe("<ObjectiveBuilder> emits the spec on interaction", () => {
     const field = m.container.querySelector<HTMLInputElement>('input[type="text"]')!;
     m.act(() => setInput(field, "FullDPS"));
     expect(onChange).toHaveBeenLastCalledWith("FullDPS");
+    m.unmount();
+  });
+
+  it("the single-metric field's datalist matches the shared known-metrics list exactly (no invented names)", () => {
+    // Was a hand-rolled inline list including "CombinedDPS" / "FullDPS", neither attested
+    // anywhere else in this repo -- invented PoB stats per CLAUDE.md. Must come from the same
+    // shared module ConstraintsEditor uses, not a component-local list.
+    const onChange = vi.fn();
+    const m = mount(<ObjectiveBuilder value="TotalDPS" onChange={onChange} />);
+    const field = m.container.querySelector<HTMLInputElement>('input[type="text"]')!;
+    const listId = field.getAttribute("list");
+    expect(listId).toBeTruthy();
+
+    const datalist = m.container.querySelector<HTMLDataListElement>(`datalist#${listId}`);
+    expect(datalist).not.toBeNull();
+    const options = [...datalist!.querySelectorAll("option")].map((o) => o.getAttribute("value"));
+    expect(options).toEqual(KNOWN_METRICS);
     m.unmount();
   });
 });
