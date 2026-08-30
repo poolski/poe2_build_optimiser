@@ -4,7 +4,13 @@
   "bootstrappedWithVersion": null,
   "adoptedAt": "2026-08-29",
   "adoptionMode": "map",
-  "migrations": [],
+  "migrations": [
+    {
+      "from": "1.9.0",
+      "to": "1.10.0",
+      "at": "2026-08-30"
+    }
+  ],
   "answers": {
     "projectName": "poe2-build-optimiser",
     "adoptionStrategy": "map-in-place",
@@ -20,13 +26,41 @@
       "appliedAt": "2026-08-29",
       "source": "shanraisshan/claude-code-best-practice",
       "items": [
-        {"category": "claudemd-section", "name": "Verification loop", "status": "applied"},
-        {"category": "claudemd-section", "name": "Working style", "status": "applied"},
-        {"category": "claudemd-section", "name": "Git & review", "status": "applied"},
-        {"category": "settings-permission", "name": ".claude/settings.json routine-loop allowlist", "status": "applied"},
-        {"category": "claude-rule", "name": ".claude/rules/pob-bridge.md", "status": "applied"},
-        {"category": "claude-rule", "name": ".claude/rules/core-engine.md", "status": "applied"},
-        {"category": "claude-rule", "name": ".claude/rules/docs-map.md", "status": "applied"}
+        {
+          "category": "claudemd-section",
+          "name": "Verification loop",
+          "status": "applied"
+        },
+        {
+          "category": "claudemd-section",
+          "name": "Working style",
+          "status": "applied"
+        },
+        {
+          "category": "claudemd-section",
+          "name": "Git & review",
+          "status": "applied"
+        },
+        {
+          "category": "settings-permission",
+          "name": ".claude/settings.json routine-loop allowlist",
+          "status": "applied"
+        },
+        {
+          "category": "claude-rule",
+          "name": ".claude/rules/pob-bridge.md",
+          "status": "applied"
+        },
+        {
+          "category": "claude-rule",
+          "name": ".claude/rules/core-engine.md",
+          "status": "applied"
+        },
+        {
+          "category": "claude-rule",
+          "name": ".claude/rules/docs-map.md",
+          "status": "applied"
+        }
       ]
     }
   ],
@@ -50,8 +84,7 @@
     "loop/maker.md",
     "loop/verifier.md",
     "loop/.gitignore",
-    "loop/run-loop.sh",
-    "loop/run-loop.ps1"
+    "loop/run-loop.sh"
   ],
   "adoptedFiles": {
     "CLAUDE.md": "instructions (project-specific; not tool-managed)",

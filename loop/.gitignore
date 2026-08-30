@@ -1,29 +1,7 @@
-# Loop runtime files (local, volatile)
-
-# Maker/verifier outputs and logs
-loop-*.txt
-loop-*.md
-loop-*.json
-*.loop
-
-# Temporary state
-.loop-state
-.loop-blocked
-.loop-last-run
-
-# Credentials and secrets
-.env.local
-credentials.json
-secrets/
-
-# Large artifacts (if maker generates large files)
-*.benchmark
-*.corpus.tar.gz
-node_modules/
-
-# OS temp files
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-*~
+# generated-by: groundrules v1.8.0
+# Loop working artifacts that should not be committed.
+# blocked.md and lessons.md ARE committed on purpose (durable loop memory) — not listed here.
+__pycache__/
+*.pyc
+*.log
+.loop-tmp/

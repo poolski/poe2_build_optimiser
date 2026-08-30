@@ -1,23 +1,75 @@
-#!/bin/bash
-# One-shot loop: run maker, then verifier, report results
-set -e
+#!/usr/bin/env bash
+# generated-by: groundrules v1.8.0
+#
+# run-loop.sh — the capped runner for the maker/verifier loop (the HIGH-FIDELITY executor).
+#
+# For a lighter, in-the-box loop on a single self-evident task, Claude Code's `/goal` is an alternative
+# (it judges the transcript rather than re-running the oracle) — see loop/README.md "Two ways to run".
+#
+# Delivery: Claude Code (drives `claude -p` headless). Harness portability is a separate milestone.
+#
+# It replays loop/LOOP.md against a FRESH agent each iteration until one of:
+#   - the agent reports "DONE: backlog empty" (natural stop), or
+#   - the hard MAX iteration ceiling is hit (anti-runaway — MANDATORY, not optional).
+#
+# The model forgets between iterations; the repo remembers. All loop logic lives in the Markdown
+# prompts (loop/LOOP.md, loop/maker.md, loop/verifier.md) — this script is the ONLY executable piece.
+#
+# Usage (run from the project root):
+#   bash loop/run-loop.sh [--max N] [--prompt path/to/LOOP.md] [--workdir DIR]
+#
+# Defaults: --max 5, --prompt <this script's dir>/LOOP.md, --workdir current directory.
 
-echo "=== Loop: One-shot run ==="
-echo "Starting at $(date)"
+set -euo pipefail
 
-# Run maker
-echo ""
-echo "[1/2] Running maker..."
-# Replace this with your actual maker command:
-# bash maker.sh  # or: ts-node maker.ts  # or: invoke your task here
-echo "TODO: Implement maker logic in loop/maker.md"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Run verifier
-echo ""
-echo "[2/2] Running verifier..."
-# Replace this with your actual verifier command:
-# bash verifier.sh  # or: ts-node verifier.ts  # or: validate results here
-echo "TODO: Implement verifier logic in loop/verifier.md"
+MAX=5                          # hard ceiling — the anti-runaway safety. There is no "unlimited".
+PROMPT="$SCRIPT_DIR/LOOP.md"
+WORKDIR="$(pwd)"
+DONE_MARKER="DONE: backlog empty"
 
-echo ""
-echo "=== Loop: Completed at $(date) ==="
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --max)     MAX="$2"; shift 2 ;;
+    --prompt)  PROMPT="$2"; shift 2 ;;
+    --workdir) WORKDIR="$2"; shift 2 ;;
+    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "unknown arg: $1" >&2; exit 2 ;;
+  esac
+done
+
+# Guard the cap: must be a positive integer, and refuse an absurd ceiling that defeats the purpose.
+if ! [[ "$MAX" =~ ^[0-9]+$ ]] || [[ "$MAX" -lt 1 ]]; then
+  echo "error: --max must be a positive integer (got '$MAX')" >&2; exit 2
+fi
+if [[ "$MAX" -gt 50 ]]; then
+  echo "error: --max $MAX exceeds the sanity ceiling of 50 (this is anti-runaway, on purpose)" >&2
+  exit 2
+fi
+
+if ! command -v claude >/dev/null 2>&1; then
+  echo "error: 'claude' CLI not found on PATH — this runner drives 'claude -p' headless." >&2
+  exit 127
+fi
+
+cd "$WORKDIR"
+echo "loop: workdir=$WORKDIR  prompt=$PROMPT  max=$MAX"
+
+for (( i=1; i<=MAX; i++ )); do
+  echo "──────── iteration $i / $MAX ────────"
+
+  # Each iteration is a FRESH headless agent invocation: no carried context, state read from disk.
+  # `|| true` so a non-zero exit on one iteration doesn't kill the loop before we inspect the output.
+  out="$(claude -p "$(cat "$PROMPT")" 2>&1 || true)"
+  printf '%s\n' "$out"
+
+  if printf '%s' "$out" | grep -qF "$DONE_MARKER"; then
+    echo "loop: natural stop — '$DONE_MARKER' at iteration $i."
+    exit 0
+  fi
+done
+
+echo "loop: hit MAX=$MAX without an empty backlog. Stopping (anti-runaway)."
+echo "loop: inspect loop/backlog.md (unchecked tasks) and loop/blocked.md (parked decisions)."
+exit 0
