@@ -103,7 +103,7 @@ describe("recentBuilds", () => {
   });
 
   it("does not throw when localStorage.setItem throws (quota exceeded)", () => {
-    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+    const spy = vi.spyOn(localStorage, "setItem").mockImplementation(() => {
       throw new DOMException("quota exceeded", "QuotaExceededError");
     });
     expect(() => saveRecentBuild(codeInput("a"), summary())).not.toThrow();
