@@ -1,11 +1,13 @@
 <!-- generated-by: groundrules v1.10.0 -->
-# LOOP — the fixed prompt, replayed each iteration
+# LOOP — do exactly this, now
 
-This is the prompt `loop/run-loop.sh` feeds to a **fresh** agent every iteration. It is intentionally
-fixed: the model forgets between iterations, the **repo remembers**. Everything you need is on disk —
-read it, don't rely on memory of a previous turn.
+You are a fresh agent, one iteration of an autonomous maker/verifier loop. This file is not
+background reading — it is your task for this turn, and you act on it immediately: no
+memory of any prior iteration carries over (the model forgets, the **repo remembers**), so
+read the state below, then execute the numbered steps. Do not ask what to do or wait for
+further input — begin now.
 
-> **Backlog ownership.** The loop reads `loop/backlog.md` — **never `PLAN.md` directly**. `PLAN.md` is
+> **Backlog ownership.** Read `loop/backlog.md` — **never `PLAN.md` directly**. `PLAN.md` is
 > the human's planning surface; `loop/backlog.md` holds only loop-safe tasks (atomic, verifiable,
 > invariant-aware). For now it is hand-filled; `/groundrules:realize` will populate it once it lands.
 
