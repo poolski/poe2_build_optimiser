@@ -18,6 +18,7 @@ import {
 } from "./viewport";
 import { scaleToSlider, sliderToScale, wheelZoom } from "./zoom";
 import { clickPick } from "./pick";
+import { menuActionsFor } from "./contextMenu";
 
 interface Props {
   minTree: MinTree;
@@ -30,10 +31,18 @@ interface Props {
   pickable?: Set<number>;
   /** "diff" (default) labels the overlay before→after; "select" labels it for anchor picking. */
   legend?: "diff" | "select";
+  /** Nodes offering the right-click menu; omitted ⇒ no custom menu (native browser menu shows). */
+  contextMenuNodes?: Set<number>;
+  /** Subset of `contextMenuNodes` currently frozen — controls Freeze vs. Unfreeze wording. */
+  frozenNodes?: Set<number>;
+  onFreeze?: (id: number) => void;
+  onUnfreeze?: (id: number) => void;
+  onAnchorForRollback?: (id: number) => void;
 }
 
 const HIT_RADIUS_PX = 26;
 const CLICK_SLOP_PX = 4;
+const EMPTY_FROZEN = new Set<number>();
 
 export default function TreeCanvas({
   minTree,
@@ -43,6 +52,11 @@ export default function TreeCanvas({
   onPick,
   pickable,
   legend = "diff",
+  contextMenuNodes,
+  frozenNodes,
+  onFreeze,
+  onUnfreeze,
+  onAnchorForRollback,
 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const indexRef = useRef<SpatialIndex | null>(null);
@@ -53,9 +67,28 @@ export default function TreeCanvas({
   const dirtyRef = useRef(true);
   const fittedRef = useRef(false);
   const dragRef = useRef<{ x: number; y: number; moved: number } | null>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
 
   const [scale, setScale] = useState(0.05);
   const [tip, setTip] = useState<{ id: number; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ id: number; x: number; y: number } | null>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    const dismissIfOutside = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setMenu(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    window.addEventListener("mousedown", dismissIfOutside);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", dismissIfOutside);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
 
   const diff = useMemo(
     () => ({ before: new Set(before), after: new Set(after), anchor }),
@@ -221,6 +254,22 @@ export default function TreeCanvas({
     if (id != null) onPick(id);
   };
 
+  const onContextMenu = (e: React.MouseEvent) => {
+    if (!contextMenuNodes) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const hit = pickAt(e.clientX - rect.left, e.clientY - rect.top);
+    if (hit == null || !contextMenuNodes.has(hit)) return;
+    e.preventDefault();
+    setMenu({ id: hit, x: e.clientX, y: e.clientY });
+  };
+
+  const runMenuAction = (action: "freeze" | "unfreeze" | "anchor", id: number) => {
+    if (action === "freeze") onFreeze?.(id);
+    else if (action === "unfreeze") onUnfreeze?.(id);
+    else onAnchorForRollback?.(id);
+    setMenu(null);
+  };
+
   const tipNode = tip ? minTree.nodesById.get(tip.id) ?? null : null;
   const range = rangeRef.current;
 
@@ -232,6 +281,7 @@ export default function TreeCanvas({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerLeave}
+        onContextMenu={onContextMenu}
       />
 
       <div className="canvas-legend">
@@ -291,6 +341,23 @@ export default function TreeCanvas({
             </div>
           ))}
         </div>
+      )}
+
+      {menu && contextMenuNodes?.has(menu.id) && (
+        <ul
+          ref={menuRef}
+          className="canvas-context-menu"
+          role="menu"
+          style={{ left: menu.x, top: menu.y }}
+        >
+          {menuActionsFor(menu.id, frozenNodes ?? EMPTY_FROZEN, !!onAnchorForRollback).map((item) => (
+            <li key={item.action}>
+              <button type="button" onClick={() => runMenuAction(item.action, menu.id)}>
+                {item.label}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
     </div>
   );
