@@ -28,6 +28,7 @@ export default defineConfig({
       "src/**/*.test.ts",
       "packages/*/src/**/*.test.ts",
       "packages/*/src/**/*.test.tsx",
+      "packages/*/scripts/**/*.test.mjs",
     ],
     exclude: [...configDefaults.exclude, "**/*.integration.test.ts"],
     environmentMatchGlobs: [["packages/web/**", "jsdom"]],
