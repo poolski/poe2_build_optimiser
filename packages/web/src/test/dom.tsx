@@ -39,6 +39,13 @@ export function mount(el: ReactElement): Mounted {
       act(fn);
     },
     async flush() {
+      // A macrotask tick first: jsdom fires `popstate` (from history.back()/forward()) as a
+      // queued task, not synchronously or as a microtask, so real browser-history navigation
+      // needs this to land before the promise rounds below settle its resulting state update.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
       // two rounds covers promise -> setState -> effect chains
       await act(async () => {
         await Promise.resolve();

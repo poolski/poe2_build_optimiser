@@ -56,6 +56,27 @@ describe("reducer: syncStep", () => {
     expect(next.step).toBe("results");
   });
 
+  it("falls back to config when targeting running without a job (build present)", () => {
+    // Regression: a stale "running" history entry (e.g. after "Start over" resets the job but
+    // browser history still has a "running" entry further back) must not render RunProgress for
+    // a job that no longer exists.
+    const withBuild = reducer(initialState, { type: "buildLoaded", build });
+    const next = reducer(withBuild, { type: "syncStep", step: "running" });
+    expect(next.step).toBe("config");
+  });
+
+  it("falls back to input when targeting running without a job or a build", () => {
+    const next = reducer(initialState, { type: "syncStep", step: "running" });
+    expect(next.step).toBe("input");
+  });
+
+  it("allows navigating to running once a job is present", () => {
+    const withBuild = reducer(initialState, { type: "buildLoaded", build });
+    const withJob = reducer(withBuild, { type: "jobStarted", jobId: "j1", startedAt: 0 });
+    const next = reducer(withJob, { type: "syncStep", step: "running" });
+    expect(next.step).toBe("running");
+  });
+
   it("clears any pending error", () => {
     const errored = reducer(initialState, { type: "jobError", message: "boom" });
     const next = reducer(errored, { type: "syncStep", step: "input" });

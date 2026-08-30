@@ -47,6 +47,7 @@ export const initialState: AppState = {
  * doesn't render a blank/broken screen. */
 function stepReady(state: AppState, step: Step): boolean {
   if (step === "config") return !!state.build;
+  if (step === "running") return !!state.job;
   if (step === "results") return !!state.result;
   return true;
 }

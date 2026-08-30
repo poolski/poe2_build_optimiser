@@ -260,6 +260,40 @@ describe("<App> wizard flow", () => {
     m.unmount();
   });
 
+  it("delegates the in-app Back button to real browser history instead of pushing forward", async () => {
+    // Regression: in-app Back used to dispatch a "back" action, which changed state.step and
+    // tripped the history-sync effect in *push* mode -- pushing a NEW forward history entry
+    // instead of consuming the entry that got us to the current step. That meant browser Back
+    // would then move the user *forward* again. In-app Back must delegate to history.back()
+    // and push nothing.
+    const m = mount(<App client={fakeClient()} />);
+
+    const textarea = m.container.querySelector("textarea")!;
+    m.act(() => setInput(textarea, "some-pob-code"));
+    m.act(() =>
+      click(
+        [...m.container.querySelectorAll("button")].find((b) => /load build/i.test(b.textContent ?? ""))!,
+      ),
+    );
+    await m.flush();
+    expect(m.container.textContent).toContain("Monk"); // now on config
+
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    const backSpy = vi.spyOn(window.history, "back").mockImplementation(() => {});
+    const backBtn = [...m.container.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Back",
+    )!;
+    m.act(() => click(backBtn));
+    await m.flush();
+
+    expect(backSpy).toHaveBeenCalled();
+    expect(pushSpy).not.toHaveBeenCalled();
+
+    pushSpy.mockRestore();
+    backSpy.mockRestore();
+    m.unmount();
+  });
+
   it("saves a loaded build to recent builds and reloads it via the recent list", async () => {
     localStorage.clear();
     const client = fakeClient();

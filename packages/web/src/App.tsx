@@ -35,9 +35,11 @@ export default function App({ client }: { client?: OptimiserClient }) {
   // a real Step, so the first render's effect run always performs its (replace) write.
   // A popstate handler sets this to the step it's requesting *before* dispatching, so if
   // `syncStep` resolves to that same step (the common case), the effect below sees no change
-  // and skips writing -- no loop. If `syncStep`'s fallback resolves to a *different* step than
-  // requested (no data for the requested step), the mismatch is still visible here, so the
-  // effect correctly fires and corrects the history entry to match what's actually rendered.
+  // and skips writing -- no loop. If `syncStep`'s fallback resolves to a step that's already the
+  // step currently rendered (e.g. a popstate targeting a step with no data, while already on the
+  // fallback step), `state.step` doesn't change either, so the effect does NOT fire and the
+  // stale/wrong history entry is left uncorrected -- it only gets fixed on the *next* real step
+  // transition (see the "still pushes the next forward transition" regression test below).
   const lastSyncedStepRef = useRef<Step | null>(null);
 
   useEffect(() => {
@@ -101,7 +103,7 @@ export default function App({ client }: { client?: OptimiserClient }) {
     unsubRef.current?.();
     unsubRef.current = null;
     if (state.job) void api.cancelJob(state.job.jobId).catch(() => {});
-    dispatch({ type: "back", to: "config" });
+    history.back();
   }, [api, state.job]);
 
   const restart = useCallback(() => {
@@ -148,7 +150,7 @@ export default function App({ client }: { client?: OptimiserClient }) {
           request={state.request}
           onChange={(patch) => dispatch({ type: "editRequest", patch })}
           onRun={run}
-          onBack={() => dispatch({ type: "back", to: "input" })}
+          onBack={() => history.back()}
           client={api}
           busy={busy}
         />
@@ -160,7 +162,7 @@ export default function App({ client }: { client?: OptimiserClient }) {
           baselineObjective={state.build?.baseline?.TotalDPS}
           error={state.error}
           onCancel={cancel}
-          onBack={() => dispatch({ type: "back", to: "config" })}
+          onBack={() => history.back()}
         />
       )}
 
