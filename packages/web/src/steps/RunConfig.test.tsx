@@ -18,6 +18,7 @@ function node(id: number, name: string): RenderNode {
     name,
     statLines: [],
     isAscendancy: false,
+    icon: "",
     conns: [],
   };
 }

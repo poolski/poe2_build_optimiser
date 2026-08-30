@@ -15,6 +15,7 @@ function node(partial: Partial<RenderNode> = {}): RenderNode {
     name: "n",
     statLines: [],
     isAscendancy: false,
+    icon: "",
     conns: [],
     ...partial,
   };

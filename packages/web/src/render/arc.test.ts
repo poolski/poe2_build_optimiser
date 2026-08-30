@@ -15,6 +15,7 @@ function node(id: number, x: number, y: number, partial: Partial<RenderNode> = {
     name: `n${id}`,
     statLines: [],
     isAscendancy: false,
+    icon: "",
     conns: [],
     ...partial,
   };
