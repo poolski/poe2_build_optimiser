@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import App from "./App";
 import type { OptimiserClient } from "./api";
 import { mockResult } from "./mock/mockClient";
@@ -52,6 +52,12 @@ function fakeClient(): OptimiserClient {
   };
 }
 
+// Same as fakeClient() but streamJob never calls onDone -- lets a test observe the wizard while
+// still on the "running" step, instead of jumping straight through to "results".
+function fakeClientNoAutoFinish(): OptimiserClient {
+  return { ...fakeClient(), streamJob: () => () => {} };
+}
+
 describe("<App> wizard flow", () => {
   it("walks input -> config -> running -> results with a fake client", async () => {
     const m = mount(<App client={fakeClient()} />);
@@ -78,6 +84,130 @@ describe("<App> wizard flow", () => {
     expect(m.container.textContent).toContain("Updated PoB code");
     expect(m.container.querySelector("textarea")!.value).toContain("MOCK_updated_pob_code");
 
+    m.unmount();
+  });
+
+  it("pushes a history entry on each forward step transition", async () => {
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    const m = mount(<App client={fakeClient()} />);
+    pushSpy.mockClear(); // ignore the initial-mount replaceState-driven render
+
+    const textarea = m.container.querySelector("textarea")!;
+    m.act(() => setInput(textarea, "some-pob-code"));
+    m.act(() =>
+      click(
+        [...m.container.querySelectorAll("button")].find((b) => /load build/i.test(b.textContent ?? ""))!,
+      ),
+    );
+    await m.flush();
+
+    expect(pushSpy).toHaveBeenCalledWith({ step: "config" }, "", "#config");
+    pushSpy.mockRestore();
+    m.unmount();
+  });
+
+  it("replaces the history entry on the initial mount, not push", () => {
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    const replaceSpy = vi.spyOn(window.history, "replaceState");
+    const m = mount(<App client={fakeClient()} />);
+
+    expect(replaceSpy).toHaveBeenCalledWith({ step: "input" }, "", "#input");
+    expect(pushSpy).not.toHaveBeenCalled();
+
+    pushSpy.mockRestore();
+    replaceSpy.mockRestore();
+    m.unmount();
+  });
+
+  it("steps back to input on a popstate event without re-pushing history", async () => {
+    const m = mount(<App client={fakeClient()} />);
+    const textarea = m.container.querySelector("textarea")!;
+    m.act(() => setInput(textarea, "some-pob-code"));
+    m.act(() =>
+      click(
+        [...m.container.querySelectorAll("button")].find((b) => /load build/i.test(b.textContent ?? ""))!,
+      ),
+    );
+    await m.flush();
+    expect(m.container.querySelector("textarea")).toBeFalsy(); // now on config, no paste box
+
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    m.act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { step: "input" } }));
+    });
+    await m.flush();
+
+    expect(m.container.querySelector("textarea")).toBeTruthy(); // back on the input step
+    expect(pushSpy).not.toHaveBeenCalled(); // popstate-driven change doesn't loop back into history
+    pushSpy.mockRestore();
+    m.unmount();
+  });
+
+  it("falls back safely when a popstate event targets a step with no data", async () => {
+    const m = mount(<App client={fakeClient()} />);
+    m.act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { step: "results" } }));
+    });
+    await m.flush();
+
+    expect(m.container.querySelector("textarea")).toBeTruthy(); // fell back to input, no crash
+    m.unmount();
+  });
+
+  it("replaces (not pushes) history when restarting from the results step", async () => {
+    const m = mount(<App client={fakeClient()} />);
+    const textarea = m.container.querySelector("textarea")!;
+    m.act(() => setInput(textarea, "some-pob-code"));
+    m.act(() =>
+      click(
+        [...m.container.querySelectorAll("button")].find((b) => /load build/i.test(b.textContent ?? ""))!,
+      ),
+    );
+    await m.flush();
+    const runBtn = [...m.container.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Run",
+    )!;
+    m.act(() => click(runBtn));
+    await m.flush();
+
+    const replaceSpy = vi.spyOn(window.history, "replaceState");
+    const restartBtn = [...m.container.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Start over",
+    )!;
+    m.act(() => click(restartBtn));
+    await m.flush();
+
+    expect(replaceSpy).toHaveBeenCalledWith({ step: "input" }, "", "#input");
+    replaceSpy.mockRestore();
+    m.unmount();
+  });
+
+  it("does not cancel the job when navigating away from 'running' via popstate", async () => {
+    const client = fakeClientNoAutoFinish();
+    const cancelSpy = vi.spyOn(client, "cancelJob");
+    const m = mount(<App client={client} />);
+
+    const textarea = m.container.querySelector("textarea")!;
+    m.act(() => setInput(textarea, "some-pob-code"));
+    m.act(() =>
+      click(
+        [...m.container.querySelectorAll("button")].find((b) => /load build/i.test(b.textContent ?? ""))!,
+      ),
+    );
+    await m.flush();
+    const runBtn = [...m.container.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Run",
+    )!;
+    m.act(() => click(runBtn));
+    await m.flush();
+    expect(m.container.textContent).toContain("Starting…"); // sanity: still on "running", stream never ticked
+
+    m.act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { step: "config" } }));
+    });
+    await m.flush();
+
+    expect(cancelSpy).not.toHaveBeenCalled();
     m.unmount();
   });
 });

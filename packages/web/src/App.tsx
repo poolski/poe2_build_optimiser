@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { BuildInput } from "@poe2/contract";
 import { ApiError, httpClient, type OptimiserClient } from "./api";
 import { makeMockClient } from "./mock/mockClient";
@@ -25,6 +25,37 @@ export default function App({ client }: { client?: OptimiserClient }) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const [busy, setBusy] = useState(false);
   const unsubRef = useRef<null | (() => void)>(null);
+
+  // "replace" on the very first render (don't leave a junk entry before any user action, and
+  // on restart -- see `restart()` below); "push" for every ordinary forward step transition.
+  const historyModeRef = useRef<"push" | "replace">("replace");
+  // Set true just before dispatching a popstate-driven `syncStep`, so the state->URL effect
+  // below skips writing back the entry the browser just navigated to (would otherwise loop).
+  const skipNextHistorySyncRef = useRef(false);
+
+  useEffect(() => {
+    if (skipNextHistorySyncRef.current) {
+      skipNextHistorySyncRef.current = false;
+      return;
+    }
+    const mode = historyModeRef.current;
+    historyModeRef.current = "push";
+    if (mode === "replace") {
+      history.replaceState({ step: state.step }, "", `#${state.step}`);
+    } else {
+      history.pushState({ step: state.step }, "", `#${state.step}`);
+    }
+  }, [state.step]);
+
+  useEffect(() => {
+    const onPopState = (e: PopStateEvent) => {
+      const step = (e.state as { step?: Step } | null)?.step ?? "input";
+      skipNextHistorySyncRef.current = true;
+      dispatch({ type: "syncStep", step });
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const loadBuild = useCallback(
     async (input: BuildInput) => {
@@ -69,6 +100,7 @@ export default function App({ client }: { client?: OptimiserClient }) {
   const restart = useCallback(() => {
     unsubRef.current?.();
     unsubRef.current = null;
+    historyModeRef.current = "replace";
     dispatch({ type: "reset" });
   }, []);
 
