@@ -47,7 +47,7 @@ test. See `docs/prd/web-ui-live-progress-view.md` for full context.
       `pe.workers` before every emitted progress event, for jobs with `parallelism > 1`. Out of
       scope: the frontend, the canvas.
 
-- [ ] **`RunProgress`: render one row per worker from `progress.workers[]`
+- [x] **`RunProgress`: render one row per worker from `progress.workers[]`
       (`packages/web/src/steps/RunProgress.tsx`).** Acceptance test:
       `npx vitest run packages/web/src/steps/RunProgress.test.tsx` → exit 0 = green.
       Behaviour: when `progress.workers` is present, render one element carrying class

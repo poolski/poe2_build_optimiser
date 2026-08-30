@@ -121,6 +121,16 @@ export default function RunProgress({ progress, baselineObjective, error, onCanc
         </dl>
       )}
 
+      {p?.workers && p.workers.length > 0 && (
+        <div className="workers" style={{ marginTop: 14 }}>
+          {p.workers.map((w) => (
+            <p key={w.slot} className="note worker-row">
+              Worker {w.slot}: {w.done} / {w.total}
+            </p>
+          ))}
+        </div>
+      )}
+
       <p className="note" style={{ marginTop: 12 }}>
         Cancel stops the run within one add-step (seconds) and frees the bridge slot, so you can
         re-submit a corrected config immediately.
