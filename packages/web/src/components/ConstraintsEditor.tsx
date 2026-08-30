@@ -3,6 +3,9 @@
 // (intake/web-ui/05-frontend.md screen 2, ConstraintsEditor).
 
 import { useState } from "react";
+import { mergeMetricOptions } from "../metrics/knownMetrics";
+
+const METRIC_LIST_ID = "constraint-metric-options";
 
 export interface ConstraintRow {
   metric: string;
@@ -58,6 +61,7 @@ export default function ConstraintsEditor({ onChange }: Props) {
   const [rows, setRows] = useState<ConstraintRow[]>([]);
   const [preserveText, setPreserveText] = useState("");
   const [minResistText, setMinResistText] = useState("");
+  const metricOptions = mergeMetricOptions();
 
   const emit = (r: ConstraintRow[], p: string, mr: string) => onChange(toValue(r, p, mr));
 
@@ -81,6 +85,12 @@ export default function ConstraintsEditor({ onChange }: Props) {
     <fieldset>
       <legend>Constraints</legend>
 
+      <datalist id={METRIC_LIST_ID}>
+        {metricOptions.map((m) => (
+          <option key={m} value={m} />
+        ))}
+      </datalist>
+
       {rows.map((r, i) => (
         <div className="row" key={i}>
           <label>
@@ -88,6 +98,7 @@ export default function ConstraintsEditor({ onChange }: Props) {
             <input
               type="text"
               aria-label={`constraint metric ${i + 1}`}
+              list={METRIC_LIST_ID}
               value={r.metric}
               onChange={(e) => setRow(i, { metric: e.target.value })}
             />

@@ -73,7 +73,7 @@ test. See `docs/prd/web-ui-live-progress-view.md` for full context.
       `buildStatsKeys` entries not already present, preserving `KNOWN_METRICS`'s order and case-
       sensitive de-duping. Out of scope: wiring this into any component (separate tasks below).
 
-- [ ] **Wire `ConstraintsEditor`'s metric field to the shared known-metrics list
+- [x] **Wire `ConstraintsEditor`'s metric field to the shared known-metrics list
       (`packages/web/src/components/ConstraintsEditor.tsx`).** Acceptance test:
       `npx vitest run packages/web/src/components/ConstraintsEditor.test.tsx` → exit 0 = green.
       Behaviour: each constraint row's metric `<input>` gets a `list="<id>"` attribute pointing
