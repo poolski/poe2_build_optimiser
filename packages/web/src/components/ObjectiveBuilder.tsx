@@ -5,6 +5,7 @@
 // (intake/web-ui/05-frontend.md screen 2, ObjectiveBuilder.)
 
 import { useState } from "react";
+import { KNOWN_METRICS } from "../metrics/knownMetrics";
 
 export type ObjectiveKind = "single" | "dps-ehp" | "blend";
 
@@ -156,12 +157,9 @@ export default function ObjectiveBuilder({ value, onChange }: Props) {
       )}
 
       <datalist id="metric-suggestions">
-        <option value="TotalDPS" />
-        <option value="TotalEHP" />
-        <option value="Life" />
-        <option value="EnergyShield" />
-        <option value="CombinedDPS" />
-        <option value="FullDPS" />
+        {KNOWN_METRICS.map((metric) => (
+          <option key={metric} value={metric} />
+        ))}
       </datalist>
       <p className="note">
         spec: <span className="mono">{value}</span>

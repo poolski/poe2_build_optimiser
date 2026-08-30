@@ -84,7 +84,7 @@ test. See `docs/prd/web-ui-live-progress-view.md` for full context.
       string). Out of scope: `ObjectiveBuilder`, sourcing build-specific stat keys into
       `mergeMetricOptions`'s argument, the freeze/anchor context menu, `TreeCanvas`.
 
-- [ ] **Refactor `ObjectiveBuilder`'s single-metric datalist onto the shared known-metrics list,
+- [x] **Refactor `ObjectiveBuilder`'s single-metric datalist onto the shared known-metrics list,
       dropping the invented names (`packages/web/src/components/ObjectiveBuilder.tsx`).**
       Acceptance test: `npx vitest run packages/web/src/components/ObjectiveBuilder.test.tsx` →
       exit 0 = green. Behaviour: the existing `list="metric-suggestions"` `<datalist>` (currently
