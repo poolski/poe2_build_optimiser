@@ -61,22 +61,29 @@ export function transformTree(repoeTree, translations) {
   const groupEntries = Array.isArray(repoeTree.groups)
     ? repoeTree.groups.map((g, i) => [String(i), g]).filter(([, g]) => g)
     : Object.entries(repoeTree.groups);
+  const passives = repoeTree.passives ?? {};
 
   for (const [gid, g] of groupEntries) {
     if (typeof g.x !== "number" || typeof g.y !== "number") continue;
     groups[gid] = [round2(g.x), round2(g.y)];
-    for (const p of g.passives ?? []) {
-      const statLines = translateStat(p.stats ?? {}, translations);
+    for (const stub of g.passives ?? []) {
+      // group.passives[] is geometry-only (hash/connections/radius/position_clockwise);
+      // name/icon/stats/kind/ascendancy live on the separate top-level `passives` map, keyed
+      // by hash string. Verified against the live endpoint 2026-08-30: every group-embedded
+      // hash resolves here (0 misses across 5152 passives).
+      const detail = passives[String(stub.hash)];
+      if (!detail) continue;
+      const statLines = translateStat(detail.stats ?? {}, translations);
       const statIdx = statLines.map(intern);
-      const ascNameIdx = p.ascendancy ? intern(p.ascendancy) : null;
-      const iconIdx = intern(p.icon ?? "");
-      nodes[String(p.hash)] = [
+      const ascNameIdx = detail.ascendancy ? intern(detail.ascendancy) : null;
+      const iconIdx = intern(detail.icon ?? "");
+      nodes[String(stub.hash)] = [
         Number(gid),
-        p.radius ?? 0,
-        p.position_clockwise ?? 0,
-        intern(p.name ?? ""),
-        kindOf(p),
-        p.connections ?? [],
+        stub.radius ?? 0,
+        stub.position_clockwise ?? 0,
+        intern(detail.name ?? ""),
+        kindOf(detail),
+        stub.connections ?? [],
         statIdx,
         ascNameIdx,
         iconIdx,

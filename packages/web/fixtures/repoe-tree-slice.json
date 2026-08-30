@@ -6,78 +6,68 @@
       "x": -8682.165,
       "y": -4609.875,
       "passives": [
-        {
-          "hash": 52,
-          "id": "passive_keystone_zealots_oath",
-          "name": "Zealot's Oath",
-          "icon": "Art/2DArt/SkillIcons/passives/liferegentoenergyshield.dds",
-          "is_notable": false,
-          "is_keystone": true,
-          "is_jewel_socket": false,
-          "radius": 0,
-          "position_clockwise": 0,
-          "connections": [39131],
-          "stats": { "keystone_zealots_oath": 1 }
-        }
+        { "hash": 52, "connections": [39131], "radius": 0, "position_clockwise": 0 }
       ]
     },
     "411": {
       "x": -5399.535,
       "y": 9533.465,
       "passives": [
-        {
-          "hash": 2491,
-          "id": "jewel_slot1974",
-          "name": "[Jewel] Socket",
-          "icon": "Art/2DArt/SkillIcons/passives/MasteryBlank.dds",
-          "is_notable": false,
-          "is_keystone": false,
-          "is_jewel_socket": true,
-          "radius": 1,
-          "position_clockwise": 10,
-          "connections": [28175],
-          "stats": {}
-        }
+        { "hash": 2491, "connections": [28175], "radius": 1, "position_clockwise": 10 }
       ]
     },
     "1068": {
       "x": 3249.415,
       "y": 4552.825,
       "passives": [
-        {
-          "hash": 4,
-          "id": "lightning14",
-          "name": "Shock Chance",
-          "icon": "Art/2DArt/SkillIcons/passives/LightningDamagenode.dds",
-          "is_notable": false,
-          "is_keystone": false,
-          "is_jewel_socket": false,
-          "radius": 0,
-          "position_clockwise": 0,
-          "connections": [11578],
-          "stats": { "shock_chance_+%": 15 }
-        }
+        { "hash": 4, "connections": [11578], "radius": 0, "position_clockwise": 0 }
       ]
     },
     "1551": {
       "x": 14561.814,
       "y": 5351.305,
       "passives": [
-        {
-          "hash": 30,
-          "id": "AscendancyRanger1Notable3",
-          "name": "Gathering Winds",
-          "icon": "Art/2DArt/SkillIcons/passives/DeadEye/DeadeyeTailwind.dds",
-          "ascendancy": "Ranger1",
-          "is_notable": true,
-          "is_keystone": false,
-          "is_jewel_socket": false,
-          "radius": 0,
-          "position_clockwise": 0,
-          "connections": [],
-          "stats": { "gain_tailwind_stack_on_skill_use": 1, "lose_all_tailwind_when_hit": 1 }
-        }
+        { "hash": 30, "connections": [], "radius": 0, "position_clockwise": 0 }
       ]
+    }
+  },
+  "passives": {
+    "52": {
+      "id": "passive_keystone_zealots_oath",
+      "name": "Zealot's Oath",
+      "icon": "Art/2DArt/SkillIcons/passives/liferegentoenergyshield.dds",
+      "is_notable": false,
+      "is_keystone": true,
+      "is_jewel_socket": false,
+      "stats": { "keystone_zealots_oath": 1 }
+    },
+    "2491": {
+      "id": "jewel_slot1974",
+      "name": "[Jewel] Socket",
+      "icon": "Art/2DArt/SkillIcons/passives/MasteryBlank.dds",
+      "is_notable": false,
+      "is_keystone": false,
+      "is_jewel_socket": true,
+      "stats": {}
+    },
+    "4": {
+      "id": "lightning14",
+      "name": "Shock Chance",
+      "icon": "Art/2DArt/SkillIcons/passives/LightningDamagenode.dds",
+      "is_notable": false,
+      "is_keystone": false,
+      "is_jewel_socket": false,
+      "stats": { "shock_chance_+%": 15 }
+    },
+    "30": {
+      "id": "AscendancyRanger1Notable3",
+      "name": "Gathering Winds",
+      "icon": "Art/2DArt/SkillIcons/passives/DeadEye/DeadeyeTailwind.dds",
+      "ascendancy": "Ranger1",
+      "is_notable": true,
+      "is_keystone": false,
+      "is_jewel_socket": false,
+      "stats": { "gain_tailwind_stack_on_skill_use": 1, "lose_all_tailwind_when_hit": 1 }
     }
   }
 }
