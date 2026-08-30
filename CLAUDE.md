@@ -36,6 +36,24 @@ Two corollaries:
   also validate against real PoB output using the recipe in `docs/beam-search/repro.md` before
   claiming it is done.
 
+## Invariants
+
+What the autonomous loop (`loop/`) must **never** break — the verifier checks the diff against this
+section every iteration, and the maker treats a would-be violation as a `BLOCKED`, not a judgement
+call.
+
+- `npm test` and `npx tsc --noEmit` stay green.
+- `src/core` never constructs a bridge — it only receives one; constructors stay at the edges
+  (the CLIs, `packages/api/src/server.ts`).
+- Determinism: same inputs produce the same plan — the candidate pool is id-sorted, ties broken
+  by node id.
+- No test that boots a real bridge or pool lands outside `*.integration.test.ts`.
+- No invented PoB stats, node data, or mechanics — verify against vendored data
+  (`docs/gotchas.md`) rather than assuming.
+
+> **Loop blocked?** On a parked decision, triage `loop/blocked.md` (re-decompose / decide → ADR /
+> fix interactively) — see `loop/README.md`.
+
 ## Dependencies
 
 - **Never run `npm audit fix --force`.** Five dev-toolchain advisories (vite / vitest / esbuild)
