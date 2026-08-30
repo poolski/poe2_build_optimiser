@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import type { BuildInput } from "@poe2/contract";
 import { ApiError, httpClient, type OptimiserClient } from "./api";
 import { makeMockClient } from "./mock/mockClient";
+import { loadRecentBuilds, saveRecentBuild, type RecentBuild } from "./recentBuilds";
 import { initialState, reducer, type Step } from "./state";
 import BuildInputStep from "./steps/BuildInput";
 import RunConfig from "./steps/RunConfig";
@@ -24,6 +25,7 @@ export default function App({ client }: { client?: OptimiserClient }) {
   const api = useMemo(() => client ?? (useReal ? httpClient : makeMockClient()), [client]);
   const [state, dispatch] = useReducer(reducer, initialState);
   const [busy, setBusy] = useState(false);
+  const [recent, setRecent] = useState<RecentBuild[]>(() => loadRecentBuilds());
   const unsubRef = useRef<null | (() => void)>(null);
 
   // "replace" on the very first render (don't leave a junk entry before any user action, and
@@ -65,6 +67,8 @@ export default function App({ client }: { client?: OptimiserClient }) {
       setBusy(true);
       try {
         const build = await api.createBuild(input);
+        saveRecentBuild(input, build);
+        setRecent(loadRecentBuilds());
         dispatch({ type: "buildLoaded", build });
       } catch (e) {
         dispatch({ type: "jobError", message: describe(e) });
@@ -129,7 +133,13 @@ export default function App({ client }: { client?: OptimiserClient }) {
       </nav>
 
       {state.step === "input" && (
-        <BuildInputStep onSubmit={loadBuild} busy={busy} error={state.error} />
+        <BuildInputStep
+          onSubmit={loadBuild}
+          busy={busy}
+          error={state.error}
+          recent={recent}
+          onSelectRecent={loadBuild}
+        />
       )}
 
       {state.step === "config" && state.build && (

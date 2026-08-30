@@ -4,6 +4,28 @@ import type { OptimiserClient } from "./api";
 import { mockResult } from "./mock/mockClient";
 import { click, mount, setInput } from "./test/dom";
 
+// Mock localStorage if it's not available (vitest jsdom setup issue -- same workaround as
+// recentBuilds.test.ts).
+if (typeof localStorage === "undefined") {
+  const store: Record<string, string> = {};
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => store[key] ?? null,
+    setItem: (key: string, value: string) => {
+      store[key] = value;
+    },
+    removeItem: (key: string) => {
+      delete store[key];
+    },
+    clear: () => {
+      Object.keys(store).forEach((key) => {
+        delete store[key];
+      });
+    },
+    length: 0,
+    key: () => null,
+  });
+}
+
 // A synchronous fake client -- drives the whole 4-step wizard without timers or a real server.
 function fakeClient(): OptimiserClient {
   return {
@@ -235,6 +257,39 @@ describe("<App> wizard flow", () => {
     await m.flush();
 
     expect(cancelSpy).not.toHaveBeenCalled();
+    m.unmount();
+  });
+
+  it("saves a loaded build to recent builds and reloads it via the recent list", async () => {
+    localStorage.clear();
+    const client = fakeClient();
+    const m = mount(<App client={client} />);
+
+    const textarea = m.container.querySelector("textarea")!;
+    m.act(() => setInput(textarea, "some-pob-code"));
+    m.act(() =>
+      click(
+        [...m.container.querySelectorAll("button")].find((b) => /load build/i.test(b.textContent ?? ""))!,
+      ),
+    );
+    await m.flush();
+    expect(m.container.textContent).toContain("Monk"); // now on config
+
+    // Go back to input (via the in-app Back button already wired in RunConfig) to see the list.
+    const backBtn = [...m.container.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Back",
+    )!;
+    m.act(() => click(backBtn));
+    await m.flush();
+
+    expect(m.container.textContent).toContain("Recent builds");
+    const recentRow = [...m.container.querySelectorAll("button")].find((b) =>
+      /Monk.*lvl 90/.test(b.textContent ?? ""),
+    )!;
+    m.act(() => click(recentRow));
+    await m.flush();
+
+    expect(m.container.textContent).toContain("Monk"); // reloaded straight back to config
     m.unmount();
   });
 });
