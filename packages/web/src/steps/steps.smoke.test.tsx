@@ -56,6 +56,31 @@ describe("BuildInput", () => {
     expect(btn.disabled).toBe(true);
     m.unmount();
   });
+
+  it("renders recent builds and reloads one on click", () => {
+    const onSubmit = vi.fn();
+    const onSelectRecent = vi.fn();
+    const recent = [
+      { input: { kind: "pobCode" as const, code: "abc" }, label: "Ranger (Deadeye) · lvl 92", savedAt: 1 },
+      { input: { kind: "xml" as const, xml: "<PathOfBuilding/>" }, label: "Witch · lvl 88", savedAt: 2 },
+    ];
+    const m = mount(<BuildInput onSubmit={onSubmit} recent={recent} onSelectRecent={onSelectRecent} />);
+    expect(m.container.textContent).toContain("Ranger (Deadeye) · lvl 92");
+    expect(m.container.textContent).toContain("Witch · lvl 88");
+
+    const row = [...m.container.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === "Ranger (Deadeye) · lvl 92",
+    )!;
+    m.act(() => click(row));
+    expect(onSelectRecent).toHaveBeenCalledWith({ kind: "pobCode", code: "abc" });
+    m.unmount();
+  });
+
+  it("renders nothing extra when there are no recent builds", () => {
+    const m = mount(<BuildInput onSubmit={vi.fn()} recent={[]} />);
+    expect(m.container.textContent).not.toContain("Recent builds");
+    m.unmount();
+  });
 });
 
 describe("RunConfig", () => {
