@@ -63,7 +63,7 @@ test. See `docs/prd/web-ui-live-progress-view.md` for full context.
       its `name` and `scoreDelta`. When `topNodes` is absent or empty, render no `top-nodes`
       element. Out of scope: the worker rows, the sparkline, the canvas.
 
-- [ ] **Add a shared known-metrics module (`packages/web/src/metrics/knownMetrics.ts`).**
+- [x] **Add a shared known-metrics module (`packages/web/src/metrics/knownMetrics.ts`).**
       Acceptance test: `npx vitest run packages/web/src/metrics/knownMetrics.test.ts` → exit 0 =
       green. Behaviour: export `KNOWN_METRICS: string[]` — exactly
       `["TotalDPS", "TotalEHP", "Life", "Mana", "EnergyShield", "FireResist"]` (real names already
