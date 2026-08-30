@@ -32,21 +32,10 @@ stays out of the tree). Provenance and design rationale live in git history and 
 
 ## Up next
 
-- [supervised] `PobBridgePool.acquireParallel`'s one-line `onShardProgress` passthrough
-  (`packages/pob-bridge/src/pool.ts`) has no fast-unit coverage — `pool.ts` has no fake-slot test
-  harness (only `pool.integration.test.ts`, real LuaJIT). Covered transitively by
-  `parallel.test.ts` (the callback contract) and `registry.test.ts` (the merge at the API layer);
-  the one line connecting them is unverified except by eye or an integration run
-  (docs/prd/web-ui-live-progress-view.md)
-- [supervised] `RunProgress.tsx`: `bestObjective` sparkline — needs a history-tracking design
-  decision the PRD doesn't settle (component-local state vs. a new prop from the parent) and
-  stateful re-render test tooling not yet used in this test file
-  (docs/prd/web-ui-live-progress-view.md)
-- [supervised] Highlight top-N nodes on the shipped `06` canvas — PRD's own validation is
-  "visual check", no acceptance test specified yet (docs/prd/web-ui-live-progress-view.md)
-- [supervised] End-to-end live-progress check against a real bridge, pool size 2, screenshot —
-  manual/E2E by nature; conflicts with the real-bridge-only-when-asked rule
-  (docs/prd/web-ui-live-progress-view.md)
+- [supervised] Progress view extras: `bestObjective` sparkline, canvas top-N highlight, and the
+  real-bridge end-to-end check — split from the live-progress-view PRD per
+  [ADR-0013](docs/decisions/0013-close-out-live-progress-view-prd-defer-remaining-scope.md)
+  (docs/prd/web-ui-progress-view-extras.md)
 
 Candidates and deferred work live in [`docs/ROADMAP.md`](docs/ROADMAP.md) — an item moves up
 here when it is actively picked up.
@@ -65,6 +54,11 @@ dropped.
   list rather than typing/configuring it.
 - [ ] **Drop MinResist constraint** — resists mostly come from gear, not the skill tree, so
   MinResist doesn't pull its weight as a constraint. *(decision?)*
+- [ ] **Back navigation between wizard steps** — at every step except the first, let the user
+  go back to the previous step (including after calculations) to adjust things instead of
+  restarting the flow. *(build?)*
+- [ ] **Persist recent build uploads** — uploaded XMLs/parsed codes should be persisted so the
+  user can select from recents.
 
 ## Waiting / blocked
 
@@ -81,6 +75,9 @@ dropped.
   `docs/ROADMAP.md` entry (2026-08-29)
 - [x] `RunProgress.tsx`: per-worker rows and top-5 promising-nodes list, looped end-to-end via
   `/groundrules:realize` + `run-loop.sh` (2026-08-30)
+- [x] Fast-unit coverage for `PobBridgePool.acquireParallel`'s `onShardProgress` passthrough —
+  `packages/pob-bridge/src/pool.test.ts`, mocking `PobBridge` (no LuaJIT); behaviour was already
+  correct, the gap was only coverage (2026-08-30)
 
 ---
 

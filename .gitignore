@@ -2,5 +2,11 @@ node_modules/
 dist/
 *.log
 
+# Global gitignore has a blanket `docs/**` (meant for docs/superpowers/ only, but written too
+# broadly). This repo commits docs/ -- override it here, keep docs/superpowers/ itself excluded.
+!docs/
+!docs/**
+docs/superpowers/
+
 # Compiled native Lua modules (macOS/Linux) -- rebuilt from source via `npm run build:native`.
 packages/pob-bridge/native/

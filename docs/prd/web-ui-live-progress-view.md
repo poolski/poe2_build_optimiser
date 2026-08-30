@@ -5,7 +5,12 @@
 > builds the right thing — not a coherent surprise. Validate it (and answer the open questions)
 > before any code. Update it if the scope shifts.
 
-**Date**: 2026-08-29 · **Status**: draft — on [`docs/ROADMAP.md`](../ROADMAP.md) § Next up
+**Date**: 2026-08-29 · **Status**: shipped (partial) — per-worker rows and top-N node list are on
+`main` (`PLAN.md`, 2026-08-30). The `bestObjective` sparkline, canvas top-N highlight, and
+end-to-end check were split out per
+[ADR-0013](../decisions/0013-close-out-live-progress-view-prd-defer-remaining-scope.md) to
+[`docs/prd/web-ui-progress-view-extras.md`](web-ui-progress-view-extras.md); this PRD's remaining
+sections describe that unshipped scope for historical reference only.
 
 ## Problem
 
@@ -141,6 +146,26 @@ Ordered steps, each with a validation point.
   reorders evaluation; the fast suite still passes because it uses fake bridges.
   *Mitigation*: step 3's byte-equal test plus an explicit "no `await` gates a branch" review
   check; run the real-bridge bench once before calling it done.
+- **Per-depth denominator reset reads as "stuck" or "broken."** `estimatedTotal` is scoped to one
+  add-loop depth's candidate pool, not the run — total recomputes for the whole run is
+  inherently unknown up front (open-ended add-loop depth × k-sweep). The bar climbs toward 100%,
+  snaps back to 0% at the next depth or `k-sweep` iteration, with no visual cue distinguishing a
+  denominator reset from a stall. *Early signal*: step 7's manual check doesn't currently require
+  crossing a depth or k boundary while watching the bar — a single-depth extend-mode run would
+  pass step 7 while missing this entirely. *Mitigation*: either segment the bar per depth/k
+  (sub-label "depth 3: 12/20" distinct from run position) instead of implying a single run-wide
+  fraction, or make step 7 explicitly watch the bar across ≥2 depth transitions and 1 k-sweep
+  boundary and confirm it never appears to move backward.
+- **Global cumulative `rate` mixes phases with very different per-recompute cost.** `rate =
+  buildOutputs / elapsedS` (`RunProgress.tsx`) is averaged since job start across `baseline` →
+  `regret-probe` → `add-loop` → `k-sweep`, phases whose recompute cost differs substantially (one
+  cheap `baseline` call vs. a `k-sweep` iteration re-running the whole add-loop). Any
+  time-remaining a user infers from `count / rate` is skewed by whichever phase dominated the
+  average so far, not the phase currently running. *Early signal*: compare `rate` sampled just
+  after `baseline` completes against `rate` sampled mid-`add-loop` on one real repro run — a >2x
+  difference confirms the number misleads. *Mitigation*: reset the rate's elapsed/count baseline
+  at each phase transition, or drop `rate` as a standalone figure and always pair it with the
+  current phase name so users don't extrapolate it across phase boundaries.
 
 ## Open questions
 

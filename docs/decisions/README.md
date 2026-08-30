@@ -32,7 +32,7 @@ state live in `PLAN.md`, `intake/beam-search-design.md`, and `intake/web-ui/`.
 ## Index
 
 | # | Title | Status | Date |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | 0000 | Template | — | — |
 | [0001](0001-pob-is-the-fitness-oracle.md) | Path of Building stays the fitness oracle | Accepted | 2026-08-28 |
 | [0002](0002-passive-tree-only-scope.md) | Scope is the passive tree only | Accepted | 2026-08-28 |
@@ -46,3 +46,4 @@ state live in `PLAN.md`, `intake/beam-search-design.md`, and `intake/web-ui/`.
 | [0010](0010-stylised-canvas-and-node-list-diff.md) | Result rendering: stylised tree canvas + node-list diff, both in v1 | Accepted (art clause superseded by 0012) | 2026-08-28 |
 | [0011](0011-parallelism-defaults-to-half-cores.md) | Pool size and job parallelism default to half the host's cores | Accepted | 2026-08-29 |
 | [0012](0012-repoe-fork-asset-source.md) | RePoE-fork is the web render layer's asset source | Accepted | 2026-08-29 |
+| [0013](0013-close-out-live-progress-view-prd-defer-remaining-scope.md) | Close out live-progress-view PRD; defer sparkline, canvas highlight, and e2e check to a new feature | Accepted | 2026-08-30 |

@@ -9,18 +9,20 @@ priority order, with the bar each one has to clear.
 
 ## Next up
 
-### Live progress view in the web UI
+### Progress view extras: sparkline, canvas highlight, e2e check
 
-Make a running optimise job legible: per-shard worker rows, the top-N promising nodes for the
-current add-step, and a `bestObjective` sparkline, instead of only a rising recompute counter.
+Per-shard worker rows and the top-N promising-nodes list shipped (`PLAN.md`, 2026-08-30). Three
+follow-ons remain: a `bestObjective` sparkline, highlighting the top-N nodes on the shipped `06`
+canvas, and a real-bridge end-to-end validation run.
 
-- **Spec:** [`docs/prd/web-ui-live-progress-view.md`](prd/web-ui-live-progress-view.md) — PRD
-  written (draft), not built.
-- **Blocked on:** the PRD's open questions, chiefly what a "worker" is on screen — parallelism
-  lives entirely inside `ParallelBridge` (batch sharding, zero `src/core` knowledge), so
-  per-worker *current candidate* state is not reachable from `beamAddLoop` as the PRD assumed.
-  Resolve that before step 2.
-- **Effort:** moderate — touches contract, core tick sites, API relay, and `RunProgress.tsx`.
+- **Spec:** [`docs/prd/web-ui-progress-view-extras.md`](prd/web-ui-progress-view-extras.md) — PRD
+  written (draft), not built. Split from the now-closed
+  [`web-ui-live-progress-view.md`](prd/web-ui-live-progress-view.md) per
+  [ADR-0013](decisions/0013-close-out-live-progress-view-prd-defer-remaining-scope.md).
+- **Blocked on:** the PRD's open questions — sparkline state ownership (component-local vs. a new
+  prop) and a concrete acceptance test for the canvas highlight (currently only "visual check").
+- **Effort:** small-moderate — `RunProgress.tsx` sparkline, an additive canvas layer, and a
+  manual e2e pass.
 
 ### Bench sweep for a default `beamWidth > 1`
 
