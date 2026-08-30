@@ -38,9 +38,6 @@ stays out of the tree). Provenance and design rationale live in git history and 
   `parallel.test.ts` (the callback contract) and `registry.test.ts` (the merge at the API layer);
   the one line connecting them is unverified except by eye or an integration run
   (docs/prd/web-ui-live-progress-view.md)
-- [loop] `RunProgress.tsx`: per-worker rows (slot · done/total) and top-5 promising-nodes list —
-  realized 2026-08-30, red acceptance tests in `RunProgress.test.tsx`, tasks in
-  `loop/backlog.md` (docs/prd/web-ui-live-progress-view.md)
 - [supervised] `RunProgress.tsx`: `bestObjective` sparkline — needs a history-tracking design
   decision the PRD doesn't settle (component-local state vs. a new prop from the parent) and
   stateful re-render test tooling not yet used in this test file
@@ -82,6 +79,8 @@ dropped.
 - [x] Triaged the live-progress-view idea into a PRD
   ([`docs/prd/web-ui-live-progress-view.md`](docs/prd/web-ui-live-progress-view.md)) and a
   `docs/ROADMAP.md` entry (2026-08-29)
+- [x] `RunProgress.tsx`: per-worker rows and top-5 promising-nodes list, looped end-to-end via
+  `/groundrules:realize` + `run-loop.sh` (2026-08-30)
 
 ---
 
