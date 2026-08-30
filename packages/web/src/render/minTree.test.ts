@@ -79,3 +79,30 @@ describe("parseMinTree on the shipped tree-0_5.min.json", () => {
     expect(known(fixture.afterConnected)).toBeGreaterThan(0.9);
   });
 });
+
+describe("parseMinTree stays backward-tolerant of a tuple without iconIdx", () => {
+  it("defaults RenderNode.icon to empty string", () => {
+    const old = {
+      meta: { treeVersion: "0_5" },
+      bounds: { minX: 0, minY: 0, maxX: 10, maxY: 10 },
+      constants: { orbitRadii: [0], skillsPerOrbit: [1], PSSCentreInnerRadius: 0 },
+      strings: ["A Node"],
+      groups: { "1": [0, 0] },
+      nodes: { "1": [1, 0, 0, 0, 0, []] }, // 6 elements, no statIdx/ascNameIdx/iconIdx
+    };
+    const tree = parseMinTree(old);
+    expect(tree.nodesById.get(1)?.icon).toBe("");
+  });
+
+  it("falls back to a zero rect when there are zero nodes and no src.bounds", () => {
+    const empty = {
+      meta: { treeVersion: "0_5" },
+      constants: { orbitRadii: [0], skillsPerOrbit: [1], PSSCentreInnerRadius: 0 },
+      strings: [],
+      groups: {},
+      nodes: {},
+    };
+    const tree = parseMinTree(empty);
+    expect(tree.bounds).toEqual({ minX: 0, minY: 0, maxX: 0, maxY: 0 });
+  });
+});

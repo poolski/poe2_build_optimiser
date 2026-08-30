@@ -4,7 +4,7 @@
 // deliberately NOT ported.
 //
 // min-tree node tuple (see meta.nodeFields):
-//   [group, orbit, orbitIndex, nameIdx, kind, conns[], statIdx[]?, ascNameIdx?]
+//   [group, orbit, orbitIndex, nameIdx, kind, conns[], statIdx[]?, ascNameIdx?, iconIdx?]
 // kind: 0 normal | 1 notable | 2 keystone | 3 jewel | 4 attribute
 // A node with ascNameIdx (tuple[7]) is an ascendancy node -> excluded from the main render pass.
 
@@ -12,13 +12,13 @@ import { KINDS, type MinTree, type NodeKind, type RenderNode, type WorldRect } f
 
 interface RawMinTree {
   meta: { treeVersion: string };
-  bounds: WorldRect;
+  bounds?: WorldRect;
   constants: { orbitRadii: number[]; skillsPerOrbit: number[]; PSSCentreInnerRadius: number };
   strings: string[];
   groups: Record<string, [number, number]>;
   nodes: Record<
     string,
-    [number, number, number, number, number, number[], number[]?, number?]
+    [number, number, number, number, number, number[], number[]?, (number | null)?, number?]
   >;
   nodeFlags: Record<string, { ascStart?: boolean; classesStart?: string[] }>;
 }
@@ -56,10 +56,11 @@ export function parseMinTree(raw: unknown): MinTree {
     const id = Number(nid);
     const [group, orbit, orbitIndex, nameIdx, kind, conns] = t;
     const ascNameIdx = t[7];
-    if (ascNameIdx !== undefined) continue; // ascendancy node -- not in the main render pass
+    if (ascNameIdx !== undefined && ascNameIdx !== null) continue; // ascendancy node -- not in the main render pass
     const g = groups.get(group);
     if (!g) continue; // orphan-group reference; can't place it
     const statIdx = t[6] ?? [];
+    const iconIdx = t[8];
     const { x, y } = nodePosition(g.x, g.y, orbit, orbitIndex, orbitRadii, skillsPerOrbit);
     nodesById.set(id, {
       id,
@@ -73,6 +74,7 @@ export function parseMinTree(raw: unknown): MinTree {
       statLines: statIdx.map((i) => src.strings[i] ?? "").filter(Boolean),
       isAscendancy: false,
       conns: conns ?? [],
+      icon: iconIdx !== undefined ? (src.strings[iconIdx] ?? "") : "",
     });
   }
 
@@ -106,7 +108,7 @@ export function parseMinTree(raw: unknown): MinTree {
   const bounds: WorldRect =
     nodesById.size > 0
       ? { minX: minX - pad, minY: minY - pad, maxX: maxX + pad, maxY: maxY + pad }
-      : src.bounds;
+      : (src.bounds ?? { minX: 0, minY: 0, maxX: 0, maxY: 0 });
 
   const ids = [...nodesById.keys()].sort((a, b) => a - b);
   return { treeVersion: src.meta.treeVersion, nodesById, adjacency, groups, bounds, ids };

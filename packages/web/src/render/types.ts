@@ -21,6 +21,9 @@ export interface RenderNode {
   /** ascendancy nodes are excluded from the main render pass; kept for completeness */
   isAscendancy: boolean;
   conns: number[];
+  /** interned icon path (e.g. "Art/2DArt/SkillIcons/passives/..."); "" if the source tuple
+   *  predates the iconIdx field or the node has no icon. */
+  icon: string;
 }
 
 export type GroupMap = Map<number, { x: number; y: number }>;
