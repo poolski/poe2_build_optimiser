@@ -29,15 +29,17 @@ export default function App({ client }: { client?: OptimiserClient }) {
   // "replace" on the very first render (don't leave a junk entry before any user action, and
   // on restart -- see `restart()` below); "push" for every ordinary forward step transition.
   const historyModeRef = useRef<"push" | "replace">("replace");
-  // Set true just before dispatching a popstate-driven `syncStep`, so the state->URL effect
-  // below skips writing back the entry the browser just navigated to (would otherwise loop).
-  const skipNextHistorySyncRef = useRef(false);
+  // The step value browser history already reflects. Starts at a sentinel that can never equal
+  // a real Step, so the first render's effect run always performs its (replace) write.
+  // A popstate handler sets this to the step it's requesting *before* dispatching, so if
+  // `syncStep` resolves to that same step (the common case), the effect below sees no change
+  // and skips writing -- no loop. If `syncStep`'s fallback resolves to a *different* step than
+  // requested (no data for the requested step), the mismatch is still visible here, so the
+  // effect correctly fires and corrects the history entry to match what's actually rendered.
+  const lastSyncedStepRef = useRef<Step | null>(null);
 
   useEffect(() => {
-    if (skipNextHistorySyncRef.current) {
-      skipNextHistorySyncRef.current = false;
-      return;
-    }
+    if (state.step === lastSyncedStepRef.current) return;
     const mode = historyModeRef.current;
     historyModeRef.current = "push";
     if (mode === "replace") {
@@ -45,12 +47,13 @@ export default function App({ client }: { client?: OptimiserClient }) {
     } else {
       history.pushState({ step: state.step }, "", `#${state.step}`);
     }
+    lastSyncedStepRef.current = state.step;
   }, [state.step]);
 
   useEffect(() => {
     const onPopState = (e: PopStateEvent) => {
       const step = (e.state as { step?: Step } | null)?.step ?? "input";
-      skipNextHistorySyncRef.current = true;
+      lastSyncedStepRef.current = step;
       dispatch({ type: "syncStep", step });
     };
     window.addEventListener("popstate", onPopState);

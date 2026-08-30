@@ -154,6 +154,33 @@ describe("<App> wizard flow", () => {
     m.unmount();
   });
 
+  it("still pushes the next forward transition after a popstate that resolves to the current step", async () => {
+    // Regression: a popstate event requesting a step with no data falls back (via syncStep) to
+    // "input" -- which, on a fresh mount, is already the currently-displayed step. That must not
+    // leave the history-sync bookkeeping stuck thinking the *next* real transition is a no-op.
+    const m = mount(<App client={fakeClient()} />);
+
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    m.act(() => {
+      window.dispatchEvent(new PopStateEvent("popstate", { state: { step: "results" } }));
+    });
+    await m.flush();
+    expect(m.container.querySelector("textarea")).toBeTruthy(); // still on input (fallback, unchanged)
+
+    const textarea = m.container.querySelector("textarea")!;
+    m.act(() => setInput(textarea, "some-pob-code"));
+    m.act(() =>
+      click(
+        [...m.container.querySelectorAll("button")].find((b) => /load build/i.test(b.textContent ?? ""))!,
+      ),
+    );
+    await m.flush();
+
+    expect(pushSpy).toHaveBeenCalledWith({ step: "config" }, "", "#config");
+    pushSpy.mockRestore();
+    m.unmount();
+  });
+
   it("replaces (not pushes) history when restarting from the results step", async () => {
     const m = mount(<App client={fakeClient()} />);
     const textarea = m.container.querySelector("textarea")!;
