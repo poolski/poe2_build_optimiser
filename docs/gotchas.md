@@ -130,6 +130,20 @@ connected by construction.
 delta — `get_stats_from({ allocSet, removeIds }).pointsSpent === added − freed`. Zero extra
 points means `AllocNode` dragged in no unaccounted connectors.
 
+## RePoE-fork's passive tree splits geometry from detail across two top-level maps
+
+`https://repoe-fork.github.io/poe2/passive_skill_trees/Default.min.json`'s `groups[i].passives[]`
+entries are **geometry-only stubs** — `hash`, `connections`, `radius`, `position_clockwise`,
+`splines`. None of `name`, `icon`, `stats`, `is_notable`, `is_keystone`, `is_jewel_socket`, or
+`ascendancy` live there. That detail lives in a **separate top-level `passives` object**, keyed by
+the same hash (as a string). Every group-embedded hash resolves in `passives` (verified against
+the live endpoint 2026-08-30: 5152/5152, zero misses) — the transform must merge the two by hash,
+not assume one nested object carries everything. `packages/web/scripts/fetch-tree.mjs`'s
+`transformTree` does this merge; a first-draft version assumed inline detail and silently produced
+nameless, statless, `"normal"`-kind nodes for the entire tree (caught by a corpus spot-check
+before the file was committed, not by the unit tests — the hand-built fixture had made the same
+wrong assumption).
+
 ## `removeIds` + `allocSet` may legitimately overlap
 
 Same change. It is tempting to reject or dedupe an id appearing in both lists as caller error.
