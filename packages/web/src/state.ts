@@ -41,10 +41,29 @@ export const initialState: AppState = {
   request: initialRequest(),
 };
 
+/** Whether `step`'s data prerequisite is met -- mirrors the `&&`-guards App.tsx already renders
+ * on (`state.build` for config, `state.result` for results). Used by the `syncStep` action so a
+ * popstate event that targets a step whose data was never loaded (or was cleared by `reset`)
+ * doesn't render a blank/broken screen. */
+function stepReady(state: AppState, step: Step): boolean {
+  if (step === "config") return !!state.build;
+  if (step === "running") return !!state.job;
+  if (step === "results") return !!state.result;
+  return true;
+}
+
+/** The latest step whose data prerequisite currently holds, used as the `syncStep` fallback. */
+function latestReadyStep(state: AppState): Step {
+  if (state.result) return "results";
+  if (state.build) return "config";
+  return "input";
+}
+
 export type Action =
   | { type: "buildLoaded"; build: BuildSummary }
   | { type: "editRequest"; patch: Partial<OptimiseRequestInput> }
   | { type: "back"; to: Step }
+  | { type: "syncStep"; step: Step }
   | { type: "jobStarted"; jobId: string; startedAt: number }
   | { type: "progress"; event: ProgressEvent }
   | { type: "jobDone"; result: OptimiseResultDTO }
@@ -65,6 +84,10 @@ export function reducer(state: AppState, action: Action): AppState {
       return { ...state, request: { ...state.request, ...action.patch } };
     case "back":
       return { ...state, step: action.to, error: undefined };
+    case "syncStep": {
+      const step = stepReady(state, action.step) ? action.step : latestReadyStep(state);
+      return { ...state, step, error: undefined };
+    }
     case "jobStarted":
       return {
         ...state,

@@ -99,7 +99,8 @@ label {
   margin-bottom: 8px;
 }
 
-label > span.lbl {
+label > span.lbl,
+span.lbl {
   display: block;
   color: var(--text-dim);
   font-size: 12px;

@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import type { BuildInput } from "@poe2/contract";
 import { ApiError, httpClient, type OptimiserClient } from "./api";
 import { makeMockClient } from "./mock/mockClient";
+import { loadRecentBuilds, saveRecentBuild, type RecentBuild } from "./recentBuilds";
 import { initialState, reducer, type Step } from "./state";
 import BuildInputStep from "./steps/BuildInput";
 import RunConfig from "./steps/RunConfig";
@@ -24,13 +25,52 @@ export default function App({ client }: { client?: OptimiserClient }) {
   const api = useMemo(() => client ?? (useReal ? httpClient : makeMockClient()), [client]);
   const [state, dispatch] = useReducer(reducer, initialState);
   const [busy, setBusy] = useState(false);
+  const [recent, setRecent] = useState<RecentBuild[]>(() => loadRecentBuilds());
   const unsubRef = useRef<null | (() => void)>(null);
+
+  // "replace" on the very first render (don't leave a junk entry before any user action, and
+  // on restart -- see `restart()` below); "push" for every ordinary forward step transition.
+  const historyModeRef = useRef<"push" | "replace">("replace");
+  // The step value browser history already reflects. Starts at a sentinel that can never equal
+  // a real Step, so the first render's effect run always performs its (replace) write.
+  // A popstate handler sets this to the step it's requesting *before* dispatching, so if
+  // `syncStep` resolves to that same step (the common case), the effect below sees no change
+  // and skips writing -- no loop. If `syncStep`'s fallback resolves to a step that's already the
+  // step currently rendered (e.g. a popstate targeting a step with no data, while already on the
+  // fallback step), `state.step` doesn't change either, so the effect does NOT fire and the
+  // stale/wrong history entry is left uncorrected -- it only gets fixed on the *next* real step
+  // transition (see the "still pushes the next forward transition" regression test below).
+  const lastSyncedStepRef = useRef<Step | null>(null);
+
+  useEffect(() => {
+    if (state.step === lastSyncedStepRef.current) return;
+    const mode = historyModeRef.current;
+    historyModeRef.current = "push";
+    if (mode === "replace") {
+      history.replaceState({ step: state.step }, "", `#${state.step}`);
+    } else {
+      history.pushState({ step: state.step }, "", `#${state.step}`);
+    }
+    lastSyncedStepRef.current = state.step;
+  }, [state.step]);
+
+  useEffect(() => {
+    const onPopState = (e: PopStateEvent) => {
+      const step = (e.state as { step?: Step } | null)?.step ?? "input";
+      lastSyncedStepRef.current = step;
+      dispatch({ type: "syncStep", step });
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const loadBuild = useCallback(
     async (input: BuildInput) => {
       setBusy(true);
       try {
         const build = await api.createBuild(input);
+        saveRecentBuild(input, build);
+        setRecent(loadRecentBuilds());
         dispatch({ type: "buildLoaded", build });
       } catch (e) {
         dispatch({ type: "jobError", message: describe(e) });
@@ -63,12 +103,13 @@ export default function App({ client }: { client?: OptimiserClient }) {
     unsubRef.current?.();
     unsubRef.current = null;
     if (state.job) void api.cancelJob(state.job.jobId).catch(() => {});
-    dispatch({ type: "back", to: "config" });
+    history.back();
   }, [api, state.job]);
 
   const restart = useCallback(() => {
     unsubRef.current?.();
     unsubRef.current = null;
+    historyModeRef.current = "replace";
     dispatch({ type: "reset" });
   }, []);
 
@@ -94,7 +135,13 @@ export default function App({ client }: { client?: OptimiserClient }) {
       </nav>
 
       {state.step === "input" && (
-        <BuildInputStep onSubmit={loadBuild} busy={busy} error={state.error} />
+        <BuildInputStep
+          onSubmit={loadBuild}
+          busy={busy}
+          error={state.error}
+          recent={recent}
+          onSelectRecent={loadBuild}
+        />
       )}
 
       {state.step === "config" && state.build && (
@@ -103,7 +150,7 @@ export default function App({ client }: { client?: OptimiserClient }) {
           request={state.request}
           onChange={(patch) => dispatch({ type: "editRequest", patch })}
           onRun={run}
-          onBack={() => dispatch({ type: "back", to: "input" })}
+          onBack={() => history.back()}
           client={api}
           busy={busy}
         />
@@ -115,7 +162,7 @@ export default function App({ client }: { client?: OptimiserClient }) {
           baselineObjective={state.build?.baseline?.TotalDPS}
           error={state.error}
           onCancel={cancel}
-          onBack={() => dispatch({ type: "back", to: "config" })}
+          onBack={() => history.back()}
         />
       )}
 

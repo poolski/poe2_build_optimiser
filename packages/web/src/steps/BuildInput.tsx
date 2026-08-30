@@ -3,14 +3,17 @@
 
 import { useRef, useState } from "react";
 import type { BuildInput as BuildInputDTO } from "@poe2/contract";
+import type { RecentBuild } from "../recentBuilds";
 
 interface Props {
   onSubmit: (input: BuildInputDTO) => void;
   busy?: boolean;
   error?: string;
+  recent?: RecentBuild[];
+  onSelectRecent?: (input: BuildInputDTO) => void;
 }
 
-export default function BuildInput({ onSubmit, busy, error }: Props) {
+export default function BuildInput({ onSubmit, busy, error, recent, onSelectRecent }: Props) {
   const [tab, setTab] = useState<"paste" | "upload">("paste");
   const [code, setCode] = useState("");
   const [xml, setXml] = useState("");
@@ -34,6 +37,20 @@ export default function BuildInput({ onSubmit, busy, error }: Props) {
 
   return (
     <div className="panel">
+      {recent && recent.length > 0 && (
+        <div className="recent-builds" style={{ marginBottom: 14 }}>
+          <span className="lbl">Recent builds</span>
+          <ul style={{ listStyle: "none", padding: 0, margin: "4px 0" }}>
+            {recent.map((r, i) => (
+              <li key={i}>
+                <button className="ghost" onClick={() => onSelectRecent?.(r.input)}>
+                  {r.label}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="tabs">
         <button className={tab === "paste" ? "on" : ""} onClick={() => setTab("paste")}>
           Paste code
