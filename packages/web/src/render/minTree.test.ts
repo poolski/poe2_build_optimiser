@@ -78,6 +78,10 @@ describe("parseMinTree on the shipped tree-0_5.min.json", () => {
     expect(known(fixture.before)).toBeGreaterThan(0.9);
     expect(known(fixture.afterConnected)).toBeGreaterThan(0.9);
   });
+  it("populates RenderNode.icon from the tuple's iconIdx", () => {
+    const withIcon = [...tree.nodesById.values()].find((n) => n.icon !== "");
+    expect(withIcon).toBeDefined();
+  });
 });
 
 describe("parseMinTree stays backward-tolerant of a tuple without iconIdx", () => {
