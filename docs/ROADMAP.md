@@ -49,15 +49,20 @@ extra runtime?
 - **Effort:** moderate — it is a measurement task, the beam already supports `W > 1`.
 - **Blocked on:** nothing.
 
-### RePoE-fork asset source
+### RePoE-fork asset source (phase 4: gem data + icons)
 
-Bring passive-tree geometry, node art, and stat text in from a RePoE fork so the web canvas can
-render real node artwork, gem icons in sockets, and per-node stat text.
+Phases 1-3 shipped 2026-08-30: `fetch-tree.mjs` replaces `gen-min-tree.mjs` (tree data, stat
+text, `iconIdx`), `fetch-icons.mjs` fetches + commits the ~578 unique node PNGs (577/578 — one
+upstream asset, `Storm Weaver.dds`, 500s on the image host regardless of encoding; the node
+renders via the dot fallback until that's fixed upstream), and the canvas now draws real node art
+at icon/full LOD (`iconCache.ts`, `draw.ts`) with the stylised dot as the low-LOD tier and
+unloaded-image fallback. Remaining: the gem data + icon asset layer (`fetch-gems.mjs`), data +
+icons only, no gem UI.
 
-- **Spec:** [`intake/web-ui/10-repoe-asset-source.md`](../intake/web-ui/10-repoe-asset-source.md) — written, not built.
-- **Decided:** [ADR-0012](decisions/0012-repoe-fork-asset-source.md) — adopted 2026-08-29,
-  superseding ADR-0010's "stylised only, no GGG art".
-- **Blocked on:** nothing; the calc engine stays on PoB either way.
+- **Spec:** [`intake/web-ui/10-repoe-asset-source.md`](../intake/web-ui/10-repoe-asset-source.md)
+  — phases 1-3 built, phase 4 not started.
+- **Decided:** [ADR-0012](decisions/0012-repoe-fork-asset-source.md).
+- **Blocked on:** nothing.
 
 ## Deferred — pick up only on demand
 
