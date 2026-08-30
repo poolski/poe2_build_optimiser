@@ -32,20 +32,9 @@ stays out of the tree). Provenance and design rationale live in git history and 
 
 ## Up next
 
-- [supervised] `TreeCanvas` right-click context menu (Freeze / Unfreeze / Anchor for rollback) —
-  no existing test scaffold for canvas hit-testing/pointer interactions, and menu
-  positioning/dismiss behaviour isn't spec'd — needs an interactive design pass, not a loop
-  (docs/prd/web-ui-configure-step-pickers.md)
-- [supervised] `RunConfig` wiring for the context-menu actions + freeze-list name resolution —
-  depends on the `TreeCanvas` menu's shape, and how the node-name lookup threads into
-  `RunConfig` is still an open implementation choice, not a pre-specified one
-  (docs/prd/web-ui-configure-step-pickers.md)
 - [supervised] End-to-end Configure-step manual check (pick metrics, freeze/unfreeze/anchor,
   confirm request payload) — manual by nature, no automated stop condition
   (docs/prd/web-ui-configure-step-pickers.md)
-
-3 tasks from this PRD's metric-picker scope are looped instead — see `loop/backlog.md`
-(shared known-metrics module, `ConstraintsEditor` wiring, `ObjectiveBuilder` refactor).
 
 Candidates and deferred work live in [`docs/ROADMAP.md`](docs/ROADMAP.md) — an item moves up
 here when it is actively picked up.
@@ -74,6 +63,11 @@ dropped.
 
 ## Recently done
 
+- [x] `TreeCanvas` right-click context menu (Freeze / Unfreeze / Anchor for rollback), threaded
+  through `TreePreview` into `RunConfig`; freeze list renders resolved node names (raw-id
+  fallback) and is itself clickable to unfreeze. Added a canvas 2D context + `ResizeObserver`
+  test stub (`test/dom.tsx`) so `TreeCanvas` can be mounted under jsdom
+  (docs/prd/web-ui-configure-step-pickers.md) (2026-08-30)
 - [x] Migrated `docs/status.md` into this file; `status.md` deleted, references repointed here
   (2026-08-29)
 - [x] Extracted forward-looking roadmap items to `docs/ROADMAP.md`; PLAN.md keeps the now-work
@@ -86,6 +80,10 @@ dropped.
 - [x] Fast-unit coverage for `PobBridgePool.acquireParallel`'s `onShardProgress` passthrough —
   `packages/pob-bridge/src/pool.test.ts`, mocking `PobBridge` (no LuaJIT); behaviour was already
   correct, the gap was only coverage (2026-08-30)
+- [x] Shared known-metrics module + hybrid `<datalist>` picker wired into `ConstraintsEditor`
+  and `ObjectiveBuilder` (dropping two invented metric names, `CombinedDPS`/`FullDPS`, found
+  along the way in shipped code) — looped end-to-end via `/groundrules:realize` +
+  `run-loop.sh` (2026-08-30)
 
 ---
 

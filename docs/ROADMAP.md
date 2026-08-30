@@ -24,21 +24,20 @@ canvas, and a real-bridge end-to-end validation run.
 - **Effort:** small-moderate — `RunProgress.tsx` sparkline, an additive canvas layer, and a
   manual e2e pass.
 
-### Configure step: node freeze/unfreeze/anchor menu, constraint/objective metric pickers
+### Configure step: manual end-to-end check
 
-Three backlog ideas bundled into one release: a right-click context menu on `TreeCanvas` nodes
-(Freeze / Unfreeze / Anchor for rollback), a hybrid metric picker for `ConstraintsEditor` rows,
-and a hybrid objective-metric picker in `ObjectiveBuilder` — replacing today's blind free-text
-entry for all three.
+The whole PRD is now built (`PLAN.md`, 2026-08-30): the metric-picker half (shared known-metrics
+module backing a hybrid `<datalist>` picker in `ConstraintsEditor` and `ObjectiveBuilder`) and
+the `TreeCanvas` right-click context menu (Freeze / Unfreeze / Anchor for rollback) with the
+`RunConfig` wiring + clickable freeze-list name resolution behind it. Only the manual
+Configure-step walkthrough (pick metrics, freeze/unfreeze/anchor, confirm the request payload,
+screenshot in the PR) remains, tracked `[supervised]` in `PLAN.md`.
 
 - **Spec:** [`docs/prd/web-ui-configure-step-pickers.md`](prd/web-ui-configure-step-pickers.md) —
-  PRD written, open questions resolved (2026-08-30), not built. Bundled per
+  all build steps done except the manual check. Bundled per
   [ADR-0014](decisions/0014-bundle-configure-step-ui-ideas-into-one-feature-release.md).
-- **Blocked on:** nothing — ready to build. Metric source is a vendored static list merged with
-  live baseline stats; pickers stay hybrid (autocomplete + free text); freeze-list names resolve
-  via the same node-data source `NodeDiff.tsx` uses.
-- **Effort:** small-moderate — two component swaps (`ConstraintsEditor`, `ObjectiveBuilder`), a
-  3-action context menu on `TreeCanvas`, and threading a node-name lookup into `RunConfig`.
+- **Blocked on:** nothing — manual by nature, no automated stop condition.
+- **Effort:** small — a single browser walkthrough.
 
 ### Bench sweep for a default `beamWidth > 1`
 
