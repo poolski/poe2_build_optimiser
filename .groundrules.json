@@ -81,6 +81,7 @@
     "docs/ROADMAP.md",
     "docs/PROCESS.md",
     "loop/README.md",
+    "loop/LOOP.md",
     "loop/maker.md",
     "loop/verifier.md",
     "loop/.gitignore",
