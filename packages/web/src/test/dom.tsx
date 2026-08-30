@@ -65,3 +65,36 @@ export function setInput(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelect
 export function click(el: Element): void {
   el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 }
+
+export function rightClick(el: Element, opts: { clientX?: number; clientY?: number } = {}): void {
+  el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, ...opts }));
+}
+
+/**
+ * jsdom implements neither canvas 2D contexts nor ResizeObserver. TreeCanvas needs both just to
+ * mount (rAF draw loop, ResizeObserver-driven sizing) -- stub the exact surface draw.ts uses so
+ * canvas-based components can be mounted and interacted with under jsdom.
+ */
+export function stubCanvas(): void {
+  if (!("ResizeObserver" in globalThis)) {
+    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+  }
+  HTMLCanvasElement.prototype.getContext = (() => ({
+    fillStyle: "",
+    strokeStyle: "",
+    lineWidth: 0,
+    globalAlpha: 1,
+    fillRect() {},
+    beginPath() {},
+    arc() {},
+    moveTo() {},
+    lineTo() {},
+    stroke() {},
+    fill() {},
+    setTransform() {},
+  })) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+}
