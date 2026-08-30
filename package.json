@@ -25,9 +25,11 @@
     "dev:web": "npm run dev -w @poe2/web",
     "dev": "concurrently -k -n api,web \"npm:dev:api\" \"npm:dev:web\"",
     "test": "vitest run",
-    "test:integration": "vitest run --config vitest.integration.config.ts"
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:e2e:web": "playwright test --config packages/web/playwright.config.ts"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@types/node": "^22.0.0",
     "concurrently": "^10.0.5",
     "ts-node": "^10.9.2",

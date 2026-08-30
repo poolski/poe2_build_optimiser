@@ -10,3 +10,7 @@ docs/superpowers/
 
 # Compiled native Lua modules (macOS/Linux) -- rebuilt from source via `npm run build:native`.
 packages/pob-bridge/native/
+
+# Playwright E2E run artifacts (packages/web/playwright.config.ts).
+packages/web/test-results/
+packages/web/playwright-report/
