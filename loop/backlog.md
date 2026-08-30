@@ -55,7 +55,7 @@ test. See `docs/prd/web-ui-live-progress-view.md` for full context.
       absent or empty, render no `worker-row` elements. Out of scope: the top-N nodes list, the
       sparkline, the canvas.
 
-- [ ] **`RunProgress`: render the top-N candidate nodes from `progress.topNodes[]`
+- [x] **`RunProgress`: render the top-N candidate nodes from `progress.topNodes[]`
       (`packages/web/src/steps/RunProgress.tsx`).** Acceptance test:
       `npx vitest run packages/web/src/steps/RunProgress.test.tsx` → exit 0 = green.
       Behaviour: when `progress.topNodes` is present, render a `top-nodes` list in array order

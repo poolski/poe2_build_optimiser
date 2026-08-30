@@ -131,6 +131,17 @@ export default function RunProgress({ progress, baselineObjective, error, onCanc
         </div>
       )}
 
+      {p?.topNodes && p.topNodes.length > 0 && (
+        <ul className="top-nodes" style={{ marginTop: 14 }}>
+          {p.topNodes.map((n) => (
+            <li key={n.id}>
+              {n.name}: {n.scoreDelta >= 0 ? "+" : ""}
+              {n.scoreDelta}
+            </li>
+          ))}
+        </ul>
+      )}
+
       <p className="note" style={{ marginTop: 12 }}>
         Cancel stops the run within one add-step (seconds) and frees the bridge slot, so you can
         re-submit a corrected config immediately.
