@@ -87,11 +87,26 @@ interface CandidateBatchResult {
 	results: unknown[];
 }
 
+/** One shard's dispatch/settle progress, fired at dispatch (`done: 0`) and again at settle
+ *  (`done === total`). `slot` is the index within `ParallelBridge.slots` -- stable for the whole
+ *  run, per the PRD's "worker identity" decision (docs/prd/web-ui-live-progress-view.md). */
+export interface ShardProgress {
+	slot: number;
+	done: number;
+	total: number;
+}
+
 /** A PobBridgeClient backed by N leased slots (packages/pob-bridge/src/pool.ts's
  *  `PobBridgePool.lease`), all with the same build loaded. Construct one per run; dispose the
  *  underlying lease (not this object -- it has no state of its own) when the run finishes. */
 export class ParallelBridge implements PobBridgeClient {
-	constructor(private readonly slots: readonly PooledBridge[]) {
+	constructor(
+		private readonly slots: readonly PooledBridge[],
+		/** Fired at dispatch and settle of each shard, purely for progress reporting -- never
+		 *  awaited, never allowed to affect recombination. A throwing observer is swallowed, same
+		 *  contract as core's `onProgress` (see src/core/optimiseTree.ts). */
+		private readonly onShardProgress?: (update: ShardProgress) => void,
+	) {
 		if (slots.length === 0) {
 			throw new Error("ParallelBridge needs at least one slot");
 		}
@@ -153,11 +168,24 @@ export class ParallelBridge implements PobBridgeClient {
 		}
 
 		const settled = await Promise.all(
-			chunks.map((chunk, i) => this.slots[i].call<CandidateBatchResult>(method, { ...params, nodeIds: chunk })),
+			chunks.map(async (chunk, i) => {
+				this.reportShardProgress({ slot: i, done: 0, total: chunk.length });
+				const result = await this.slots[i].call<CandidateBatchResult>(method, { ...params, nodeIds: chunk });
+				this.reportShardProgress({ slot: i, done: chunk.length, total: chunk.length });
+				return result;
+			}),
 		);
 
 		const results: unknown[] = [];
 		for (const shard of settled) results.push(...shard.results);
 		return { results };
+	}
+
+	private reportShardProgress(update: ShardProgress): void {
+		try {
+			this.onShardProgress?.(update);
+		} catch {
+			// Progress reporting is best-effort; never let it affect dispatch or recombination.
+		}
 	}
 }

@@ -710,6 +710,21 @@ describe("optimiseTree (progress + cancellation)", () => {
 		expect(seen.at(-1)).toBe(result.buildOutputCount);
 	});
 
+	it("a normal onProgress reading ev.workers / ev.topNodes does not change the result", async () => {
+		const clean = await optimiseTree(walkBridge(), WALK_OPTS);
+		const seen: unknown[] = [];
+		const withReader = await optimiseTree(walkBridge(), {
+			...WALK_OPTS,
+			onProgress: (ev) => {
+				// Reading these optional fields (present or not) must not perturb the run --
+				// they are supplied by the API layer today, not the core, but the core must stay
+				// inert regardless of what a UI consumer does with the event it's handed.
+				seen.push(ev.workers, ev.topNodes);
+			},
+		});
+		expect(withReader).toEqual(clean);
+	});
+
 	it("a throwing onProgress does not change the result and does not reject", async () => {
 		const clean = await optimiseTree(walkBridge(), WALK_OPTS);
 		const withThrower = await optimiseTree(walkBridge(), {

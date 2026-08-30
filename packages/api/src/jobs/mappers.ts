@@ -228,6 +228,8 @@ export function normalizeProgress(
 	if (anyEv.kTotal !== undefined) pe.kTotal = anyEv.kTotal;
 	if (anyEv.candidatesScored !== undefined) pe.candidatesScored = anyEv.candidatesScored;
 	if (anyEv.candidatesTotal !== undefined) pe.candidatesTotal = anyEv.candidatesTotal;
+	if (anyEv.workers !== undefined) pe.workers = anyEv.workers;
+	if (anyEv.topNodes !== undefined) pe.topNodes = anyEv.topNodes;
 	if (anyEv.note !== undefined) pe.note = anyEv.note;
 	return pe;
 }

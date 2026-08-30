@@ -33,6 +33,15 @@ export const ProgressEvent = z.object({
   candidatesScored: z.number().int().optional(),
   candidatesTotal: z.number().int().optional(),
   note: z.string().optional(),
+  /** Per-shard progress of the parallel candidate-evaluator (phase 1.5). A "worker" is a leased
+   * bridge-pool slot working a contiguous chunk of the batch, not a single candidate. */
+  workers: z
+    .array(z.object({ slot: z.number().int(), done: z.number().int(), total: z.number().int() }))
+    .optional(),
+  /** Ranked candidate nodes for the current add-step, most promising first. Fixed at 5 entries. */
+  topNodes: z
+    .array(z.object({ id: z.string(), name: z.string(), scoreDelta: z.number() }))
+    .optional(),
   /** Added by the API from job start. */
   elapsedMs: z.number().int(),
 });

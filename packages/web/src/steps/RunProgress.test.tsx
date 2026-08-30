@@ -40,6 +40,41 @@ describe("<RunProgress>", () => {
     const html = render({ bestObjective: 15000 }, { baselineObjective: 12000 });
     expect(html).toContain("vs baseline");
   });
+  it("renders one row per worker with slot progress", () => {
+    const html = render({
+      workers: [
+        { slot: 0, done: 3, total: 7 },
+        { slot: 1, done: 5, total: 5 },
+      ],
+    });
+    expect(html).toContain("worker-row");
+    expect(html).toContain("3 / 7");
+    expect(html).toContain("5 / 5");
+  });
+
+  it("omits the workers section when workers is absent", () => {
+    const html = render({ workers: undefined });
+    expect(html).not.toContain("worker-row");
+  });
+
+  it("renders the top-N candidate nodes ranked most-promising first", () => {
+    const html = render({
+      topNodes: [
+        { id: "101", name: "Iron Reflexes", scoreDelta: 42.5 },
+        { id: "205", name: "Bloodletting", scoreDelta: 12.1 },
+      ],
+    });
+    const html2 = html;
+    expect(html2).toContain("top-nodes");
+    expect(html2.indexOf("Iron Reflexes")).toBeLessThan(html2.indexOf("Bloodletting"));
+    expect(html2).toContain("42.5");
+  });
+
+  it("omits the top-nodes section when topNodes is absent", () => {
+    const html = render({ topNodes: undefined });
+    expect(html).not.toContain("top-nodes");
+  });
+
   it("renders an error state with a back button", () => {
     const html = renderToStaticMarkup(
       <RunProgress error="LuaJIT worker died" onCancel={() => {}} onBack={() => {}} />,

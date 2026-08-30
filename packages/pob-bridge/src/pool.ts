@@ -16,7 +16,7 @@ export function defaultPoolSize(): number {
 	const cores = typeof os.availableParallelism === "function" ? os.availableParallelism() : os.cpus().length;
 	return Math.max(1, Math.floor((Number.isFinite(cores) && cores > 0 ? cores : 2) / 2));
 }
-import { ParallelBridge } from "./parallel";
+import { ParallelBridge, type ShardProgress } from "./parallel";
 
 export interface PobBridgePoolOptions {
 	/** Warm children to keep. Default: POOL_SIZE env, else `defaultPoolSize()`. Min 1. */
@@ -161,9 +161,9 @@ export class PobBridgePool {
 	 *  1-slot `ParallelBridge` just routes every call straight through); packages/api's job runner
 	 *  uses this for any job whose decided parallelism is `> 1` and keeps plain `acquire()` for the
 	 *  common `n === 1` case. */
-	async acquireParallel(n: number): Promise<PooledBridge> {
+	async acquireParallel(n: number, onShardProgress?: (update: ShardProgress) => void): Promise<PooledBridge> {
 		const lease = await this.lease(n);
-		const bridge = new ParallelBridge(lease.slots);
+		const bridge = new ParallelBridge(lease.slots, onShardProgress);
 		let released = false;
 		return {
 			call: <T>(method: string, params?: Record<string, unknown>): Promise<T> => {

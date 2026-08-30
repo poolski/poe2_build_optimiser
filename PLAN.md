@@ -32,17 +32,18 @@ stays out of the tree). Provenance and design rationale live in git history and 
 
 ## Up next
 
-- [supervised] Wire a `ParallelBridge` shard-observer callback into the `beamAddLoop` tick sites
-  to populate `workers[]` — real design work across `packages/pob-bridge` and `src/core`, not
-  loop-safe (docs/prd/web-ui-live-progress-view.md)
-- [supervised] Extend the "throwing `onProgress`" determinism test to cover reading
-  `workers[]`/`topNodes[]` — blocked on the shard-observer wiring above landing first, or the
-  test can only assert against fields that don't exist yet (docs/prd/web-ui-live-progress-view.md)
-- [supervised] `RunProgress.tsx`: per-worker rows (slot · done/total) — needs an interactive look
-  at the component before committing to test shape (docs/prd/web-ui-live-progress-view.md)
-- [supervised] `RunProgress.tsx`: top-5 promising-nodes list — same reason as worker rows
+- [supervised] `PobBridgePool.acquireParallel`'s one-line `onShardProgress` passthrough
+  (`packages/pob-bridge/src/pool.ts`) has no fast-unit coverage — `pool.ts` has no fake-slot test
+  harness (only `pool.integration.test.ts`, real LuaJIT). Covered transitively by
+  `parallel.test.ts` (the callback contract) and `registry.test.ts` (the merge at the API layer);
+  the one line connecting them is unverified except by eye or an integration run
   (docs/prd/web-ui-live-progress-view.md)
-- [supervised] `RunProgress.tsx`: `bestObjective` sparkline — same reason as worker rows
+- [loop] `RunProgress.tsx`: per-worker rows (slot · done/total) and top-5 promising-nodes list —
+  realized 2026-08-30, red acceptance tests in `RunProgress.test.tsx`, tasks in
+  `loop/backlog.md` (docs/prd/web-ui-live-progress-view.md)
+- [supervised] `RunProgress.tsx`: `bestObjective` sparkline — needs a history-tracking design
+  decision the PRD doesn't settle (component-local state vs. a new prop from the parent) and
+  stateful re-render test tooling not yet used in this test file
   (docs/prd/web-ui-live-progress-view.md)
 - [supervised] Highlight top-N nodes on the shipped `06` canvas — PRD's own validation is
   "visual check", no acceptance test specified yet (docs/prd/web-ui-live-progress-view.md)
@@ -59,7 +60,14 @@ Raw ideas, captured before they're lost (e.g. via `/groundrules:idea`). Not yet 
 gets triaged later → a **decision** (ADR), a **build** (PRD), a **milestone** (ROADMAP), or
 dropped.
 
-- [ ] *(nothing to triage)*
+- [ ] **Freeze nodes from tree explorer** — add a right-click context menu to the Configure
+  tree explorer to freeze nodes. *(build?)*
+- [ ] **Dropdown metric picker in constraint builder** — let users pick constraint metrics from
+  a dropdown instead of typing them blind, since they don't know what's available.
+- [ ] **Selectable objective metric** — let the user pick the single objective metric from a
+  list rather than typing/configuring it.
+- [ ] **Drop MinResist constraint** — resists mostly come from gear, not the skill tree, so
+  MinResist doesn't pull its weight as a constraint. *(decision?)*
 
 ## Waiting / blocked
 

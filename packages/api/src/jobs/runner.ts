@@ -8,6 +8,7 @@
 // the bridge either way, so a size-2 pool is never blocked by a zombie job.
 
 import type { OptimiseRequest, RecommendRequest } from "@poe2/contract";
+import type { ShardProgress } from "@poe2/pob-bridge";
 import type { StoredBuild } from "../builds/store";
 import type { BridgeLease, BridgeSource } from "../builds/store";
 import { optimiseTree as realOptimiseTree, recommendTree as realRecommendTree } from "../core";
@@ -59,13 +60,28 @@ export async function runJob(job: JobState, deps: RunnerDeps): Promise<void> {
 		// accounting and this call agree on exactly how many slots this job needs -- see
 		// registry.ts's file header. Plain acquire() for the common (and today's only default)
 		// parallelism-1 case keeps that path free of the lease/ParallelBridge machinery entirely.
-		lease = job.parallelism > 1 ? await deps.source.acquireParallel(job.parallelism) : await deps.source.acquire();
+		// Latest known chunk progress per leased slot, updated by ParallelBridge's shard observer
+		// (packages/pob-bridge/src/parallel.ts). Merged into every emitted event below -- core
+		// itself never populates `workers[]` (docs/prd/web-ui-live-progress-view.md's step-1
+		// decision keeps phase 1.5 entirely a pob-bridge concern, zero src/core changes).
+		const workers: ShardProgress[] = [];
+		const onShardProgress = (update: ShardProgress) => {
+			const i = workers.findIndex((w) => w.slot === update.slot);
+			if (i >= 0) workers[i] = update;
+			else workers.push(update);
+		};
+
+		lease =
+			job.parallelism > 1
+				? await deps.source.acquireParallel(job.parallelism, onShardProgress)
+				: await deps.source.acquire();
 		await lease.call("load_build_xml", { xml: build.xml });
 		await lease.call("reset_metrics");
 
 		const onProgress = (ev: OptimiseProgress | RecommendProgress) => {
 			if (job.abort.signal.aborted) return;
 			const pe = normalizeProgress(ev, job.jobId, Date.now() - (job.startedAt ?? Date.now()));
+			if (workers.length > 0) pe.workers = workers.map((w) => ({ ...w }));
 			job.lastProgress = pe;
 			job.emitter.emit("progress", pe);
 		};

@@ -1,6 +1,6 @@
 // Shared fakes for the fast suite -- no LuaJIT. Not a *.test.ts so vitest does not collect it.
 
-import type { PobBridgeClient } from "@poe2/pob-bridge";
+import type { PobBridgeClient, ShardProgress } from "@poe2/pob-bridge";
 import type { BridgeLease, BridgeSource } from "./builds/store";
 import type {
 	OptimiseTreeOptions,
@@ -16,10 +16,13 @@ export type CallHandler = (method: string, params?: Record<string, unknown>) => 
  *  `acquireParallel(n)` does not simulate real multi-slot fan-out (there is no fake for that --
  *  ParallelBridge's own sharding is covered by packages/pob-bridge/src/parallel.test.ts); it just
  *  hands back the same canned single-bridge shape, so callers/tests that only care about WHICH
- *  acquire method the runner picked (and with what `n`) can assert on `parallelAcquisitions`. */
+ *  acquire method the runner picked (and with what `n`) can assert on `parallelAcquisitions`.
+ *  `opts.shardProgress` replays a canned sequence of `ShardProgress` updates through whatever
+ *  `onShardProgress` callback the caller passed to `acquireParallel`, for testing runner-side
+ *  merging without a real `ParallelBridge`. */
 export function fakeBridgeSource(
 	handlers: Record<string, unknown | CallHandler>,
-	opts: { onAcquire?: () => void; onRelease?: () => void } = {},
+	opts: { onAcquire?: () => void; onRelease?: () => void; shardProgress?: ShardProgress[] } = {},
 ): BridgeSource & { acquired: number; released: number; parallelAcquisitions: number[] } {
 	const makeLease = (): BridgeLease => ({
 		call: (async (method: string, params?: Record<string, unknown>) => {
@@ -41,10 +44,11 @@ export function fakeBridgeSource(
 			opts.onAcquire?.();
 			return makeLease();
 		},
-		async acquireParallel(n: number): Promise<BridgeLease> {
+		async acquireParallel(n: number, onShardProgress?: (update: ShardProgress) => void): Promise<BridgeLease> {
 			source.acquired++;
 			source.parallelAcquisitions.push(n);
 			opts.onAcquire?.();
+			for (const update of opts.shardProgress ?? []) onShardProgress?.(update);
 			return makeLease();
 		},
 	};

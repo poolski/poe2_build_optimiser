@@ -249,4 +249,34 @@ describe("JobRegistry slot-based admission (phase 1.5)", () => {
 			() => new JobRegistry({ source, builds, poolSize: 2, maxActiveJobs: 1, jobParallelism: 3, core: stubCore({}) }),
 		).toThrow(/jobParallelism.*exceeds poolSize/i);
 	});
+
+	it("merges shard progress into workers[] on every progress event emitted for a parallel job", async () => {
+		const source = fakeBridgeSource(bridgeHandlers, {
+			shardProgress: [
+				{ slot: 0, done: 0, total: 20 },
+				{ slot: 1, done: 0, total: 20 },
+			],
+		});
+		const core = stubCore({
+			optimiseTree: async (_b, opts: OptimiseTreeOptions) => {
+				opts.onProgress?.({ phase: "baseline", buildOutputs: 0, bestObjective: 1 } as never);
+				opts.onProgress?.({ phase: "add-loop", buildOutputs: 5, bestObjective: 2, depth: 1 } as never);
+				return fakeOptimiseResult() as never;
+			},
+		});
+		const reg = new JobRegistry({ source, builds, poolSize: 2, maxActiveJobs: 1, jobParallelism: 2, core });
+
+		const events: ProgressEvent[] = [];
+		const job = reg.create("optimise", "b_1", req());
+		job.emitter.on("progress", (ev: ProgressEvent) => events.push(ev));
+		await settled(job);
+
+		expect(events).toHaveLength(2);
+		for (const ev of events) {
+			expect(ev.workers).toEqual([
+				{ slot: 0, done: 0, total: 20 },
+				{ slot: 1, done: 0, total: 20 },
+			]);
+		}
+	});
 });

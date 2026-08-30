@@ -62,6 +62,13 @@ export interface OptimiseProgress {
 	depth?: number;
 	k?: number;
 	kTotal?: number;
+	/** Per-shard progress of the parallel candidate-evaluator (phase 1.5). A "worker" is a leased
+	 * bridge-pool slot working a contiguous chunk of the batch, not a single candidate. Not
+	 * populated by this file yet -- set by whatever wires a `ParallelBridge` observer in. */
+	workers?: { slot: number; done: number; total: number }[];
+	/** Ranked candidate nodes for the current add-step, most promising first. Fixed at 5 entries.
+	 * Not populated by this file yet. */
+	topNodes?: { id: string; name: string; scoreDelta: number }[];
 	/** Optional short human line; the UI can also build its own from the fields above. */
 	note?: string;
 }

@@ -104,6 +104,55 @@ describe("ParallelBridge", () => {
 		expect(result.results.map((r) => r.nodeId)).toEqual(nodeIds);
 	});
 
+	it("reports per-shard dispatch/settle progress without changing recombination", async () => {
+		const nodeIds = [10, 20, 30, 40, 50, 60];
+		// Same reversed-settle-order setup as the test above, proving the observer doesn't
+		// perturb determinism: slot 0 (first chunk) resolves LAST; slot 2 resolves FIRST.
+		const slots = [
+			fakeSlot(0, [], { delayForNodeIds: () => 30 }),
+			fakeSlot(1, [], { delayForNodeIds: () => 15 }),
+			fakeSlot(2, [], { delayForNodeIds: () => 0 }),
+		];
+		const updates: { slot: number; done: number; total: number }[] = [];
+		const bridge = new ParallelBridge(slots, (u) => updates.push(u));
+		const result = await bridge.call<{ results: { nodeId: number }[] }>("evaluate_candidate_nodes_from", {
+			allocSet: [],
+			nodeIds,
+		});
+
+		expect(result.results.map((r) => r.nodeId)).toEqual(nodeIds);
+
+		// Each of the 3 slots gets a dispatch (done: 0) and a settle (done === total) update.
+		const bySlot = (slot: number) => updates.filter((u) => u.slot === slot);
+		for (const slot of [0, 1, 2]) {
+			const [dispatch, settle] = bySlot(slot);
+			expect(dispatch).toEqual({ slot, done: 0, total: 2 });
+			expect(settle).toEqual({ slot, done: 2, total: 2 });
+		}
+		expect(updates).toHaveLength(6);
+		// Every slot's dispatch update fires before that slot's settle, regardless of which slot
+		// finishes first overall (slot 2 settles before slot 0 even starts, per the delays above).
+		for (const slot of [0, 1, 2]) {
+			const [dispatchIdx, settleIdx] = [
+				updates.findIndex((u) => u.slot === slot && u.done === 0),
+				updates.findIndex((u) => u.slot === slot && u.done === u.total),
+			];
+			expect(dispatchIdx).toBeLessThan(settleIdx);
+		}
+	});
+
+	it("swallows a throwing onShardProgress without affecting the result", async () => {
+		const nodeIds = [10, 20, 30, 40];
+		const slots = [fakeSlot(0, []), fakeSlot(1, [])];
+		const clean = await new ParallelBridge([fakeSlot(0, []), fakeSlot(1, [])]).call<{
+			results: { nodeId: number }[];
+		}>("evaluate_candidate_nodes_from", { allocSet: [], nodeIds });
+		const withThrower = await new ParallelBridge(slots, () => {
+			throw new Error("boom");
+		}).call<{ results: { nodeId: number }[] }>("evaluate_candidate_nodes_from", { allocSet: [], nodeIds });
+		expect(withThrower).toEqual(clean);
+	});
+
 	it("sums buildOutputCount / buildOutputSeconds across every leased slot", async () => {
 		const slots = [fakeSlot(0, []), fakeSlot(1, []), fakeSlot(2, [])];
 		const bridge = new ParallelBridge(slots);

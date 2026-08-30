@@ -12,4 +12,4 @@ export {
   type PooledBridge,
   type BridgeLeaseHandle,
 } from "./pool";
-export { ParallelBridge } from "./parallel";
+export { ParallelBridge, type ShardProgress } from "./parallel";

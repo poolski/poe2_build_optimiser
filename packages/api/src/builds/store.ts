@@ -5,7 +5,7 @@
 import { randomUUID } from "node:crypto";
 import type { BuildInput, BuildSummary, CascadeResult } from "@poe2/contract";
 import { BuildSummary as BuildSummarySchema } from "@poe2/contract";
-import type { PobBridgeClient } from "@poe2/pob-bridge";
+import type { PobBridgeClient, ShardProgress } from "@poe2/pob-bridge";
 import type { StatSet, TreeStatus } from "../core";
 import { decodePobCode } from "../pob/code";
 import { sanitizeStatSet } from "../jobs/mappers";
@@ -25,7 +25,7 @@ export interface BridgeSource {
 	 *  depends on the lease/ParallelBridge machinery at all). Admission control (JobRegistry) is
 	 *  what keeps a call here from ever needing to wait long: it never lets committed slots across
 	 *  all running jobs exceed the pool size, so by the time a job calls this, `n` slots are free. */
-	acquireParallel(n: number): Promise<BridgeLease>;
+	acquireParallel(n: number, onShardProgress?: (update: ShardProgress) => void): Promise<BridgeLease>;
 }
 
 export interface StoredBuild {
