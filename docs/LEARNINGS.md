@@ -1,9 +1,11 @@
 <!-- generated-by: groundrules v1.10.0 -->
+
 # Learnings — poe2-build-optimiser
 
 Rules learned from corrections and non-trivial discoveries during the project. Reverse-chronological order (newest at the top). **Re-read at session start.**
 
 One entry = one **actionable rule**, not a journal note. Each entry has:
+
 - a title that states the rule (imperative or "X: do Y");
 - **Why** — the story behind it: what happened, what it cost (a revert, a lost CI cycle, a confused user…);
 - **When to apply** — the concrete trigger conditions, so the rule fires at the right moment instead of being remembered too late.
@@ -11,6 +13,19 @@ One entry = one **actionable rule**, not a journal note. Each entry has:
 Include the minimal code snippet / command when it is the fix.
 
 ---
+
+## Frontend checks: Playwright + Chromium against the mock API, not the real bridge
+
+**Why**: on 2026-08-30, verifying the `TreeCanvas` context-menu feature needed a real browser
+click-through, but no browser tool (chromium-cli or similar) was available in the environment,
+and driving the app against the real API would have meant booting the real LuaJIT bridge just
+for a UI check. `npx playwright` plus the app's existing `VITE_USE_MOCK=1` fixture-backed client
+gave a clean, fast headless check with screenshots, no bridge involved.
+
+**When to apply**: when making changes to the frontend (`packages/web`), whether style or
+functionality, drive the manual check with Playwright + Chromium against the mock/fixture-backed
+API (`VITE_USE_MOCK=1`), not the real API/bridge. If the change touches only frontend code, skip
+running backend tests. Ensure you clean up the dev server once done testing.
 
 ## Grep for existing wiring before scoping a PRD as "free text"
 
@@ -75,7 +90,7 @@ it does not have, producing a plan PoB will not accept.
 ## Repair must free interior nodes via the `DeallocNode` cascade, not leaves only
 
 **Why**: the first repair design only freed terminal nodes. Real trees waste points on long dead
-paths whose *interior* nodes are the ones worth removing, so leaf-only repair could not reach the
+paths whose _interior_ nodes are the ones worth removing, so leaf-only repair could not reach the
 actual waste and under-performed on real builds. Lifting the filter and freeing connected subtrees
 through `DeallocNode` is what made repair useful (ADR-0003).
 
@@ -118,7 +133,7 @@ check for a live `luajit.exe` first.
 ## Parallelise by sharding the batch at the bridge, leaving `src/core` untouched
 
 **Why**: parallel candidate evaluation is the real wall-time win for large repair budgets, and it
-landed with *zero* `src/core` changes — `ParallelBridge` shards one `evaluate_candidate_nodes[_from]`
+landed with _zero_ `src/core` changes — `ParallelBridge` shards one `evaluate_candidate_nodes[_from]`
 batch across leased pool slots and recombines by chunk index, so core still sees a single
 `bridge.call(...)`. Keeping the split there preserved determinism (recombination is by index, not
 arrival order) and the architecture rule below. The cost is that core has no notion of a "worker" —

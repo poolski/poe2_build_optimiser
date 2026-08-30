@@ -32,9 +32,7 @@ stays out of the tree). Provenance and design rationale live in git history and 
 
 ## Up next
 
-- [supervised] End-to-end Configure-step manual check (pick metrics, freeze/unfreeze/anchor,
-  confirm request payload) — manual by nature, no automated stop condition
-  (docs/prd/web-ui-configure-step-pickers.md)
+- [ ] *(nothing queued)*
 
 Candidates and deferred work live in [`docs/ROADMAP.md`](docs/ROADMAP.md) — an item moves up
 here when it is actively picked up.
@@ -63,6 +61,11 @@ dropped.
 
 ## Recently done
 
+- [x] Configure-step end-to-end check — metric pickers (suggestion + free text), freeze/
+  unfreeze/anchor via `TreeCanvas` right-click — automated as a Playwright + Chromium spec
+  against the mock API (`packages/web/e2e/configure-step.spec.ts`, `npm run test:e2e:web`),
+  closing out `docs/prd/web-ui-configure-step-pickers.md`'s build plan. See
+  [ADR-0015](docs/decisions/0015-playwright-chromium-for-frontend-e2e-checks.md) (2026-08-30)
 - [x] `TreeCanvas` right-click context menu (Freeze / Unfreeze / Anchor for rollback), threaded
   through `TreePreview` into `RunConfig`; freeze list renders resolved node names (raw-id
   fallback) and is itself clickable to unfreeze. Added a canvas 2D context + `ResizeObserver`
@@ -152,7 +155,7 @@ dropped.
   the exports are data, not the damage formula. The ~280 ms/recompute cost is a speed-lever
   problem, not an architecture problem (ADR-0001, `intake/web-ui/07-performance.md`).
 
-Decisions of record live in `docs/decisions/` (ADR-0001 … ADR-0012).
+Decisions of record live in `docs/decisions/` (ADR-0001 … ADR-0015).
 
 ## Doc layout
 
@@ -166,7 +169,7 @@ Curated docs live in `docs/`; the design specs that fed them live in `intake/`.
 - `../PLAN.md` — this file, the plan and the map.
 - `VISION.md` / `ARCHITECTURE.md` / `ROADMAP.md` / `PROCESS.md` / `LEARNINGS.md` / `GLOSSARY.md` —
   groundrules-managed synthesis docs.
-- `decisions/` — ADR-0001 … ADR-0012, the decisions of record.
+- `decisions/` — ADR-0001 … ADR-0015, the decisions of record.
 - `gotchas.md` — PoB-PoE2 leftovers to not trip on. Always relevant.
 - `constraint-rejection-repro.md` — live repro of the recommender's constraint filter.
 - `beam-search/` — the tree-optimiser track's results: `repro.md` (validation write-up),
