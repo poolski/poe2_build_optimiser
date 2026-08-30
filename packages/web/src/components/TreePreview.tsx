@@ -18,9 +18,25 @@ interface Props {
   anchorNodeId: number | undefined;
   onPickAnchor: (id: number) => void;
   client: OptimiserClient;
+  /** Ids currently in the freeze list -- controls Freeze vs. Unfreeze wording in the right-click menu. */
+  frozenNodeIds?: number[];
+  onFreeze?: (id: number) => void;
+  onUnfreeze?: (id: number) => void;
+  /** Right-click "Anchor for rollback" -- sets mode + anchorNodeId, independent of the current mode. */
+  onAnchorForRollback?: (id: number) => void;
 }
 
-export default function TreePreview({ build, mode, anchorNodeId, onPickAnchor, client }: Props) {
+export default function TreePreview({
+  build,
+  mode,
+  anchorNodeId,
+  onPickAnchor,
+  client,
+  frozenNodeIds,
+  onFreeze,
+  onUnfreeze,
+  onAnchorForRollback,
+}: Props) {
   const { mt, versionMismatch, canRender } = useBuildCanvas(build);
   const rollback = mode === "rollback";
 
@@ -57,6 +73,15 @@ export default function TreePreview({ build, mode, anchorNodeId, onPickAnchor, c
     return new Set(allocated.filter((id) => mt.tree.nodesById.has(id)));
   }, [rollback, mt, allocated]);
 
+  // Right-click Freeze/Unfreeze/Anchor is offered for any allocated node the shipped tree
+  // renders, regardless of mode -- unlike `pickable`, which is rollback-only left-click picking.
+  const contextMenuNodes = useMemo(() => {
+    if (mt.status !== "ready") return undefined;
+    return new Set(allocated.filter((id) => mt.tree.nodesById.has(id)));
+  }, [mt, allocated]);
+
+  const frozenNodes = useMemo(() => new Set(frozenNodeIds ?? []), [frozenNodeIds]);
+
   const after = useMemo(() => {
     if (!freed || freed.length === 0) return allocated;
     const drop = new Set(freed);
@@ -88,6 +113,11 @@ export default function TreePreview({ build, mode, anchorNodeId, onPickAnchor, c
         onPick={rollback ? onPickAnchor : undefined}
         pickable={pickable}
         legend={rollback ? "select" : "diff"}
+        contextMenuNodes={contextMenuNodes}
+        frozenNodes={frozenNodes}
+        onFreeze={onFreeze}
+        onUnfreeze={onUnfreeze}
+        onAnchorForRollback={onAnchorForRollback}
       />
       {rollback && (
         <p className="note">

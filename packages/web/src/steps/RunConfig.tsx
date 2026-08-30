@@ -8,6 +8,25 @@ import ObjectiveBuilder from "../components/ObjectiveBuilder";
 import ConstraintsEditor, { type ConstraintsValue } from "../components/ConstraintsEditor";
 import TreePreview from "../components/TreePreview";
 import { useBuildCanvas } from "../hooks/useBuildCanvas";
+import type { RenderNode } from "../render/types";
+
+/** Resolve freeze-list ids to node names for display; unresolvable/nameless ids fall back to the raw id. */
+export function resolveFreezeNames(
+  ids: number[],
+  nodesById: Map<number, RenderNode> | undefined,
+): { id: number; name: string }[] {
+  return ids.map((id) => ({ id, name: nodesById?.get(id)?.name || String(id) }));
+}
+
+/** Append `id` to the freeze list, deduped; preserves existing (including manually-typed) ids. */
+export function addFreeze(ids: number[], id: number): number[] {
+  return ids.includes(id) ? ids : [...ids, id];
+}
+
+/** Remove `id` from the freeze list. */
+export function removeFreeze(ids: number[], id: number): number[] {
+  return ids.filter((x) => x !== id);
+}
 
 interface Props {
   build: BuildSummary;
@@ -37,7 +56,7 @@ function csvToIds(s: string): number[] {
 export default function RunConfig({ build, request, onChange, onRun, onBack, client, busy }: Props) {
   const [advanced, setAdvanced] = useState(false);
   const [budgetKind, setBudgetKind] = useState<"extra" | "absolute">("extra");
-  const { canRender } = useBuildCanvas(build);
+  const { canRender, mt } = useBuildCanvas(build);
 
   const mode = request.mode;
   const objOk = OBJECTIVE_SPEC_RE.test(request.objective ?? "TotalDPS");
@@ -51,6 +70,12 @@ export default function RunConfig({ build, request, onChange, onRun, onBack, cli
       preserveMetrics: v.preserveMetrics,
       minResist: v.minResist,
     });
+
+  const freezeIds = request.freeze ?? [];
+  const onFreeze = (id: number) => onChange({ freeze: addFreeze(freezeIds, id) });
+  const onUnfreeze = (id: number) => onChange({ freeze: removeFreeze(freezeIds, id) });
+  const onAnchorForRollback = (id: number) => onChange({ mode: "rollback", anchorNodeId: id });
+  const freezeNames = resolveFreezeNames(freezeIds, mt.status === "ready" ? mt.tree.nodesById : undefined);
 
   return (
     <div className="panel">
@@ -78,6 +103,10 @@ export default function RunConfig({ build, request, onChange, onRun, onBack, cli
           anchorNodeId={request.anchorNodeId}
           onPickAnchor={(id) => onChange({ anchorNodeId: id })}
           client={client}
+          frozenNodeIds={freezeIds}
+          onFreeze={onFreeze}
+          onUnfreeze={onUnfreeze}
+          onAnchorForRollback={onAnchorForRollback}
         />
       </fieldset>
 
@@ -275,10 +304,25 @@ export default function RunConfig({ build, request, onChange, onRun, onBack, cli
               <span className="lbl">Freeze node ids (comma separated) &mdash; never freed by repair</span>
               <input
                 type="text"
-                value={(request.freeze ?? []).join(", ")}
+                value={freezeIds.join(", ")}
                 onChange={(e) => onChange({ freeze: csvToIds(e.target.value) })}
               />
             </label>
+            {freezeNames.length > 0 && (
+              <div className="freeze-list">
+                {freezeNames.map(({ id, name }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    className="chip"
+                    title="Click to unfreeze"
+                    onClick={() => onUnfreeze(id)}
+                  >
+                    {name} &times;
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
       </fieldset>
